@@ -38,3 +38,24 @@ def test_seed_refuses_production_without_force():
 
     with pytest.raises(CommandError):
         run()
+
+
+@override_settings(DEBUG=True)
+def test_full_demo_set_including_orders_loads_and_flushes(make_user):
+    from apps.accounts.constants import StaffLevel
+    from apps.orders.models import Order, OrderStatusHistory
+    from apps.quotes.models import QuoteRequest
+
+    make_user(StaffLevel.TOP_ADMIN)  # seed actions are attributed to the first superuser
+    run()
+    assert Order.objects.filter(order_type="express").count() == 7
+    assert Order.objects.filter(order_type="international", status="clearance").count() == 1
+    assert QuoteRequest.objects.filter(status="answered").count() == 2
+    # Statuses were reached through the workflow, so history exists for every step.
+    order = Order.objects.get(order_type="express", status="in_transit")
+    assert list(OrderStatusHistory.objects.filter(order=order).values_list("to_status", flat=True)) == [
+        "waiting_quote", "quoted", "accepted", "driver_assigned", "picked_up", "at_agiza_center", "in_transit"]
+    assert "0 created" in run("--only", "orders")
+    run("--flush")
+    assert Order.objects.count() == 0 and QuoteRequest.objects.count() == 0
+    assert SeedRecord.objects.count() == 0

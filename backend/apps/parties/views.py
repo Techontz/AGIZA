@@ -41,6 +41,8 @@ class CustomerViewSet(
 ):
     module = Module.PEOPLE
     read_modules = CUSTOMER_READ_MODULES
+    # Staff taking orders/quotations can register walk-in customers.
+    edit_modules = (Module.ORDERS, Module.INTAKE_QUOTES)
     permission_classes = [HasModulePermission]
     serializer_class = CustomerSerializer
     filterset_class = CustomerFilter

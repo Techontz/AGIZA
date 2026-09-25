@@ -37,6 +37,8 @@ INSTALLED_APPS = [
     "apps.locations",
     "apps.parties",
     "apps.shipping_engine",
+    "apps.quotes",
+    "apps.orders",
 ]
 
 MIDDLEWARE = [
@@ -152,6 +154,14 @@ SPECTACULAR_SETTINGS = {
         "ScopeEnum": "apps.shipping_engine.constants.Scope",
         "WarehouseTypeEnum": "apps.locations.models.Warehouse.Type",
         "WarehouseStatusEnum": "apps.locations.models.Warehouse.Status",
+        "OrderDepartmentEnum": "apps.orders.models.Department",
+        "StaffDepartmentEnum": "apps.accounts.constants.Department",
+        "ExpressPriorityEnum": "apps.orders.models.Priority",
+        "EquipmentPriorityEnum": ["high", "medium", "low"],
+        "QuoteServiceTypeEnum": "apps.quotes.models.ServiceType",
+        "InternationalServiceTypeEnum": "apps.orders.models.InternationalDetails.ServiceType",
+        "EquipmentServiceTypeEnum": "apps.orders.models.EquipmentDetails.ServiceType",
+        "ClassificationEnum": "apps.orders.models.Classification",
     },
 }
 

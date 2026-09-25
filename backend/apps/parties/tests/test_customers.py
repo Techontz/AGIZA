@@ -53,9 +53,11 @@ def test_search_filter_and_pagination(admin):
 
 
 def test_read_access_via_related_module_but_no_write(client_for):
-    finance = client_for(StaffLevel.FINANCE)  # people=none, finance=manage
+    finance = client_for(StaffLevel.FINANCE)  # people=none, finance=manage, orders/intake=view
     assert finance.get("/api/customers/").status_code == 200
     assert create(finance).status_code == 403
+    # Sales (people=view) can register a customer because they edit orders/quotations.
+    assert create(client_for(StaffLevel.SALES), phone="+255700000321").status_code == 201
     assert client_for(StaffLevel.DRIVER).get("/api/customers/").status_code == 200  # deliveries=edit
 
 

@@ -7,7 +7,8 @@ A view declares `module = Module.X`. Access required:
   - DELETE                           -> manage
 A view may override per viewset action or per HTTP method with
 `required_access = {"approve": "manage"}` / `{"POST": "view"}`,
-and may list `read_modules` whose view access also grants read-only access.
+and may list `read_modules` / `edit_modules` whose view / edit access also
+grants that level here (never "manage").
 """
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
@@ -64,9 +65,12 @@ class HasModulePermission(BasePermission):
         required = self.required_access(request, view)
         if has_access(user, module, required):
             return True
-        # Shared reference data (e.g. customers) can be read from related modules.
+        # Shared reference data (e.g. customers) can be read — and, where a view
+        # allows it, edited — through related modules.
         if required == Access.VIEW:
             return any(has_access(user, m, Access.VIEW) for m in getattr(view, "read_modules", ()))
+        if required == Access.EDIT:
+            return any(has_access(user, m, Access.EDIT) for m in getattr(view, "edit_modules", ()))
         return False
 
 

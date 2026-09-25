@@ -23,6 +23,7 @@ from apps.core.seeding import flush as flush_seed
 # name -> module exposing SEED, FLUSH_ORDER and seed(stdout). Order matters for loading.
 SETS = {
     "shipping": "apps.shipping_engine.demo",
+    "orders": "apps.orders.demo",
 }
 
 
