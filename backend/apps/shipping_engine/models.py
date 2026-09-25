@@ -188,7 +188,7 @@ class Route(TimeStampedModel):
 
     @property
     def origin_label(self) -> str:
-        return self.origin_city.name if self.origin_city_id else self.origin_country.name
+        return self.origin_city.name if self.origin_city_id else self.origin_country.display_name
 
     @property
     def destination_label(self) -> str:
@@ -196,7 +196,7 @@ class Route(TimeStampedModel):
             return self.destination_zone.name
         if self.destination_city_id:
             return self.destination_city.name
-        return self.destination_country.name
+        return self.destination_country.display_name
 
     @property
     def label(self) -> str:

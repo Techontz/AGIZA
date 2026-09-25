@@ -66,8 +66,8 @@ export function OverridesView() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100">
-                  {HEAD.map((h) => (
-                    <th key={h} className={th}>
+                  {HEAD.map((h, i) => (
+                    <th key={h} className={i === HEAD.length - 1 ? `${th} sticky right-0 bg-white` : th}>
                       {h}
                     </th>
                   ))}
@@ -102,7 +102,7 @@ export function OverridesView() {
                     return (
                       <tr key={o.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                         <td className={td}>
-                          <div className="font-mono text-xs text-gray-400">{o.code}</div>
+                          <div className="font-mono text-xs text-gray-400 whitespace-nowrap">{o.code}</div>
                           {o.created_by_name && <div className="text-[11px] text-gray-400 whitespace-nowrap">by {o.created_by_name}</div>}
                         </td>
                         <td className={`${td} text-xs text-gray-700 font-medium whitespace-nowrap`}>{o.route_label}</td>
@@ -112,14 +112,14 @@ export function OverridesView() {
                         </td>
                         <td className={`${td} text-xs text-gray-500 line-through whitespace-nowrap`}>{o.original_rule?.rate_display ?? "—"}</td>
                         <td className={`${td} text-xs font-bold text-gray-900 whitespace-nowrap`}>{o.override_rate_display}</td>
-                        <td className={`${td} text-xs text-gray-500 max-w-40`}>{o.reason}</td>
+                        <td className={`${td} text-xs text-gray-500 min-w-48 max-w-64`}>{o.reason}</td>
                         <td className={`${td} text-xs text-gray-500 whitespace-nowrap`}>
                           {dateFmt(o.start_date)} – {dateFmt(o.end_date)}
                         </td>
                         <td className={td}>
                           <StatusBadge status={ps.status} label={ps.label} />
                         </td>
-                        <td className={td}>
+                        <td className={`${td} sticky right-0 bg-white shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]`}>
                           <div className="flex items-center gap-1">
                             {canEdit && <IconButton icon={Edit} size="sm" label={`Edit ${o.code}`} onClick={() => setF({ edit: String(o.id) })} />}
                             {canManage && <IconButton icon={Trash2} size="sm" label={`Delete ${o.code}`} onClick={() => setToDelete(o)} />}

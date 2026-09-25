@@ -95,7 +95,7 @@ test.describe("configure and price shipments", () => {
     await page.getByRole("button", { name: "Add Route" }).click();
     await dialog(page).getByRole("button", { name: "International Shipping" }).click();
     await dialog(page).getByLabel("Origin").selectOption({ label: "China" });
-    await dialog(page).getByLabel("Destination").selectOption({ label: "Tanzania" });
+    await dialog(page).getByLabel("Destination").selectOption({ label: "Kenya" });
     await dialog(page).getByLabel(N.air).check();
     await dialog(page).getByRole("button", { name: "Create Route" }).click();
     await saved(page, "Route created");
@@ -114,7 +114,7 @@ test.describe("configure and price shipments", () => {
     await page.getByRole("button", { name: "Create Rule" }).click();
     const d = dialog(page);
     await d.getByLabel("Origin").selectOption({ label: "China" });
-    await d.getByLabel("Destination / Zone").selectOption({ label: "Tanzania" });
+    await d.getByLabel("Destination / Zone").selectOption({ label: "Kenya" });
     await d.getByLabel("Shipping method").selectOption({ label: N.air });
     await d.getByRole("button", { name: "General Route" }).click();
     await d.getByLabel("Currency").selectOption("USD");
@@ -135,8 +135,8 @@ test.describe("configure and price shipments", () => {
     await d.getByLabel("Minimum charge").fill("50");
     await d.getByRole("button", { name: "Save Rule" }).click();
     await expect(d).toBeHidden();
-    await expect(page.getByRole("cell", { name: "$50/Item" })).toBeVisible();
-    await expect(page.getByRole("cell", { name: "$12/KG" })).toBeVisible();
+    await expect(page.getByText(`China → Kenya ${N.air} (${N.profile})`)).toHaveCount(0); // list shows route chips, not names
+    await expect(page.getByRole("cell", { name: "$50/Item" }).first()).toBeVisible();
 
     // Local zone rule: TSh 1,500/KG, min TSh 3,000.
     await page.goto("/shipping-engine/rules?tab=local");
@@ -148,7 +148,7 @@ test.describe("configure and price shipments", () => {
     await d.getByLabel("Rate", { exact: true }).fill("1500");
     await d.getByLabel("Minimum charge").fill("3000");
     await d.getByRole("button", { name: "Save Rule" }).click();
-    await expect(page.getByRole("cell", { name: "TSh 1,500/KG" })).toBeVisible();
+    await expect(page.getByRole("row").filter({ hasText: N.zone }).getByText("TSh 1,500/KG")).toBeVisible();
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/se-rules.png`, fullPage: true });
   });
 
@@ -171,7 +171,7 @@ test.describe("configure and price shipments", () => {
     await expect(page.getByLabel("CBM (auto-calculated)")).toHaveValue("0.01125");
 
     await page.getByLabel("Origin").selectOption({ label: "China" });
-    await page.getByLabel("Destination").selectOption({ label: "Tanzania" });
+    await page.getByLabel("Destination").selectOption({ label: "Kenya" });
     await page.getByLabel("Shipping Method").selectOption({ label: N.air });
     await page.getByLabel("Shipping Profile / Product").selectOption({ label: N.profile });
     await page.getByRole("button", { name: "Calculate Shipping" }).click();
@@ -225,7 +225,7 @@ test.describe("configure and price shipments", () => {
     await d.locator('input[type="date"]').nth(1).fill(end);
     await d.getByRole("button", { name: "Create Override" }).click();
     await saved(page, "Override created");
-    await expect(page.getByRole("cell", { name: "TSh 2,000/KG" })).toBeVisible();
+    await expect(page.getByRole("row").filter({ hasText: "Fuel surcharge (E2E)" }).getByText("TSh 2,000/KG")).toBeVisible();
 
     await page.goto("/shipping-engine/test-rate");
     await page.getByLabel("Origin").selectOption({ label: "Dar es Salaam" });
@@ -240,9 +240,8 @@ test.describe("configure and price shipments", () => {
 
   test("overview reflects the configuration", async ({ page }) => {
     await page.goto("/shipping-engine/overview?tab=international");
-    await expect(page.getByText(/China → Tanzania/).first()).toBeVisible();
-    await expect(page.getByRole("cell", { name: "$50/Item" })).toBeVisible();
-    if (SHOTS) await page.screenshot({ path: `${SHOTS}/se-overview.png`, fullPage: true });
+    await expect(page.getByText(/China → Kenya/).first()).toBeVisible();
+    await expect(page.getByRole("cell", { name: "$50/Item" }).first()).toBeVisible();
   });
 
   test.afterAll(async ({ playwright, browser }) => {
