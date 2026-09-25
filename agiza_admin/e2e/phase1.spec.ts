@@ -45,7 +45,7 @@ test("shell renders the Figma layout with the real user; tokens are not readable
   await page.goto("/");
   await page.waitForURL("**/orders/express");
   await expect(page.getByRole("heading", { level: 1, name: "Express Delivery Management" })).toBeVisible();
-  await expect(page.getByText("Coming Soon")).toBeVisible();
+  await expect(page.getByText("Waiting Quote").first()).toBeVisible(); // real stat card (no longer a placeholder)
 
   const cookies = await page.evaluate(() => document.cookie);
   expect(cookies).not.toContain("agiza_at");

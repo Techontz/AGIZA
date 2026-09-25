@@ -31,7 +31,7 @@ pnpm install
 cp .env.example .env.local      # DJANGO_API_URL=http://127.0.0.1:8000/api
 pnpm dev                        # http://localhost:3000
 pnpm typecheck && pnpm lint && pnpm build
-E2E_EMAIL=... E2E_PASSWORD=... pnpm test:e2e    # needs both servers running
+pnpm build && pnpm test:e2e            # starts its own isolated stack (agiza_e2e DB)
 ```
 
 ## Production notes

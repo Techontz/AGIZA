@@ -157,7 +157,7 @@ SPECTACULAR_SETTINGS = {
         "OrderDepartmentEnum": "apps.orders.models.Department",
         "StaffDepartmentEnum": "apps.accounts.constants.Department",
         "ExpressPriorityEnum": "apps.orders.models.Priority",
-        "EquipmentPriorityEnum": ["high", "medium", "low"],
+        "EquipmentPriorityEnum": [("high", "High"), ("medium", "Medium"), ("low", "Low")],
         "QuoteServiceTypeEnum": "apps.quotes.models.ServiceType",
         "InternationalServiceTypeEnum": "apps.orders.models.InternationalDetails.ServiceType",
         "EquipmentServiceTypeEnum": "apps.orders.models.EquipmentDetails.ServiceType",

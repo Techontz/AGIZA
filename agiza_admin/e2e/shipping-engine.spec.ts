@@ -246,7 +246,7 @@ test.describe("configure and price shipments", () => {
 
   test.afterAll(async ({ playwright, browser }) => {
     // Remove everything this run created (via the same authenticated proxy).
-    const ctx = await browser.newContext({ storageState: "e2e/.auth/admin.json", baseURL: "http://127.0.0.1:3000" });
+    const ctx = await browser.newContext({ storageState: "e2e/.auth/admin.json", baseURL: process.env.E2E_BASE_URL });
     const api: APIRequestContext = ctx.request;
     const list = async (path: string) => ((await (await api.get(`/api/proxy/shipping-engine/${path}`)).json()).results ?? []) as Record<string, unknown>[];
     const del = (path: string, id: unknown) => api.delete(`/api/proxy/shipping-engine/${path}/${id}/`);

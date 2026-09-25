@@ -39,7 +39,7 @@ from .serializers import (
     InternationalUpdateSerializer,
     PackageSizeSerializer,
     PaymentSerializer,
-    QuoteSerializer,
+    ExpressQuoteSerializer,
     QuoteStatusSerializer,
     RecordPaymentSerializer,
     SuggestPriceSerializer,
@@ -263,10 +263,10 @@ class ExpressOrderViewSet(BaseOrderViewSet):
                 stages[stage] += row["n"]
         return stages
 
-    @extend_schema(request=QuoteSerializer)
+    @extend_schema(request=ExpressQuoteSerializer)
     @action(detail=True, methods=["post"])
     def quote(self, request, pk=None):
-        s = QuoteSerializer(data=request.data)
+        s = ExpressQuoteSerializer(data=request.data)
         s.is_valid(raise_exception=True)
         d = s.validated_data
         order = run(services.quote_express, self.get_object(), amount=d["amount"],

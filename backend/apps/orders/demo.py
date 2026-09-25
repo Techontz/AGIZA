@@ -223,7 +223,7 @@ def seed(stdout=None) -> Seeder:
             "equipment", customer=customer(cust, phone), item_details=equipment, user=actor, notes=desc,
             total_amount=D(value),
             details={"service_type": service, "equipment": equipment, "classification": klass, "city": _city(city),
-                     "expected_date": timezone.now().replace(minute=0, second=0, microsecond=0) + timedelta(days=days),
+                     "expected_date": timezone.localtime().replace(hour=9, minute=0, second=0, microsecond=0) + timedelta(days=days),
                      "priority": prio, "needs_attention": attention},
         ))
         pay(order, paid)

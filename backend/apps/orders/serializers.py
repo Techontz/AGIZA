@@ -324,7 +324,7 @@ class TransitionSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, default="", max_length=1000)
 
 
-class QuoteSerializer(serializers.Serializer):
+class ExpressQuoteSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"))
     estimated_delivery_at = serializers.DateTimeField()
     advance_required = serializers.BooleanField(default=False)
