@@ -1,5 +1,13 @@
-import { ModulePlaceholder } from "@/components/layout/module-placeholder";
+import { EngineRoute } from "@/components/shipping-engine/engine-route";
+
+import { CarriersView } from "./view";
+
+export const metadata = { title: "Carriers" };
 
 export default function Page() {
-  return <ModulePlaceholder path="/shipping-engine/carriers" />;
+  return (
+    <EngineRoute>
+      <CarriersView />
+    </EngineRoute>
+  );
 }

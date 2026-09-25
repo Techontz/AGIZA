@@ -14,7 +14,8 @@ from typing import Any
 
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
-from django.db import models
+from django.db import models, transaction
+from django.db.models import ProtectedError
 
 SENSITIVE_FIELDS = {"password"}
 
@@ -38,6 +39,9 @@ def snapshot(instance: models.Model) -> dict[str, Any]:
         if field.name in SENSITIVE_FIELDS:
             continue
         data[field.name] = _json_safe(getattr(instance, field.attname))
+    if instance.pk is not None:
+        for field in instance._meta.many_to_many:
+            data[field.name] = sorted(getattr(instance, field.name).values_list("pk", flat=True))
     return data
 
 
@@ -119,5 +123,16 @@ class AuditedViewSetMixin:
             record_audit(action="update", request=self.request, instance=instance, changes=changes)
 
     def perform_destroy(self, instance):
-        record_audit(action="delete", request=self.request, instance=instance, changes={})
-        instance.delete()
+        from .exceptions import ConflictError
+
+        try:
+            with transaction.atomic():
+                record_audit(action="delete", request=self.request, instance=instance, changes={})
+                instance.delete()
+        except ProtectedError as exc:
+            count = len(exc.protected_objects)
+            label = instance._meta.verbose_name
+            raise ConflictError(
+                f"This {label} is used by {count} other record{'s' if count != 1 else ''}. "
+                "Deactivate it instead of deleting it."
+            ) from exc

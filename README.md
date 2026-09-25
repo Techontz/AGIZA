@@ -40,3 +40,12 @@ E2E_EMAIL=... E2E_PASSWORD=... pnpm test:e2e    # needs both servers running
   `manage.py collectstatic`. Set `DJANGO_NUM_PROXIES` to the number of proxies in front of Django (e.g. nginx + Next = 2).
 - Frontend: `SESSION_COOKIE_SECURE=true`; `pnpm build` produces a standalone server in `.next/standalone`.
 - Django is only reached by the Next.js server; it does not need to be public.
+
+## Shipping Engine (Phase 2)
+
+All pricing lives in Django: `backend/apps/shipping_engine/calculator.py` (`RateCalculator`).
+REST API under `/api/shipping-engine/`: `zones`, `routes`, `methods`, `profiles`, `rules`, `carriers`,
+`overrides`, `exchange-rates`, `settings`, `overview`, `calculate` (see `/api/docs/`).
+
+Before prices can be converted to TSh, set the USD (and, if used, AED/CNY) → TSh rates in
+**Shipping Engine → Settings**. Rules priced in a currency without a rate return a clear error.

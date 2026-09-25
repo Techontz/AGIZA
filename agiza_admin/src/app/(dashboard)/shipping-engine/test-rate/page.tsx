@@ -1,5 +1,13 @@
-import { ModulePlaceholder } from "@/components/layout/module-placeholder";
+import { EngineRoute } from "@/components/shipping-engine/engine-route";
+
+import { TestRateView } from "./view";
+
+export const metadata = { title: "Test Shipping Rate" };
 
 export default function Page() {
-  return <ModulePlaceholder path="/shipping-engine/test-rate" />;
+  return (
+    <EngineRoute>
+      <TestRateView />
+    </EngineRoute>
+  );
 }

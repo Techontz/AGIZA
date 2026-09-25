@@ -1,5 +1,13 @@
-import { ModulePlaceholder } from "@/components/layout/module-placeholder";
+import { EngineRoute } from "@/components/shipping-engine/engine-route";
+
+import { OverridesView } from "./view";
+
+export const metadata = { title: "Overrides" };
 
 export default function Page() {
-  return <ModulePlaceholder path="/shipping-engine/overrides" />;
+  return (
+    <EngineRoute>
+      <OverridesView />
+    </EngineRoute>
+  );
 }

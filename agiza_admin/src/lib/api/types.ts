@@ -111,3 +111,9 @@ export interface City {
   country_iso2: string;
   is_active: boolean;
 }
+
+export interface Region {
+  id: number;
+  country: number;
+  name: string;
+}

@@ -1,5 +1,13 @@
-import { ModulePlaceholder } from "@/components/layout/module-placeholder";
+import { EngineRoute } from "@/components/shipping-engine/engine-route";
+
+import { MethodsView } from "./view";
+
+export const metadata = { title: "Shipping Methods" };
 
 export default function Page() {
-  return <ModulePlaceholder path="/shipping-engine/methods" />;
+  return (
+    <EngineRoute>
+      <MethodsView />
+    </EngineRoute>
+  );
 }

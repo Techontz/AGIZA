@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.postgres",
     # Third party
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
@@ -35,6 +36,7 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.locations",
     "apps.parties",
+    "apps.shipping_engine",
 ]
 
 MIDDLEWARE = [
@@ -141,6 +143,16 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": r"/api/",
+    "ENUM_NAME_OVERRIDES": {
+        "CurrencyEnum": "apps.shipping_engine.constants.Currency",
+        "ActiveStatusEnum": "apps.shipping_engine.constants.Status",
+        "ZoneStatusEnum": "apps.shipping_engine.constants.ZoneStatus",
+        "ExchangeRateSourceEnum": "apps.shipping_engine.constants.ExchangeRateSource",
+        "VolumetricDivisorEnum": "apps.shipping_engine.constants.VolumetricDivisor",
+        "ScopeEnum": "apps.shipping_engine.constants.Scope",
+        "WarehouseTypeEnum": "apps.locations.models.Warehouse.Type",
+        "WarehouseStatusEnum": "apps.locations.models.Warehouse.Status",
+    },
 }
 
 # Browsers never call Django directly (the Next.js server proxies requests),

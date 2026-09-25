@@ -1,5 +1,13 @@
-import { ModulePlaceholder } from "@/components/layout/module-placeholder";
+import { EngineRoute } from "@/components/shipping-engine/engine-route";
+
+import { EngineSettingsView } from "./view";
+
+export const metadata = { title: "Shipping Engine Settings" };
 
 export default function Page() {
-  return <ModulePlaceholder path="/shipping-engine/settings" />;
+  return (
+    <EngineRoute>
+      <EngineSettingsView />
+    </EngineRoute>
+  );
 }

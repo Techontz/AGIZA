@@ -1,5 +1,13 @@
-import { ModulePlaceholder } from "@/components/layout/module-placeholder";
+import { EngineRoute } from "@/components/shipping-engine/engine-route";
+
+import { ZonesView } from "./view";
+
+export const metadata = { title: "Shipping Zones" };
 
 export default function Page() {
-  return <ModulePlaceholder path="/shipping-engine/zones" />;
+  return (
+    <EngineRoute>
+      <ZonesView />
+    </EngineRoute>
+  );
 }

@@ -5,7 +5,8 @@ A view declares `module = Module.X`. Access required:
   - safe methods (GET/HEAD/OPTIONS) -> view
   - POST / PUT / PATCH               -> edit
   - DELETE                           -> manage
-A view may override per action with `required_access = {"approve": "manage"}`,
+A view may override per viewset action or per HTTP method with
+`required_access = {"approve": "manage"}` / `{"POST": "view"}`,
 and may list `read_modules` whose view access also grants read-only access.
 """
 from rest_framework.permissions import SAFE_METHODS, BasePermission
@@ -44,6 +45,8 @@ class HasModulePermission(BasePermission):
         action = getattr(view, "action", None)
         if action and action in overrides:
             return overrides[action]
+        if request.method in overrides:  # plain APIViews: key by HTTP method
+            return overrides[request.method]
         if request.method in SAFE_METHODS:
             return Access.VIEW
         if request.method == "DELETE":
