@@ -30,7 +30,7 @@ api_patterns = [
 ]
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    path(settings.ADMIN_URL, admin.site.urls),
     path("api/", include(api_patterns)),
 ]
 

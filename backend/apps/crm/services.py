@@ -13,8 +13,7 @@ match; tags added by hand are never touched by rules.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from datetime import timezone as dt_timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
@@ -23,7 +22,6 @@ from django.db.models import (
     DateTimeField,
     DecimalField,
     Exists,
-    F,
     IntegerField,
     Max,
     OuterRef,
@@ -55,7 +53,7 @@ from .models import (
 
 MONEY = DecimalField(max_digits=16, decimal_places=2)
 ZERO = Value(Decimal("0"), output_field=MONEY)
-EPOCH = Value(datetime(2000, 1, 1, tzinfo=dt_timezone.utc), output_field=DateTimeField())
+EPOCH = Value(datetime(2000, 1, 1, tzinfo=UTC), output_field=DateTimeField())
 ACTIVE_DAYS = 30
 
 

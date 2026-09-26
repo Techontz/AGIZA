@@ -25,10 +25,10 @@ from .serializers import (
     AssignDriverSerializer,
     CompleteSerializer,
     DeliveryCreateSerializer,
+    DeliveryEventSerializer,
     DeliverySerializer,
     DeliveryTransitionSerializer,
     DeliveryUpdateSerializer,
-    DeliveryEventSerializer,
 )
 
 D = DeliveryStatus

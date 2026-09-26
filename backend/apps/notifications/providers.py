@@ -38,7 +38,7 @@ def _env(name: str) -> str:
 
 
 def _post(url: str, *, data: bytes, headers: dict) -> dict:
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")  # noqa: S310 - fixed https URLs
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as res:  # noqa: S310 - fixed https endpoints
             return json.loads(res.read().decode() or "{}")

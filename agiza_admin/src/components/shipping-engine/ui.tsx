@@ -452,7 +452,7 @@ export function EngineModal({
             <XCircle className="size-5 text-gray-400" />
           </button>
         </div>
-        <div className="p-6 space-y-4 overflow-y-auto">{children}</div>
+        <div className="min-h-0 flex-1 p-6 space-y-4 overflow-y-auto">{children}</div>
         <div className="flex flex-wrap justify-end gap-3 px-6 py-4 border-t border-gray-100">{footer}</div>
       </div>
     </div>

@@ -54,7 +54,6 @@ test("Phase 3 screens render real data", async ({ page, isMobile }) => {
 });
 
 test.describe("workflows", () => {
-  test.skip(({ isMobile }) => isMobile, "Workflows run on desktop");
   test.describe.configure({ mode: "serial" });
 
   test("intake: new quotation → respond → customer accepts → approve creates express order → deliver", async ({ page }) => {

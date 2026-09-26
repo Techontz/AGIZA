@@ -190,6 +190,9 @@ class ExpressDetails(models.Model):
             ),
         ]
 
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"
+
 
 class Classification(models.TextChoices):
     SIMPLE = "simple", "Simple"
@@ -216,6 +219,9 @@ class InternationalDetails(models.Model):
     shipping_cost = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True, validators=POSITIVE)
     estimated_delivery = models.DateField(null=True, blank=True)
 
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"
+
 
 class EquipmentDetails(models.Model):
     class ServiceType(models.TextChoices):
@@ -240,6 +246,9 @@ class EquipmentDetails(models.Model):
     priority = models.CharField(max_length=10, choices=[("high", "High"), ("medium", "Medium"), ("low", "Low")], default="medium")
     needs_attention = models.BooleanField(default=False)
 
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"
+
 
 class ShopDetails(models.Model):
     class Channel(models.TextChoices):
@@ -259,6 +268,9 @@ class ShopDetails(models.Model):
     fulfillment_warehouse = models.ForeignKey("locations.Warehouse", null=True, blank=True, on_delete=models.PROTECT,
                                               related_name="+")
     shipped_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"
 
 
 class OrderItem(models.Model):

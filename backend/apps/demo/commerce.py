@@ -349,8 +349,8 @@ def seed(stdout=None) -> Seeder:
             track(wallet)
             for tx in wallet.transactions.all():
                 track(tx)
-    for items, status in (("Machinery Parts - Industrial Equipment", "approved"),
-                          ("Medical Equipment - Diagnostic Devices", "pending")):
+    # Plans for the two orders on installments: approved already (Ahmed) / waiting for Finance (Emmanuel).
+    for items in ("Machinery Parts - Industrial Equipment", "Medical Equipment - Diagnostic Devices"):
         order = Order.objects.filter(item_details=items).first()
         if order is None or InstallmentPlan.objects.filter(order=order).exists():
             continue

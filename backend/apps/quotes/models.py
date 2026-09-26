@@ -87,3 +87,6 @@ class QuoteStatusHistory(models.Model):
     class Meta:
         ordering = ["created_at", "id"]
         verbose_name_plural = "quote status history"
+
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"

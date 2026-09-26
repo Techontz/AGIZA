@@ -1,0 +1,21 @@
+line-length = 140
+target-version = "py311"
+extend-exclude = ["apps/*/migrations"]
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "DJ"]
+ignore = [
+    "S101",   # assert is how pytest tests assert
+    "S105", "S106",  # test/demo passwords are not secrets
+    "B904",   # raise ... from — used where it matters
+    "E741",   # short loop names (I = InternationalStatus) are intentional aliases
+]
+
+[lint.per-file-ignores]
+"**/tests/**" = ["S", "B"]
+"conftest.py" = ["S"]
+"apps/*/demo.py" = ["S311", "E501"]  # demo data tables
+"apps/demo/*.py" = ["S311", "E501"]
+
+[lint.isort]
+known-first-party = ["apps", "config"]

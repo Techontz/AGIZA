@@ -100,6 +100,13 @@ export function UpdateStatusDialog({ ret, open, onClose }: { ret: ReturnRequest;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+  // The return may refresh while the dialog is open (e.g. reopened right after a
+  // status change): never keep a step that is no longer allowed.
+  const stepsKey = steps.join();
+  useEffect(() => {
+    if (open && step && !steps.includes(step)) setStep(steps[0] ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, stepsKey]);
 
   const refundDue = ret.status === "approved" && ret.financial_impact === "refund_required";
   const mutation = useApiMutation(

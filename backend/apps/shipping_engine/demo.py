@@ -13,7 +13,7 @@ from decimal import Decimal as D
 from apps.core.seeding import Seeder
 from apps.locations.models import City, Country, Region
 
-from .constants import AppliesTo, PricingModel, Scope, Status, ZoneStatus
+from .constants import Scope
 from .models import (
     Carrier,
     ExchangeRate,

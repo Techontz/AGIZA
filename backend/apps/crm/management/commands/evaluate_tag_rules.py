@@ -1,8 +1,8 @@
 """Re-evaluate every tag rule (schedule e.g. hourly: time-based conditions such as inactivity change daily)."""
 from django.core.management.base import BaseCommand
 
-from apps.parties.models import Customer
 from apps.crm.services import evaluate_all, recompute_interests
+from apps.parties.models import Customer
 
 
 class Command(BaseCommand):

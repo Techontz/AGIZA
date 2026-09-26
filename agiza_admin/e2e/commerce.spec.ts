@@ -42,7 +42,6 @@ const toast = (page: Page, text: string | RegExp) =>
   expect(page.locator("[data-sonner-toast]").filter({ hasText: text }).first()).toBeVisible();
 
 test.describe("commerce workflow", () => {
-  test.skip(({ isMobile }) => isMobile, "Workflows run on desktop");
   test.describe.configure({ mode: "serial" });
   let order: { id: number; reference: string; total_amount: string };
   let customerId: number;

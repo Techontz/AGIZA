@@ -43,6 +43,9 @@ class CustomerTag(models.Model):
         constraints = [models.UniqueConstraint(fields=["customer", "tag"], name="uniq_customer_tag")]
         indexes = [models.Index(fields=["tag", "source"])]
 
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"
+
 
 class CustomerInterest(models.Model):
     class Source(models.TextChoices):
@@ -61,6 +64,9 @@ class CustomerInterest(models.Model):
         ordering = ["-confidence", "label"]
         constraints = [models.UniqueConstraint(fields=["customer", "label"], name="uniq_customer_interest")]
         indexes = [models.Index(fields=["label"])]
+
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"
 
 
 class RuleField(models.TextChoices):
@@ -103,6 +109,9 @@ class TagRuleCondition(models.Model):
     class Meta:
         ordering = ["id"]
 
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"
+
 
 class TagRuleRun(models.Model):
     """Outcome of evaluating a rule: how many matched and what changed."""
@@ -118,6 +127,9 @@ class TagRuleRun(models.Model):
 
     class Meta:
         ordering = ["-created_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"
 
 
 class Campaign(TimeStampedModel):
@@ -185,3 +197,6 @@ class CampaignRecipient(models.Model):
     class Meta:
         ordering = ["id"]
         constraints = [models.UniqueConstraint(fields=["campaign", "customer"], name="uniq_campaign_recipient")]
+
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"

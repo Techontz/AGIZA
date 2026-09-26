@@ -166,6 +166,9 @@ class ShipmentEvent(models.Model):
         ordering = ["occurred_at", "id"]
         indexes = [models.Index(fields=["shipment", "occurred_at"])]
 
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"
+
 
 def document_path(instance, filename):
     return f"shipments/{instance.shipment_id}/{filename}"

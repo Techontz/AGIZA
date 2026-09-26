@@ -88,6 +88,9 @@ class InvoiceItem(models.Model):
 # --------------------------------------------------------------------------- #
 # Wallets
 # --------------------------------------------------------------------------- #
+
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"
 class Wallet(TimeStampedModel):
     customer = models.OneToOneField("parties.Customer", on_delete=models.PROTECT, related_name="wallet")
     balance = models.DecimalField(**MONEY, default=Decimal("0"))
@@ -134,6 +137,9 @@ class WalletTransaction(models.Model):
 # --------------------------------------------------------------------------- #
 # Installments
 # --------------------------------------------------------------------------- #
+
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"
 class PlanStatus(models.TextChoices):
     PENDING_APPROVAL = "pending_approval", "Pending Approval"
     ACTIVE = "active", "Active"
@@ -185,3 +191,6 @@ class Installment(models.Model):
             models.CheckConstraint(name="installment_paid_within_amount",
                                    condition=Q(paid_amount__lte=models.F("amount"))),
         ]
+
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"

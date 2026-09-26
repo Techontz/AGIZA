@@ -32,7 +32,6 @@ from .constants import (
     NoRuleFallback,
     PricingModel,
     ProfileType,
-    Scope,
     Status,
     ZoneStatus,
 )

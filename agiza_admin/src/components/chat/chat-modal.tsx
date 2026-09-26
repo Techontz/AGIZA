@@ -63,7 +63,7 @@ export function ChatModal({
             <X className="size-5 text-slate-500" />
           </button>
         </div>
-        <div className="p-6 overflow-y-auto">{children}</div>
+        <div className="min-h-0 flex-1 p-6 overflow-y-auto">{children}</div>
       </div>
     </div>
   );

@@ -116,3 +116,6 @@ class TaskActivity(models.Model):
     class Meta:
         ordering = ["created_at", "id"]
         verbose_name_plural = "task activity"
+
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"

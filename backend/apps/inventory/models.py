@@ -67,3 +67,6 @@ class StockMovement(models.Model):
     class Meta:
         ordering = ["-created_at", "-id"]
         indexes = [models.Index(fields=["stock_item", "created_at"]), models.Index(fields=["order"])]
+
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"

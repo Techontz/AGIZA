@@ -16,7 +16,7 @@ from apps.accounts.permissions import HasModulePermission
 from apps.core.audit import AuditedViewSetMixin, diff, record_audit, snapshot
 
 from .calculator import RateCalculationError, RateCalculator, Shipment, rate_display
-from .constants import AppliesTo, PricingModel, Scope, Status, ZoneStatus
+from .constants import PricingModel, Scope, Status, ZoneStatus
 from .models import (
     Carrier,
     EngineSettings,

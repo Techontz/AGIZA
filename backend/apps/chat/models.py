@@ -110,6 +110,9 @@ class Message(models.Model):
         ordering = ["created_at", "id"]
         indexes = [models.Index(fields=["conversation", "created_at"])]
 
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"
+
 
 class QuickReply(TimeStampedModel):
     text = models.CharField(max_length=255)
@@ -135,3 +138,6 @@ class WebhookEvent(models.Model):
 
     class Meta:
         ordering = ["-received_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"

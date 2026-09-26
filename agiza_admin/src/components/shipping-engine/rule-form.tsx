@@ -289,7 +289,7 @@ export function RuleForm({
           <SectionLabel>Section 1 — Route</SectionLabel>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Origin" required error={errors.origin?.message} htmlFor="rule-origin">
-              <Select id="rule-origin" invalid={!!errors.origin} {...form.register("origin")}>
+              <Select id="rule-origin" invalid={!!errors.origin} disabled={!routes.data || !settings.data} {...form.register("origin")}>
                 <option value="">Select origin...</option>
                 {origins.map((o) => (
                   <option key={o.value} value={o.value}>

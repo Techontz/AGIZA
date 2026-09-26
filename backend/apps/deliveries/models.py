@@ -105,6 +105,9 @@ class DeliveryEvent(models.Model):
     class Meta:
         ordering = ["created_at", "id"]
 
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"
+
 
 def proof_path(instance, filename):
     delivery_id = getattr(instance, "delivery_id", None)
@@ -121,6 +124,9 @@ class DeliveryProof(models.Model):
     recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                     related_name="+")
 
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"
+
 
 class DeliveryPhoto(models.Model):
     delivery = models.ForeignKey(Delivery, on_delete=models.CASCADE, related_name="photos")
@@ -132,3 +138,6 @@ class DeliveryPhoto(models.Model):
 
     class Meta:
         ordering = ["created_at", "id"]
+
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"

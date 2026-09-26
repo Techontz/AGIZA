@@ -104,6 +104,33 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"
 MEDIA_ROOT = Path(env("MEDIA_ROOT", default=str(BASE_DIR / "media")))
 
+# Uploaded files (photos, signatures, documents, product images). Local disk by
+# default; set DJANGO_FILE_STORAGE=storages.backends.s3.S3Storage (install
+# django-storages[s3]) with AWS_* variables for S3-compatible storage. Files are
+# always served through authenticated API views, never public URLs.
+STORAGES = {
+    "default": {"BACKEND": env("DJANGO_FILE_STORAGE", default="django.core.files.storage.FileSystemStorage")},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
+AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default="")
+AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL", default=None)
+AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default=None)
+AWS_DEFAULT_ACL = None
+AWS_QUERYSTRING_AUTH = True
+AWS_S3_FILE_OVERWRITE = False
+
+# Request size limits (file bodies are limited per endpoint: 8 MB per file).
+DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 2000
+
+# Security headers that are safe in every environment (HTTPS-only ones are in prod.py).
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "same-origin"
+SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
+X_FRAME_OPTIONS = "DENY"
+ADMIN_URL = env("DJANGO_ADMIN_URL", default="admin/")
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --------------------------------------------------------------------------- #
@@ -127,9 +154,13 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "apps.core.exceptions.api_exception_handler",
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.ScopedRateThrottle",
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
         "login": env("THROTTLE_LOGIN_RATE", default="10/min"),
+        "anon": env("THROTTLE_ANON_RATE", default="60/min"),
+        "user": env("THROTTLE_USER_RATE", default="1200/min"),
     },
     # Number of trusted reverse proxies in front of Django (Next.js BFF, nginx...).
     # DRF uses it to pick the real client IP from X-Forwarded-For for throttling.

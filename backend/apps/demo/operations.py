@@ -30,10 +30,10 @@ from apps.orders.models import (
     OrderStatusHistory,
     Payment,
 )
-from apps.quotes.models import QuoteRequest, QuoteStatusHistory
 from apps.parties.models import Address, Customer
 from apps.procurement import services as procurement
 from apps.procurement.models import ProcurementOrder, ProcurementStatusHistory, Supplier
+from apps.quotes.models import QuoteRequest, QuoteStatusHistory
 from apps.returns import services as returns
 from apps.returns.models import ReturnRequest, ReturnStatusHistory
 from apps.shipping import services as shipping
@@ -304,7 +304,7 @@ def seed(stdout=None) -> Seeder:
         return shipment
 
     # ---- The design's international orders ---------------------------------
-    for (cust, items, iso, target, *_rest) in INTERNATIONAL:
+    for (cust, items, _iso, target, *_rest) in INTERNATIONAL:
         order = Order.objects.filter(order_type="international", item_details=items).first()
         if order is None or order.status not in ("pending_payment", "issue_pending_payment"):
             s.existing += 1

@@ -117,7 +117,7 @@ export function MethodsView() {
         <ErrorState message={(q.error as Error).message} onRetry={() => q.refetch()} />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">

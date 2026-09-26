@@ -74,7 +74,7 @@ export function Modal({
             <X className="size-5 text-gray-500" />
           </button>
         </div>
-        <div className="overflow-y-auto px-6 py-5">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{children}</div>
         {footer && <div className="flex gap-2 px-6 py-4 border-t border-gray-200">{footer}</div>}
       </div>
     </div>

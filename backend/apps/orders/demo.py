@@ -18,8 +18,8 @@ from apps.core.seeding import Seeder, seeded_ids
 from apps.deliveries.models import Delivery
 from apps.locations.models import City, Country
 from apps.parties.models import Customer
-from apps.quotes import services as quote_services
 from apps.procurement.models import ProcurementOrder
+from apps.quotes import services as quote_services
 from apps.quotes.models import QuoteRequest, QuoteStatusHistory
 from apps.shipping.models import CargoParcel
 from apps.tasks import services as tasks

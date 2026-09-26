@@ -85,7 +85,7 @@ def test_full_demo_set_including_orders_loads_and_flushes(make_user):
 
     # Commerce: catalogue with stock ledger, shop orders through fulfilment, finance records.
     from apps.catalog.models import Product
-    from apps.finance.models import Invoice, InstallmentPlan, Wallet
+    from apps.finance.models import InstallmentPlan, Invoice, Wallet
     from apps.inventory.models import StockItem, StockMovement
 
     assert "0 created" in run("--only", "commerce")

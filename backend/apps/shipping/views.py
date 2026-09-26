@@ -20,13 +20,13 @@ from . import services
 from .models import CargoParcel, ParcelStage, Shipment, ShipmentDocument, ShipmentEvent, ShipmentStatus
 from .serializers import (
     DocumentSerializer,
-    ShipmentEventSerializer,
     ParcelSerializer,
     ParcelsSerializer,
     ParcelUpdateSerializer,
     ReceiveSerializer,
     RemoveParcelSerializer,
     ShipmentCreateSerializer,
+    ShipmentEventSerializer,
     ShipmentSerializer,
     ShipmentTransitionSerializer,
     ShipmentUpdateSerializer,

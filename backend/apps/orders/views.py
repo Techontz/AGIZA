@@ -1,9 +1,7 @@
-import mimetypes
 from decimal import Decimal
 
 import django_filters
 from django.db.models import Count, F, Prefetch, Q, Sum
-from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
@@ -19,6 +17,7 @@ from apps.accounts.models import User
 from apps.accounts.permissions import HasModulePermission, has_access
 from apps.core.audit import diff, record_audit, snapshot
 from apps.core.exceptions import ConflictError
+from apps.core.uploads import file_response, validate_upload
 from apps.core.workflow import run
 from apps.shipping_engine.calculator import RateCalculationError, RateCalculator, Shipment
 from apps.shipping_engine.models import ShippingMethod
@@ -27,18 +26,15 @@ from . import services, shop
 from .models import Order, OrderAttachment, OrderItem, OrderStatusHistory, PackageSize
 from .serializers import (
     AssignSerializer,
-    CancelSerializer,
-    ShipSerializer,
-    ShopCreateSerializer,
-    ShopNotesSerializer,
-    ShopOrderSerializer,
     AttachmentSerializer,
+    CancelSerializer,
     EquipmentCreateSerializer,
     EquipmentOrderSerializer,
     EquipmentUpdateSerializer,
     ExpectedDateSerializer,
     ExpressCreateSerializer,
     ExpressOrderSerializer,
+    ExpressQuoteSerializer,
     ExpressUpdateSerializer,
     HistorySerializer,
     InternationalCreateSerializer,
@@ -46,16 +42,17 @@ from .serializers import (
     InternationalUpdateSerializer,
     PackageSizeSerializer,
     PaymentSerializer,
-    ExpressQuoteSerializer,
     QuoteStatusSerializer,
     RecordPaymentSerializer,
+    ShipSerializer,
+    ShopCreateSerializer,
+    ShopNotesSerializer,
+    ShopOrderSerializer,
     SuggestPriceSerializer,
     TransitionSerializer,
 )
 from .workflows import EXPRESS_STAGE, OrderType
 
-MAX_UPLOAD_BYTES = 8 * 1024 * 1024
-ALLOWED_UPLOADS = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
 # Typical weight used for a price suggestion when only the package size is known.
 SIZE_WEIGHT_KG = {PackageSize.SMALL: Decimal("5"), PackageSize.MEDIUM: Decimal("15"), PackageSize.LARGE: Decimal("30")}
 
@@ -188,13 +185,7 @@ class BaseOrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.
         order = self.get_object()
         if request.method == "POST":
             upload = request.FILES.get("file")
-            if not upload:
-                raise ValidationError({"file": ["Choose a file to upload."]})
-            ctype = upload.content_type or mimetypes.guess_type(upload.name)[0] or ""
-            if ctype not in ALLOWED_UPLOADS:
-                raise ValidationError({"file": ["Upload a JPEG, PNG, WebP image or a PDF."]})
-            if upload.size > MAX_UPLOAD_BYTES:
-                raise ValidationError({"file": ["Files must be 8 MB or smaller."]})
+            ctype = validate_upload(upload)
             att = OrderAttachment.objects.create(order=order, file=upload, content_type=ctype,
                                                  caption=request.data.get("caption", "")[:160], uploaded_by=request.user)
             record_audit(action="create", request=request, instance=att, changes={"order": [None, order.reference]})
@@ -478,9 +469,7 @@ class AttachmentFileView(APIView):
     @extend_schema(tags=["orders"], responses={200: bytes})
     def get(self, request, pk):
         att = get_object_or_404(OrderAttachment, pk=pk)
-        response = FileResponse(att.file.open("rb"), content_type=att.content_type or "application/octet-stream")
-        response["Cache-Control"] = "private, max-age=300"
-        return response
+        return file_response(att.file, att.content_type)
 
 
 
@@ -514,7 +503,7 @@ class ShopOrderViewSet(BaseOrderViewSet):
 
     def get_queryset(self):
         return super().get_queryset().prefetch_related(
-            Prefetch("items", queryset=OrderItem.objects.select_related("warehouse")), "deliveries",
+            Prefetch("items", queryset=OrderItem.objects.select_related("warehouse", "variant")), "deliveries",
         ).distinct()
 
     @extend_schema(request=ShopCreateSerializer, responses={201: ShopOrderSerializer})

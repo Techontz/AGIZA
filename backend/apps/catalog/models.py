@@ -338,6 +338,9 @@ class ProductSpecification(models.Model):
     class Meta:
         ordering = ["sort_order", "id"]
 
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"
+
 
 class VariantStatus(models.TextChoices):
     ACTIVE = "active", "Active"
@@ -407,6 +410,9 @@ class ProductImage(models.Model):
 # --------------------------------------------------------------------------- #
 # Store settings and delivery estimates
 # --------------------------------------------------------------------------- #
+
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"
 class StoreSettings(TimeStampedModel):
     """Singleton (pk=1): store preferences and default delivery estimates."""
 

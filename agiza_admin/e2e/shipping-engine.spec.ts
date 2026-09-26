@@ -38,7 +38,6 @@ test("every Shipping Engine page renders from the API", async ({ page }) => {
 });
 
 test.describe("configure and price shipments", () => {
-  test.skip(({ isMobile }) => isMobile, "Configuration flow runs on desktop");
   test.describe.configure({ mode: "serial" });
 
   const dialog = (page: Page) => page.getByRole("dialog");
