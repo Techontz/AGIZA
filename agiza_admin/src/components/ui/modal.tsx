@@ -1,22 +1,34 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useEffect, useId } from "react";
+import { useEffect, useId, useRef } from "react";
 
 import { cn } from "@/lib/cn";
 
+/** Open dialogs, innermost last: Escape closes only the topmost one. */
+const openDialogs: symbol[] = [];
+
 function useEscape(open: boolean, onClose: () => void) {
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  }, [onClose]);
   useEffect(() => {
     if (!open) return;
-    const handler = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const id = Symbol("dialog");
+    openDialogs.push(id);
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && openDialogs[openDialogs.length - 1] === id) close.current();
+    };
     document.addEventListener("keydown", handler);
     const { overflow } = document.body.style;
     document.body.style.overflow = "hidden";
     return () => {
+      openDialogs.splice(openDialogs.indexOf(id), 1);
       document.removeEventListener("keydown", handler);
       document.body.style.overflow = overflow;
     };
-  }, [open, onClose]);
+  }, [open]);
 }
 
 /** Centered modal (`fixed inset-0 bg-black/50 z-50`, white `rounded-lg` panel). */

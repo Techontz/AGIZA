@@ -12,7 +12,7 @@ grants that level here (never "manage").
 """
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
-from .constants import ACCESS_RANK, Access, Module
+from .constants import ACCESS_RANK, Access, Module, StaffLevel
 from .models import RolePermission
 
 
@@ -66,7 +66,10 @@ class HasModulePermission(BasePermission):
         if has_access(user, module, required):
             return True
         # Shared reference data (e.g. customers) can be read — and, where a view
-        # allows it, edited — through related modules.
+        # allows it, edited — through related modules. Drivers never get these
+        # indirect grants: they only see the deliveries assigned to them.
+        if user.staff_level == StaffLevel.DRIVER:
+            return False
         if required == Access.VIEW:
             return any(has_access(user, m, Access.VIEW) for m in getattr(view, "read_modules", ()))
         if required == Access.EDIT:

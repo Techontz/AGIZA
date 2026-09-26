@@ -10,7 +10,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Modal } from "@/components/ui/modal";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { can, useMe } from "@/hooks/use-me";
-import { ApiError } from "@/lib/api/client";
+import { errorText } from "@/lib/api/errors";
 import {
   customersApi,
   orderKeys,
@@ -57,13 +57,7 @@ export function useOrderMutation<V, R = unknown>(
   });
 }
 
-export function errorText(err: unknown): string {
-  if (err instanceof ApiError) {
-    const fields = Object.values(err.fieldErrors);
-    return fields.length ? fields.join(" ") : err.message;
-  }
-  return err instanceof Error ? err.message : "Something went wrong";
-}
+export { errorText } from "@/lib/api/errors";
 
 /* ---------------------------------------------------------------- history */
 

@@ -77,6 +77,8 @@ class CarrierFilter(django_filters.FilterSet):
 
 @extend_schema(tags=TAG)
 class CarrierViewSet(EngineViewSet):
+    # Read by Shipping & Tracking (shippers, methods) and the product editor.
+    read_modules = (Module.SHIPPING, Module.ECOMMERCE, Module.ORDERS)
     serializer_class = CarrierSerializer
     protected_relations = ("methods",)
     filterset_class = CarrierFilter
@@ -100,6 +102,8 @@ class MethodFilter(django_filters.FilterSet):
 
 @extend_schema(tags=TAG)
 class ShippingMethodViewSet(EngineViewSet):
+    # Read by Shipping & Tracking (shippers, methods) and the product editor.
+    read_modules = (Module.SHIPPING, Module.ECOMMERCE, Module.ORDERS)
     serializer_class = ShippingMethodSerializer
     protected_relations = ("routes",)
     filterset_class = MethodFilter
@@ -130,6 +134,8 @@ class ProfileFilter(django_filters.FilterSet):
 
 @extend_schema(tags=TAG)
 class ShippingProfileViewSet(EngineViewSet):
+    # Read by Shipping & Tracking (shippers, methods) and the product editor.
+    read_modules = (Module.SHIPPING, Module.ECOMMERCE, Module.ORDERS)
     serializer_class = ShippingProfileSerializer
     filterset_class = ProfileFilter
     search_fields = ["name", "description"]

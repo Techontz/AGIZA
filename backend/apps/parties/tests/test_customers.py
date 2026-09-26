@@ -58,7 +58,8 @@ def test_read_access_via_related_module_but_no_write(client_for):
     assert create(finance).status_code == 403
     # Sales (people=view) can register a customer because they edit orders/quotations.
     assert create(client_for(StaffLevel.SALES), phone="+255700000321").status_code == 201
-    assert client_for(StaffLevel.DRIVER).get("/api/customers/").status_code == 200  # deliveries=edit
+    # Drivers see the recipient on their own deliveries only, never the customer list.
+    assert client_for(StaffLevel.DRIVER).get("/api/customers/").status_code == 403
 
 
 def test_update_is_audited_with_diff(admin):
