@@ -29,19 +29,34 @@ class Seeder:
         return obj, created
 
 
+def seeded_ids(seed: str, model: type[models.Model]) -> list[int]:
+    """Primary keys of the `model` rows registered by demo set `seed`."""
+    ct = ContentType.objects.get_for_model(model)
+    return [int(pk) for pk in SeedRecord.objects.filter(seed=seed, content_type=ct).values_list("object_id", flat=True)]
+
+
 def is_demo(obj: models.Model) -> bool:
     return SeedRecord.objects.filter(content_type=ContentType.objects.get_for_model(obj), object_id=str(obj.pk)).exists()
 
 
-def flush(seed: str, model_order: list[type[models.Model]]) -> dict[str, int]:
-    """Delete demo rows of `seed`, model by model in dependency-safe order."""
+def flush(seed: str | list[str], model_order: list[type[models.Model]]) -> dict[str, int]:
+    """Delete demo rows of `seed` (or several seeds together), model by model in dependency-safe order."""
+    seeds = [seed] if isinstance(seed, str) else list(seed)
     removed: dict[str, int] = {}
     for model in model_order:
         ct = ContentType.objects.get_for_model(model)
-        ids = list(SeedRecord.objects.filter(seed=seed, content_type=ct).values_list("object_id", flat=True))
+        records = SeedRecord.objects.filter(seed__in=seeds, content_type=ct)
+        ids = list(records.values_list("object_id", flat=True))
         if not ids:
             continue
-        count, _ = model.objects.filter(pk__in=ids).delete()
-        SeedRecord.objects.filter(seed=seed, content_type=ct).delete()
-        removed[model.__name__] = count
+        rows = model.objects.filter(pk__in=ids)
+        file_fields = [f.name for f in model._meta.fields if isinstance(f, models.FileField)]
+        for row in rows if file_fields else ():
+            for name in file_fields:
+                stored = getattr(row, name)
+                if stored:
+                    stored.delete(save=False)  # demo files go with their rows
+        count, _ = rows.delete()
+        records.delete()
+        removed[model.__name__] = removed.get(model.__name__, 0) + count
     return removed

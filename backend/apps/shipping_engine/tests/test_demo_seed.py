@@ -3,6 +3,7 @@ from io import StringIO
 import pytest
 from django.core.management import call_command
 from django.test import override_settings
+from django.utils import timezone
 
 from apps.core.models import SeedRecord
 from apps.shipping_engine.models import Carrier, ShippingRule
@@ -56,6 +57,36 @@ def test_full_demo_set_including_orders_loads_and_flushes(make_user):
     assert list(OrderStatusHistory.objects.filter(order=order).values_list("to_status", flat=True)) == [
         "waiting_quote", "quoted", "accepted", "driver_assigned", "picked_up", "at_agiza_center", "in_transit"]
     assert "0 created" in run("--only", "orders")
+    assert "0 created" in run("--only", "operations")
+
+    # Operations: the design's international orders reached their stages through the real modules.
+    from apps.deliveries.models import Delivery, DeliveryPhoto
+    from apps.procurement.models import ProcurementOrder
+    from apps.returns.models import ReturnRequest
+    from apps.shipping.models import CargoParcel, Shipment, ShipmentDocument
+    from apps.tasks.models import Task
+
+    grace = Order.objects.get(item_details__startswith="Home Appliances - 2x")
+    assert grace.status == "clearance" and grace.cargo.shipment.status == "clearance"
+    assert list(OrderStatusHistory.objects.filter(order=grace).values_list("to_status", flat=True)) == [
+        "pending_payment", "supplier_confirmed", "paid_supplier", "sent_to_consolidation",
+        "shipping_to_destination", "clearance"]
+    assert ProcurementOrder.objects.filter(status="received_at_cargo").exists()
+    assert CargoParcel.objects.filter(stage="waiting").count() >= 5
+    assert CargoParcel.objects.filter(stage="ready").count() >= 4
+    assert Shipment.objects.filter(status="shipping_to_destination").exists()
+    assert ShipmentDocument.objects.filter(file__endswith=".pdf").count() == 2
+    delivered = Delivery.objects.filter(status="delivered", order__order_type="international")
+    assert delivered.count() == 4 and all(d.order.status == "completed" for d in delivered)
+    assert DeliveryPhoto.objects.count() >= 4
+    assert ReturnRequest.objects.filter(status="closed", refund_payment__isnull=False).count() == 1
+    assert Task.objects.filter(sla_deadline__lt=timezone.now(), status="waiting_for_client").exists()
+
+    # Removing only "orders" also removes "operations" (it builds on those orders).
+    out = run("--flush", "--only", "orders")
+    assert "operations" in out
+    assert Order.objects.count() == 0 and Shipment.objects.count() == 0 and Delivery.objects.count() == 0
+    assert SeedRecord.objects.exclude(seed="shipping").count() == 0
     run("--flush")
     assert Order.objects.count() == 0 and QuoteRequest.objects.count() == 0
     assert SeedRecord.objects.count() == 0

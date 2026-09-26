@@ -39,6 +39,11 @@ INSTALLED_APPS = [
     "apps.shipping_engine",
     "apps.quotes",
     "apps.orders",
+    "apps.procurement",
+    "apps.shipping",
+    "apps.deliveries",
+    "apps.returns",
+    "apps.tasks",
 ]
 
 MIDDLEWARE = [
@@ -162,6 +167,18 @@ SPECTACULAR_SETTINGS = {
         "InternationalServiceTypeEnum": "apps.orders.models.InternationalDetails.ServiceType",
         "EquipmentServiceTypeEnum": "apps.orders.models.EquipmentDetails.ServiceType",
         "ClassificationEnum": "apps.orders.models.Classification",
+        "PaymentMethodEnum": "apps.orders.models.Payment.Method",
+        "ProcurementStatusEnum": "apps.procurement.models.ProcurementStatus",
+        "ProcurementExceptionEnum": "apps.procurement.models.ExceptionFlag",
+        "ShipmentStatusEnum": "apps.shipping.models.ShipmentStatus",
+        "ShipmentAlertEnum": "apps.shipping.models.ShipmentAlert",
+        "ParcelStageEnum": "apps.shipping.models.ParcelStage",
+        "DeliveryStatusEnum": "apps.deliveries.models.DeliveryStatus",
+        "DeliveryExceptionEnum": "apps.deliveries.models.ExceptionFlag",
+        "ReturnStatusEnum": "apps.returns.models.ReturnStatus",
+        "ReturnExceptionEnum": "apps.returns.models.ExceptionFlag",
+        "TaskStatusEnum": "apps.tasks.models.TaskStatus",
+        "TaskDepartmentEnum": "apps.tasks.models.TaskDepartment",
     },
 }
 

@@ -4,6 +4,7 @@ import pytest
 from apps.accounts.constants import StaffLevel
 from apps.orders.models import OrderStatusHistory
 
+from . import flows
 from .conftest import EQUIP, INTL, move
 
 pytestmark = pytest.mark.django_db
@@ -21,23 +22,31 @@ def new_intl(admin, customer, china):
     return _make
 
 
-INTL_PATH = ["supplier_confirmed", "paid_supplier", "in_production", "sent_to_consolidation",
-             "shipping_to_destination", "clearance", "ready_for_collection", "completed"]
-
-
 def test_international_full_workflow_moves_departments(admin, new_intl):
+    """The order is moved by Procurement, cargo receipt, shipment milestones and delivery — never by hand."""
     order = new_intl()
     assert order["reference"].startswith("INT-") and order["status"] == "pending_payment"
     assert order["department"] == "procurement"
     departments = {}
-    for status in INTL_PATH:
-        res = move(admin, INTL, order["id"], status)
-        assert res.status_code == 200, (status, res.json())
-        departments[status] = res.json()["department"]
+    for stage in flows.STAGES:
+        order = flows.walk(admin, order, stage)
+        assert order["status"] == stage
+        departments[stage] = order["department"]
     assert departments["paid_supplier"] == "procurement"
     assert departments["shipping_to_destination"] == "shipping"
     assert departments["ready_for_collection"] == "delivery"
-    assert OrderStatusHistory.objects.filter(order_id=order["id"]).count() == len(INTL_PATH) + 1
+    statuses = list(OrderStatusHistory.objects.filter(order_id=order["id"]).values_list("to_status", flat=True))
+    assert statuses == ["pending_payment", *flows.STAGES]
+
+
+def test_procurement_and_shipping_stages_cannot_be_set_by_hand(admin, new_intl):
+    order = new_intl()
+    for stage in ("paid_supplier", "sent_to_consolidation", "shipping_to_destination", "clearance",
+                  "ready_for_collection"):
+        assert move(admin, INTL, order["id"], stage).status_code in (400, 409), stage
+    detail = admin.get(f"{INTL}/{order['id']}/").json()
+    assert {t["value"] for t in detail["allowed_transitions"]} == {"supplier_confirmed", "issue_pending_payment",
+                                                                   "cancelled"}
 
 
 def test_international_invalid_transitions(admin, new_intl):
@@ -45,8 +54,7 @@ def test_international_invalid_transitions(admin, new_intl):
     assert move(admin, INTL, order["id"], "clearance").status_code == 409
     move(admin, INTL, order["id"], "issue_pending_payment")
     assert move(admin, INTL, order["id"], "pending_payment").status_code == 200
-    move(admin, INTL, order["id"], "supplier_confirmed")
-    move(admin, INTL, order["id"], "paid_supplier")
+    flows.walk(admin, order, "paid_supplier")
     assert move(admin, INTL, order["id"], "cancelled").status_code == 409  # too late once the supplier is paid
 
 
@@ -83,8 +91,7 @@ def test_international_details_update_and_closed_orders(admin, new_intl):
                                                  "item_cost": "1800000", "shipping_cost": "200000"}, format="json")
     d = res.json()["details"]
     assert d["supplier_name"] == "Shenzhen Tech Co." and d["item_cost"] == "1800000.00"
-    for status in INTL_PATH:
-        move(admin, INTL, order["id"], status)
+    flows.walk(admin, order, "completed")
     assert admin.patch(f"{INTL}/{order['id']}/", {"supplier_name": "X"}, format="json").status_code == 409
     assert admin.patch(f"{INTL}/{order['id']}/", {"notes": "Collected"}, format="json").status_code == 200
 

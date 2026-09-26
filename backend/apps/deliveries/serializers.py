@@ -1,0 +1,160 @@
+from rest_framework import serializers
+
+from apps.accounts.constants import StaffLevel
+from apps.accounts.models import User
+from apps.core.workflow import allowed_next
+from apps.locations.models import City, Warehouse
+from apps.orders.models import Order
+from apps.orders.serializers import _person
+from apps.orders.workflows import status_label
+
+from .models import (
+    DELIVERY_ACTION_ONLY,
+    DELIVERY_TRANSITIONS,
+    Delivery,
+    DeliveryEvent,
+    DeliveryStatus,
+    DeliveryType,
+    ExceptionFlag,
+)
+
+SOURCE = {"international": "international", "express": "local_delivery", "shop": "shop", "equipment": "local_delivery"}
+SOURCE_LABEL = {"international": "International", "local_delivery": "Local Delivery", "shop": "Shop"}
+
+
+class DeliverySerializer(serializers.ModelSerializer):
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    delivery_type_display = serializers.CharField(source="get_delivery_type_display", read_only=True)
+    exception_flag_display = serializers.CharField(source="get_exception_flag_display", read_only=True)
+    order = serializers.SerializerMethodField()
+    source = serializers.SerializerMethodField()
+    source_display = serializers.SerializerMethodField()
+    customer = serializers.SerializerMethodField()
+    driver = serializers.SerializerMethodField()
+    destination_city = serializers.SerializerMethodField()
+    pickup_warehouse = serializers.SerializerMethodField()
+    proof = serializers.SerializerMethodField()
+    allowed_transitions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Delivery
+        fields = ["id", "reference", "order", "source", "source_display", "customer", "delivery_type",
+                  "delivery_type_display", "status", "status_display", "driver", "scheduled_at", "pickup_point",
+                  "pickup_warehouse", "delivery_address", "destination_city", "destination_area", "recipient_name",
+                  "recipient_phone", "exception_flag", "exception_flag_display", "attempts", "notes", "delivered_at",
+                  "proof", "allowed_transitions", "created_at", "updated_at"]
+
+    def get_order(self, obj) -> dict:
+        o = obj.order
+        return {"id": o.id, "reference": o.reference, "order_type": o.order_type, "status": o.status,
+                "status_display": status_label(o.order_type, o.status)}
+
+    def get_source(self, obj) -> str:
+        return SOURCE.get(obj.order.order_type, "local_delivery")
+
+    def get_source_display(self, obj) -> str:
+        return SOURCE_LABEL[self.get_source(obj)]
+
+    def get_customer(self, obj) -> dict:
+        c = obj.order.customer
+        return {"id": c.id, "full_name": c.full_name, "phone": c.phone}
+
+    def get_driver(self, obj) -> dict | None:
+        return _person(obj.driver)
+
+    def get_destination_city(self, obj) -> dict | None:
+        return {"id": obj.destination_city.id, "name": obj.destination_city.name} if obj.destination_city else None
+
+    def get_pickup_warehouse(self, obj) -> dict | None:
+        w = obj.pickup_warehouse
+        return {"id": w.id, "name": w.name} if w else None
+
+    def get_proof(self, obj) -> dict | None:
+        photos = [{"id": p.id, "url": f"deliveries/photos/{p.id}/file"} for p in obj.photos.all()]
+        proof = getattr(obj, "proof", None)
+        if proof is None:
+            return {"photos": photos} if photos else None
+        return {
+            "signature_name": proof.signature_name,
+            "signature_url": f"deliveries/{obj.id}/signature/file" if proof.signature_image else None,
+            "notes": proof.notes,
+            "completed_at": proof.completed_at,
+            "recorded_by": _person(proof.recorded_by),
+            "photos": photos,
+        }
+
+    def get_allowed_transitions(self, obj) -> list[dict]:
+        return allowed_next(obj.status, transitions=DELIVERY_TRANSITIONS, choices=DeliveryStatus,
+                            action_only=DELIVERY_ACTION_ONLY)
+
+
+class DeliveryCreateSerializer(serializers.Serializer):
+    order = serializers.PrimaryKeyRelatedField(queryset=Order.objects.select_related("customer"))
+    delivery_address = serializers.CharField(max_length=255)
+    delivery_type = serializers.ChoiceField(choices=DeliveryType.choices, default=DeliveryType.STANDARD)
+    destination_city = serializers.PrimaryKeyRelatedField(queryset=City.objects.all(), required=False,
+                                                          allow_null=True)
+    destination_area = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
+    pickup_point = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    pickup_warehouse = serializers.PrimaryKeyRelatedField(queryset=Warehouse.objects.all(), required=False,
+                                                          allow_null=True)
+    scheduled_at = serializers.DateTimeField(required=False, allow_null=True)
+    recipient_name = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
+    recipient_phone = serializers.CharField(max_length=32, required=False, allow_blank=True, default="")
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+    driver = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(staff_level=StaffLevel.DRIVER),
+                                                required=False, allow_null=True)
+
+
+class DeliveryUpdateSerializer(serializers.Serializer):
+    delivery_address = serializers.CharField(max_length=255, required=False)
+    destination_city = serializers.PrimaryKeyRelatedField(queryset=City.objects.all(), required=False,
+                                                          allow_null=True)
+    destination_area = serializers.CharField(max_length=120, required=False, allow_blank=True)
+    pickup_point = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    delivery_type = serializers.ChoiceField(choices=DeliveryType.choices, required=False)
+    recipient_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    recipient_phone = serializers.CharField(max_length=32, required=False, allow_blank=True)
+    exception_flag = serializers.ChoiceField(choices=ExceptionFlag.choices, required=False, allow_blank=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
+
+
+class AssignDriverSerializer(serializers.Serializer):
+    driver = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+    scheduled_at = serializers.DateTimeField(required=False, allow_null=True)
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class DeliveryTransitionSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=DeliveryStatus.choices)
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+    exception_flag = serializers.ChoiceField(choices=ExceptionFlag.choices, required=False, allow_blank=True)
+    scheduled_at = serializers.DateTimeField(required=False, allow_null=True)
+
+
+class CompleteSerializer(serializers.Serializer):
+    signature_name = serializers.CharField(max_length=150)
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+    completed_at = serializers.DateTimeField(required=False)
+    signature_image = serializers.FileField(required=False)
+    photos = serializers.ListField(child=serializers.FileField(), required=False, max_length=6)
+
+
+class DeliveryEventSerializer(serializers.ModelSerializer):
+    from_status_display = serializers.SerializerMethodField()
+    to_status_display = serializers.SerializerMethodField()
+    changed_by = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DeliveryEvent
+        fields = ["id", "from_status", "from_status_display", "to_status", "to_status_display", "note", "changed_by",
+                  "created_at"]
+
+    def get_from_status_display(self, obj) -> str | None:
+        return dict(DeliveryStatus.choices).get(obj.from_status) if obj.from_status else None
+
+    def get_to_status_display(self, obj) -> str | None:
+        return dict(DeliveryStatus.choices).get(obj.to_status)
+
+    def get_changed_by(self, obj) -> dict | None:
+        return _person(obj.changed_by)

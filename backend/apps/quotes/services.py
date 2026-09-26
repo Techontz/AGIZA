@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from apps.core.audit import record_audit
 from apps.orders import services as order_services
-from apps.orders.services import WorkflowError
+from apps.core.workflow import WorkflowError
 from apps.orders.workflows import EquipmentStatus, ExpressStatus, InternationalStatus, OrderType
 
 from .models import QUOTE_TRANSITIONS, QuoteRequest, QuoteStatus, QuoteStatusHistory, ServiceType
@@ -52,8 +52,12 @@ def respond(quote: QuoteRequest, *, amount: Decimal, estimated_delivery, notes: 
     quote.response_notes = notes
     quote.responded_by = user
     quote.responded_at = timezone.now()
-    return _move(quote, QuoteStatus.WAITING_REPLY, user, "Quotation sent to customer", request,
-                 extra_fields=("quoted_amount", "estimated_delivery", "response_notes", "responded_by", "responded_at"))
+    _move(quote, QuoteStatus.WAITING_REPLY, user, "Quotation sent to customer", request,
+          extra_fields=("quoted_amount", "estimated_delivery", "response_notes", "responded_by", "responded_at"))
+    from apps.tasks import services as tasks
+
+    tasks.complete_quote_tasks(quote, user, f"Quote sent: {amount:,.0f}")
+    return quote
 
 
 @transaction.atomic
@@ -69,7 +73,13 @@ def record_reply(quote: QuoteRequest, *, accepted: bool, user, note: str = "", r
 
 @transaction.atomic
 def cancel(quote: QuoteRequest, *, user, note: str = "", request=None) -> QuoteRequest:
-    return _move(_lock(quote), QuoteStatus.CANCELLED, user, note or "Cancelled", request)
+    quote = _move(_lock(quote), QuoteStatus.CANCELLED, user, note or "Cancelled", request)
+    from apps.tasks import services as tasks
+    from apps.tasks.models import Task, TaskStatus
+
+    for task in Task.objects.filter(quote=quote).exclude(status__in=(TaskStatus.COMPLETED, TaskStatus.CANCELLED)):
+        tasks.change_status(task, TaskStatus.CANCELLED, user=user, note="Quotation cancelled")
+    return quote
 
 
 @transaction.atomic

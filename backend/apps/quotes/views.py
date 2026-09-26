@@ -1,4 +1,5 @@
 import django_filters
+from django.db import transaction
 from django.db.models import Count
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
@@ -9,7 +10,8 @@ from rest_framework.response import Response
 from apps.accounts.constants import Access, Module
 from apps.accounts.permissions import HasModulePermission, has_access
 from apps.core.audit import AuditedViewSetMixin, record_audit
-from apps.orders.views import run
+from apps.core.workflow import run
+from apps.tasks import services as tasks
 
 from . import services
 from .models import QuoteRequest, QuoteStatusHistory
@@ -120,9 +122,11 @@ class QuoteViewSet(AuditedViewSetMixin, mixins.ListModelMixin, mixins.RetrieveMo
     def perform_update(self, serializer):
         super().perform_update(serializer)
 
+    @transaction.atomic
     def perform_create(self, serializer):
         quote = serializer.save(created_by=self.request.user)
         QuoteStatusHistory.objects.create(quote=quote, to_status=quote.status, changed_by=self.request.user,
                                           note="Quotation request received")
         record_audit(action="create", request=self.request, instance=quote,
                      changes={"customer": [None, quote.customer_id], "service_type": [None, quote.service_type]})
+        tasks.open_quote_task(quote, self.request.user)

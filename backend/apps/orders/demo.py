@@ -14,18 +14,23 @@ from django.utils import timezone
 from apps.accounts.constants import Department as StaffDept
 from apps.accounts.constants import StaffLevel
 from apps.accounts.models import User
-from apps.core.seeding import Seeder
+from apps.core.seeding import Seeder, seeded_ids
+from apps.deliveries.models import Delivery
 from apps.locations.models import City, Country
 from apps.parties.models import Customer
 from apps.quotes import services as quote_services
+from apps.procurement.models import ProcurementOrder
 from apps.quotes.models import QuoteRequest, QuoteStatusHistory
+from apps.shipping.models import CargoParcel
+from apps.tasks import services as tasks
+from apps.tasks.models import Task
 
 from . import services
 from .models import EquipmentDetails, ExpressDetails, InternationalDetails, Order, OrderStatusHistory, Payment
 
 SEED = "orders"
-FLUSH_ORDER = [QuoteStatusHistory, OrderStatusHistory, Payment, ExpressDetails, InternationalDetails, EquipmentDetails,
-               Order, QuoteRequest, Customer, User]
+FLUSH_ORDER = [Task, QuoteStatusHistory, OrderStatusHistory, Payment, Delivery, CargoParcel, ProcurementOrder,
+               ExpressDetails, InternationalDetails, EquipmentDetails, Order, QuoteRequest, Customer, User]
 
 STAFF = [
     # name, level, department
@@ -67,8 +72,6 @@ EXPRESS = [
 ]
 EXPRESS_PATH = ["driver_assigned", "picked_up", "at_agiza_center", "in_transit", "arrived", "delivered"]
 
-INTL_PATH = ["pending_payment", "supplier_confirmed", "paid_supplier", "in_production", "sent_to_consolidation",
-             "shipping_to_destination", "clearance", "ready_for_collection", "completed"]
 # (customer, items, origin iso2, status, class, service, total, paid, supplier, tracking, handler,
 #  installment_plan, installment_allowed, shipping cost, item cost, notes)
 INTERNATIONAL = [
@@ -209,9 +212,7 @@ def seed(stdout=None) -> Seeder:
         pay(order, paid, "installment" if plan else "balance")
         if target == "issue_pending_payment":
             services.transition(order, target, actor, "Payment verification issue")
-            continue
-        for step in INTL_PATH[1:INTL_PATH.index(target) + 1]:
-            services.transition(order, step, actor)
+        # Later stages are reached through Procurement and Shipping — see the "operations" demo set.
 
     # ---- Equipment ----------------------------------------------------------
     for (cust, phone, city, service, equipment, klass, tech, target, paid, value, desc, days, attention,
@@ -246,9 +247,16 @@ def seed(stdout=None) -> Seeder:
             continue
         QuoteStatusHistory.objects.create(quote=quote, to_status="new", changed_by=actor, note="Quotation request received")
         if target == "new":
+            s.register(tasks.open_quote_task(quote, actor))
             continue
         quote_services.respond(quote, amount=D(amount), estimated_delivery=timezone.localdate() + timedelta(days=eta),
                                notes=notes, user=staff["Sarah Mtui"])
         if target == "answered":
             quote_services.record_reply(quote, accepted=True, user=actor)
+
+    # Rows the workflows created alongside the demo orders are demo data too.
+    demo_orders = Order.objects.filter(pk__in=seeded_ids(SEED, Order))
+    for model in (ProcurementOrder, CargoParcel, Delivery):
+        for row in model.objects.filter(order__in=demo_orders):
+            s.register(row)
     return s

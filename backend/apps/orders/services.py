@@ -11,11 +11,12 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Case, DecimalField, F, OuterRef, Subquery, Sum, When
 from django.utils import timezone
 
 from apps.accounts.constants import StaffLevel
 from apps.core.audit import record_audit
+from apps.core.workflow import WorkflowError  # noqa: F401  (re-exported for callers)
 
 from .models import (
     Department,
@@ -36,16 +37,6 @@ from .workflows import (
     OrderType,
     status_label,
 )
-
-
-class WorkflowError(Exception):
-    """A business rule refused the action. `conflict` = the order's state doesn't allow it."""
-
-    def __init__(self, message: str, *, field: str | None = None, conflict: bool = False):
-        super().__init__(message)
-        self.message = message
-        self.field = field
-        self.conflict = conflict
 
 
 # --------------------------------------------------------------------------- #
@@ -77,7 +68,22 @@ def _set_status(order: Order, to_status: str, user, note: str = "", request=None
         instance=order,
         changes={"status": [from_status, to_status], **({"note": [None, note]} if note else {})},
     )
+    _after_status_change(order, from_status, to_status, user)
     return order
+
+
+def _after_status_change(order: Order, from_status: str, to_status: str, user):
+    """Keep the operational records that follow an order (procurement, cargo, delivery) in step."""
+    from apps.deliveries import services as deliveries
+    from apps.procurement import services as procurement
+    from apps.shipping import services as shipping
+
+    if to_status == "cancelled":
+        procurement.on_order_cancelled(order, user)
+        shipping.on_order_cancelled(order, user)
+    elif order.order_type == OrderType.INTERNATIONAL:
+        shipping.on_order_status(order, to_status, user)
+    deliveries.on_order_status(order, to_status, user)
 
 
 def _check_transition(order: Order, to_status: str, via_action: str | None = None):
@@ -102,6 +108,14 @@ def transition(order: Order, to_status: str, user, note: str = "", request=None)
     """Generic status change (only for statuses that need no extra data)."""
     order = _lock(order)
     _check_transition(order, to_status)
+    return _set_status(order, to_status, user, note, request)
+
+
+@transaction.atomic
+def advance(order: Order, to_status: str, user, *, via_action: str, note: str = "", request=None) -> Order:
+    """Status change made by another module's action (procurement, cargo receipt, shipment, delivery)."""
+    order = _lock(order)
+    _check_transition(order, to_status, via_action=via_action)
     return _set_status(order, to_status, user, note, request)
 
 
@@ -148,6 +162,14 @@ def create_order(
     _history(order, "", status, user, note)
     record_audit(action="create", request=request, actor=user, instance=order,
                  changes={"status": [None, status], "customer": [None, customer.pk]})
+    if order_type == OrderType.INTERNATIONAL:
+        from apps.procurement import services as procurement
+        from apps.shipping import services as shipping
+
+        if order.international.service_type == InternationalDetails.ServiceType.DELIVER_FOR_ME:
+            shipping.expect_client_parcel(order, user)
+        else:
+            procurement.open_for_order(order, user)
     return order
 
 
@@ -166,9 +188,30 @@ class PaymentSummary:
         return {"total": self.total, "paid": self.paid, "due": self.due, "status": self.status}
 
 
+_SIGNED_AMOUNT = Case(When(kind=Payment.Kind.REFUND, then=-F("amount")), default=F("amount"))
+
+
+def with_paid_total(qs):
+    """Annotate orders with `paid_total` (payments minus refunds) without join fan-out."""
+    paid = (Payment.objects.filter(order=OuterRef("pk")).order_by().values("order")
+            .annotate(s=Sum(_SIGNED_AMOUNT)).values("s"))
+    return qs.annotate(paid_total=Subquery(paid, output_field=DecimalField(max_digits=14, decimal_places=2)))
+
+
+def net_paid(order: Order) -> Decimal:
+    """Payments received minus refunds."""
+    return order.payments.aggregate(s=Sum(_SIGNED_AMOUNT))["s"] or Decimal("0")
+
+
+def prefetched_net_paid(order: Order) -> Decimal:
+    """net_paid() computed from `order.payments` already prefetched (no query)."""
+    return sum((-p.amount if p.kind == Payment.Kind.REFUND else p.amount for p in order.payments.all()),
+               Decimal("0"))
+
+
 def payment_summary(order: Order, paid: Decimal | None = None) -> PaymentSummary:
     if paid is None:
-        paid = order.payments.aggregate(s=Sum("amount"))["s"] or Decimal("0")
+        paid = net_paid(order)
     total = order.total_amount
     due = max(total - paid, Decimal("0")) if total is not None else None
     if total is not None and total > 0 and paid >= total:
@@ -305,6 +348,9 @@ def assign_driver(order: Order, driver, user, note: str = "", request=None) -> O
                      changes={"driver": [previous.pk if previous else None, driver.pk]})
     else:
         raise WorkflowError("A driver can be assigned once the customer has accepted the quote.", conflict=True)
+    from apps.deliveries import services as deliveries
+
+    deliveries.sync_express(order, user)
     return order
 
 

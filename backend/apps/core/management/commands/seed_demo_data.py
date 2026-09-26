@@ -24,7 +24,11 @@ from apps.core.seeding import flush as flush_seed
 SETS = {
     "shipping": "apps.shipping_engine.demo",
     "orders": "apps.orders.demo",
+    "operations": "apps.demo.operations",
 }
+# "operations" moves the demo orders along their workflows, so the two are
+# always removed together.
+COUPLED = {"operations": {"orders"}, "orders": {"operations"}}
 
 
 class Command(BaseCommand):
@@ -49,11 +53,26 @@ class Command(BaseCommand):
 
         names = only or list(SETS)
         if remove:
-            for name in reversed(names):
+            # Removing a set also removes the sets loaded after it (they build on it).
+            order = list(SETS)
+            first = min(order.index(n) for n in names)
+            chosen = set(names) | set(order[first:])
+            for n in list(chosen):
+                chosen |= COUPLED.get(n, set())
+            dropped = chosen - set(names)
+            if dropped:
+                self.stdout.write(f"Also removing dependent demo sets: {', '.join(sorted(dropped))}")
+            done: set[str] = set()
+            for name in [n for n in reversed(order) if n in chosen]:
+                if name in done:
+                    continue
                 mod = import_module(SETS[name])
+                group = [name, *getattr(mod, "FLUSH_WITH", [])]
+                seeds = [import_module(SETS[n]).SEED for n in group]
                 with transaction.atomic():
-                    removed = flush_seed(mod.SEED, mod.FLUSH_ORDER)
-                self.stdout.write(self.style.WARNING(f"[{name}] removed: {removed or 'nothing'}"))
+                    removed = flush_seed(seeds, mod.FLUSH_ORDER)
+                done.update(group)
+                self.stdout.write(self.style.WARNING(f"[{' + '.join(group)}] removed: {removed or 'nothing'}"))
             return
 
         for name in names:

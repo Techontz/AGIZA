@@ -18,6 +18,7 @@ from apps.accounts.models import User
 from apps.accounts.permissions import HasModulePermission, has_access
 from apps.core.audit import diff, record_audit, snapshot
 from apps.core.exceptions import ConflictError
+from apps.core.workflow import run
 from apps.shipping_engine.calculator import RateCalculationError, RateCalculator, Shipment
 from apps.shipping_engine.models import ShippingMethod
 
@@ -53,16 +54,6 @@ ALLOWED_UPLOADS = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
 SIZE_WEIGHT_KG = {PackageSize.SMALL: Decimal("5"), PackageSize.MEDIUM: Decimal("15"), PackageSize.LARGE: Decimal("30")}
 
 
-def run(fn, *args, **kwargs):
-    """Call a workflow service, turning business-rule refusals into API errors."""
-    try:
-        return fn(*args, **kwargs)
-    except services.WorkflowError as exc:
-        if exc.conflict:
-            raise ConflictError(exc.message) from exc
-        raise ValidationError({exc.field or "non_field_errors": [exc.message]}) from exc
-
-
 class OrderFilter(django_filters.FilterSet):
     status = django_filters.BaseInFilter(field_name="status")
     customer = django_filters.NumberFilter(field_name="customer_id")
@@ -92,15 +83,13 @@ class BaseOrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.
     required_access = {"payments": "view", "suggest_price": "view"}
 
     def get_queryset(self):
-        return (
+        qs = (
             Order.objects.filter(order_type=self.order_type)
             .select_related("customer", "handler", "source_quote", *self.detail_select)
-            .annotate(
-                paid_total=Sum("payments__amount"),
-                attachments_count=Count("attachments", distinct=True),
-            )
+            .annotate(attachments_count=Count("attachments", distinct=True))
             .order_by("-created_at", "-id")
         )
+        return services.with_paid_total(qs)
 
     detail_select: tuple[str, ...] = ()
 

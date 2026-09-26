@@ -85,7 +85,8 @@ I = InternationalStatus
 INTERNATIONAL_TRANSITIONS = {
     I.PENDING_PAYMENT: {I.SUPPLIER_CONFIRMED, I.ISSUE_PENDING_PAYMENT, I.CANCELLED},
     I.ISSUE_PENDING_PAYMENT: {I.PENDING_PAYMENT, I.SUPPLIER_CONFIRMED, I.CANCELLED},
-    I.SUPPLIER_CONFIRMED: {I.PAID_SUPPLIER, I.CANCELLED},
+    # "Deliver for Me" orders skip the supplier payment: the customer bought the goods.
+    I.SUPPLIER_CONFIRMED: {I.PAID_SUPPLIER, I.SENT_TO_CONSOLIDATION, I.CANCELLED},
     I.PAID_SUPPLIER: {I.IN_PRODUCTION, I.SENT_TO_CONSOLIDATION},
     I.IN_PRODUCTION: {I.SENT_TO_CONSOLIDATION},
     I.SENT_TO_CONSOLIDATION: {I.SHIPPING_TO_DESTINATION},
@@ -94,6 +95,16 @@ INTERNATIONAL_TRANSITIONS = {
     I.READY_FOR_COLLECTION: {I.COMPLETED},
     I.COMPLETED: set(),
     I.CANCELLED: set(),
+}
+
+# Stages owned by Procurement and Shipping: only their actions move the order
+# there (paying the supplier, receiving cargo, shipment milestones).
+INTERNATIONAL_ACTION_ONLY = {
+    I.PAID_SUPPLIER: "procurement",
+    I.SENT_TO_CONSOLIDATION: "cargo-receipt",
+    I.SHIPPING_TO_DESTINATION: "shipment",
+    I.CLEARANCE: "shipment",
+    I.READY_FOR_COLLECTION: "shipment",
 }
 
 # Which department owns an international order at each stage.
@@ -144,7 +155,7 @@ EQUIPMENT_ACTION_ONLY = {Q.ASSIGNED: "assign-technician"}
 
 WORKFLOWS = {
     OrderType.EXPRESS: (ExpressStatus, EXPRESS_TRANSITIONS, EXPRESS_ACTION_ONLY),
-    OrderType.INTERNATIONAL: (InternationalStatus, INTERNATIONAL_TRANSITIONS, {}),
+    OrderType.INTERNATIONAL: (InternationalStatus, INTERNATIONAL_TRANSITIONS, INTERNATIONAL_ACTION_ONLY),
     OrderType.EQUIPMENT: (EquipmentStatus, EQUIPMENT_TRANSITIONS, EQUIPMENT_ACTION_ONLY),
 }
 
