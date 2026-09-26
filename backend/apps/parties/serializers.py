@@ -1,7 +1,7 @@
 from django.db import transaction
 from rest_framework import serializers
 
-from .models import Address, Customer
+from .models import Address, Customer, ServiceProvider
 
 
 class AddressSerializer(serializers.ModelSerializer):
@@ -51,6 +51,10 @@ class AddressSerializer(serializers.ModelSerializer):
 class CustomerSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     default_address = serializers.SerializerMethodField()
+    tags = serializers.SerializerMethodField()
+    total_orders = serializers.IntegerField(read_only=True, default=None)
+    total_spent = serializers.SerializerMethodField()
+    last_activity_at = serializers.DateTimeField(read_only=True, default=None)
 
     class Meta:
         model = Customer
@@ -66,10 +70,25 @@ class CustomerSerializer(serializers.ModelSerializer):
             "preferred_channel",
             "notes",
             "default_address",
+            "tags",
+            "total_orders",
+            "total_spent",
+            "last_activity_at",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["id", "reference", "created_at", "updated_at"]
+
+    def get_tags(self, obj) -> list[dict]:
+        links = getattr(obj, "prefetched_tags", None)
+        if links is None:
+            return []
+        return [{"id": link.id, "name": link.tag.name, "type": "system" if link.source == "rule" else "manual",
+                 "created_at": link.created_at} for link in links]
+
+    def get_total_spent(self, obj) -> str | None:
+        value = getattr(obj, "total_spent", None)
+        return None if value is None else f"{value:.2f}"
 
     def get_default_address(self, obj) -> dict | None:
         # Uses the prefetched `addresses` list to avoid a query per row.
@@ -95,3 +114,16 @@ class CustomerSerializer(serializers.ModelSerializer):
         if not email and not phone:
             raise serializers.ValidationError("Provide at least a phone number or an email address.")
         return attrs
+
+
+class ServiceProviderSerializer(serializers.ModelSerializer):
+    city_name = serializers.CharField(source="city.name", read_only=True, default=None)
+    total_orders = serializers.IntegerField(read_only=True, default=0)
+    rating = serializers.DecimalField(max_digits=2, decimal_places=1, min_value=0, max_value=5, required=False,
+                                      allow_null=True)
+
+    class Meta:
+        model = ServiceProvider
+        fields = ["id", "reference", "name", "email", "phone", "services", "city", "city_name", "address", "status",
+                  "rating", "notes", "total_orders", "created_at", "updated_at"]
+        read_only_fields = ["id", "reference", "created_at", "updated_at"]

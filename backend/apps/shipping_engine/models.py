@@ -47,6 +47,12 @@ class Carrier(TimeStampedModel):
     origins = models.ManyToManyField("locations.Country", blank=True, related_name="carriers_shipping_from")
     destinations = models.ManyToManyField("locations.Country", blank=True, related_name="carriers_shipping_to")
     specializations = ArrayField(models.CharField(max_length=60), default=list, blank=True)
+    # People → Shippers: services offered, linked consolidation warehouses, staff rating.
+    services = ArrayField(models.CharField(max_length=20, choices=[
+        ("air_cargo", "Air cargo"), ("sea_cargo", "Sea cargo"), ("local_land_cargo", "Local land cargo")]),
+        default=list, blank=True)
+    warehouses = models.ManyToManyField("locations.Warehouse", blank=True, related_name="shippers")
+    rating = models.DecimalField(max_digits=2, decimal_places=1, null=True, blank=True)
     notes = models.TextField(blank=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.ACTIVE)
 

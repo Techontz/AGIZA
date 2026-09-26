@@ -160,7 +160,9 @@ def seed(stdout=None) -> Seeder:
 
     def customer(name, phone=""):
         if name not in customers:
-            customers[name], _ = s.get_or_create(Customer, full_name=name, defaults={"phone": phone or "+255700000000"})
+            # Each demo customer gets their own (fictional, +255 700 …) number.
+            customers[name], _ = s.get_or_create(Customer, full_name=name, defaults={
+                "phone": phone or f"+255 700 {len(customers) + 101:03d} {len(customers) * 37 % 1000:03d}"})
         return customers[name]
 
     def tracked(order: Order):

@@ -74,13 +74,22 @@ SUPPLIERS = [
     ("Mumbai Textiles Export", "IN", "Priya Shah"),
 ]
 
-# The design's shippers (Shipping & Tracking filter list): name, type, origins
+# The design's shippers (Shipping & Tracking filter list; People → Shippers):
+# name, type, origins, services, rating, email
 SHIPPERS = [
-    ("Silent Ocean", "international_sea", ["CN"]), ("Umoja Cargo", "international_sea", ["US", "GB"]),
-    ("Inland Strategy", "international_air", ["GB"]), ("Abdulraheem Dubai", "international_air", ["AE"]),
-    ("Swala Dubai", "international_air", ["AE"]), ("Wakina Bady Dubai", "international_sea", ["AE"]),
-    ("KTM India Cargo", "international_sea", ["IN"]), ("Freedom Yiwu ZNZ Cargo", "international_sea", ["CN"]),
+    ("Silent Ocean", "international_sea", ["CN", "US", "GB"], ["sea_cargo"], "4.8", "ops@silentocean.co.tz"),
+    ("Umoja Cargo", "international_sea", ["US", "GB", "AE"], ["air_cargo", "sea_cargo"], "4.6", "contact@umojacargo.tz"),
+    ("Inland Strategy", "international_air", ["GB", "TZ"], ["local_land_cargo", "air_cargo"], "4.7",
+     "ops@inlandstrategy.co.tz"),
+    ("Abdulraheem Dubai", "international_air", ["AE"], ["air_cargo"], "4.9", "info@abdulraheemdubai.ae"),
+    ("Swala Dubai", "international_air", ["AE"], ["air_cargo"], "4.5", "cargo@swaladubai.ae"),
+    ("Wakina Bady Dubai", "international_sea", ["AE"], ["sea_cargo"], "4.3", "info@wakinabady.ae"),
+    ("KTM India Cargo", "international_sea", ["IN"], ["sea_cargo", "air_cargo"], "4.4", "ops@ktmcargo.in"),
+    ("Freedom Yiwu ZNZ Cargo", "international_sea", ["CN"], ["sea_cargo"], "4.6", "yiwu@freedomcargo.co.tz"),
 ]
+# Consolidation hubs each shipper is linked to (People → Shipper → Consolidation Warehouses)
+SHIPPER_HUBS = {"Silent Ocean": ["CN", "IN"], "Umoja Cargo": ["GB", "US"], "Abdulraheem Dubai": ["AE"],
+                "Swala Dubai": ["AE"], "KTM India Cargo": ["IN"], "Freedom Yiwu ZNZ Cargo": ["CN"]}
 
 # Warehouse & Pick Up Points design: name, type, country, city, address, contact, phone, email, capacity, status
 WAREHOUSES = [
@@ -206,8 +215,9 @@ def seed(stdout=None) -> Seeder:
             "email": name.lower().split()[0].strip(".") + "@supplier.demo"})
 
     shippers = {}
-    for name, ctype, origins in SHIPPERS:
-        obj, created = s.get_or_create(Carrier, name=name, defaults={"type": ctype})
+    for name, ctype, origins, services_, rating, email in SHIPPERS:
+        obj, created = s.get_or_create(Carrier, name=name, defaults={
+            "type": ctype, "services": services_, "rating": D(rating), "contact_email": email})
         if created:
             obj.origins.set(Country.objects.filter(iso2__in=origins))
             obj.destinations.set(Country.objects.filter(iso2="TZ"))
@@ -226,6 +236,10 @@ def seed(stdout=None) -> Seeder:
             "city": City.objects.get(name=city, country__iso2=iso), "address": address, "contact_person": contact,
             "phone": phone, "email": email, "capacity_percent": capacity, "status": wstatus,
             "last_audit_at": today - timedelta(days=12)})
+
+    for name, isos in SHIPPER_HUBS.items():
+        if not shippers[name].warehouses.exists():
+            shippers[name].warehouses.set([warehouses[HUB[iso]] for iso in isos])
 
     dar = City.objects.get(name="Dar es Salaam", country__iso2="TZ")
 

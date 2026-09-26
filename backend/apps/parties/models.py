@@ -83,3 +83,38 @@ class Address(TimeStampedModel):
         self.region_id = self.city.region_id
         self.country_id = self.city.country_id
         super().save(*args, **kwargs)
+
+
+class ServiceProvider(TimeStampedModel):
+    """An independent provider Agiza sends equipment / home service jobs to (plumbers, installers...)."""
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        INACTIVE = "inactive", "Inactive"
+
+    reference = models.CharField(max_length=20, unique=True, editable=False)
+    name = models.CharField(max_length=150)
+    email = models.EmailField(blank=True)
+    phone = models.CharField(max_length=32, blank=True)
+    services = models.CharField(max_length=255, blank=True, help_text="e.g. Plumbing, Installation, Cleaning")
+    city = models.ForeignKey("locations.City", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    address = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.ACTIVE)
+    rating = models.DecimalField(max_digits=2, decimal_places=1, null=True, blank=True,
+                                 help_text="Staff assessment, 0.0–5.0")
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["name"]
+        constraints = [
+            models.CheckConstraint(name="provider_rating_range",
+                                   condition=Q(rating__isnull=True) | (Q(rating__gte=0) & Q(rating__lte=5))),
+        ]
+
+    def __str__(self) -> str:
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.reference:
+            self.reference = next_reference("SERV", width=3)
+        super().save(*args, **kwargs)

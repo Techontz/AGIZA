@@ -4,7 +4,7 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.locations.models import City, Country, Region
+from apps.locations.models import City, Country, Region, Warehouse
 
 from .calculator import money, rate_display
 from .constants import AppliesTo, Handling, PricingModel, Scope, Status
@@ -41,18 +41,29 @@ class CarrierSerializer(serializers.ModelSerializer):
     specializations = serializers.ListField(
         child=serializers.CharField(max_length=60, allow_blank=True), required=False, allow_empty=True
     )
+    services = serializers.ListField(
+        child=serializers.ChoiceField(choices=["air_cargo", "sea_cargo", "local_land_cargo"]), required=False,
+        allow_empty=True)
+    warehouses = serializers.PrimaryKeyRelatedField(many=True, queryset=Warehouse.objects.all(), required=False)
+    warehouse_names = serializers.SerializerMethodField()
+    rating = serializers.DecimalField(max_digits=2, decimal_places=1, min_value=0, max_value=5, required=False,
+                                      allow_null=True)
+    total_orders = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Carrier
         fields = [
             "id", "name", "type", "type_display", "contact_email", "contact_phone", "origins", "origin_names",
-            "destinations", "destination_names", "specializations", "notes", "status", "status_display",
-            "routes_count", "created_at", "updated_at",
+            "destinations", "destination_names", "specializations", "services", "warehouses", "warehouse_names",
+            "rating", "total_orders", "notes", "status", "status_display", "routes_count", "created_at", "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
     def get_origin_names(self, obj) -> list[str]:
         return [c.name for c in obj.origins.all()]
+
+    def get_warehouse_names(self, obj) -> list[dict]:
+        return [{"id": w.id, "code": w.code, "name": w.name} for w in obj.warehouses.all()]
 
     def get_destination_names(self, obj) -> list[str]:
         return [c.name for c in obj.destinations.all()]

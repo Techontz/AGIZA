@@ -94,14 +94,17 @@ class OptionSerializer(serializers.ModelSerializer):
 
 class VendorSerializer(serializers.ModelSerializer):
     products_count = serializers.IntegerField(read_only=True, default=0)
+    orders_count = serializers.IntegerField(read_only=True, default=0)
     total_sales = serializers.SerializerMethodField()
     profit_value = serializers.DecimalField(**MONEY)
+    rating = serializers.DecimalField(max_digits=2, decimal_places=1, min_value=0, max_value=5, required=False,
+                                      allow_null=True)
 
     class Meta:
         model = Vendor
         fields = ["id", "reference", "name", "email", "phone", "location", "status", "verified", "profit_type",
-                  "profit_value", "profit_scope", "joined_date", "notes", "products_count", "total_sales",
-                  "created_at", "updated_at"]
+                  "profit_value", "profit_scope", "joined_date", "rating", "notes", "products_count", "orders_count",
+                  "total_sales", "created_at", "updated_at"]
         read_only_fields = ["id", "reference", "created_at", "updated_at"]
 
     def get_total_sales(self, obj) -> str:

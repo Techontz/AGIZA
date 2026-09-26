@@ -2,6 +2,7 @@ import logging
 
 import django_filters
 from django.db import transaction
+from django.db.models import Count
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -16,7 +17,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from apps.core.audit import AuditedViewSetMixin, diff, record_audit, snapshot
 
-from .constants import Module
+from .constants import Module, StaffLevel
 from .models import AuditLog, RolePermission, User
 from .permissions import HasModulePermission, IsTopAdmin
 from .serializers import (
@@ -117,9 +118,15 @@ class ChangePasswordView(GenericAPIView):
 # Staff management
 # --------------------------------------------------------------------------- #
 class StaffFilter(django_filters.FilterSet):
+    role = django_filters.ChoiceFilter(choices=[("staff", "Staff"), ("driver", "Drivers")], method="filter_role")
+
     class Meta:
         model = User
-        fields = ["staff_level", "department", "is_active"]
+        fields = ["staff_level", "department", "is_active", "role"]
+
+    def filter_role(self, qs, name, value):
+        return qs.filter(staff_level=StaffLevel.DRIVER) if value == "driver" else qs.exclude(
+            staff_level=StaffLevel.DRIVER)
 
 
 @extend_schema(tags=["staff"])
@@ -137,7 +144,7 @@ class StaffViewSet(
     permission_classes = [HasModulePermission]
     required_access = {"create": "manage", "update": "manage", "partial_update": "manage"}
     serializer_class = StaffSerializer
-    queryset = User.objects.all().order_by("full_name")
+    queryset = User.objects.annotate(total_orders=Count("deliveries", distinct=True)).order_by("full_name", "id")
     filterset_class = StaffFilter
     search_fields = ["full_name", "email", "phone", "employee_id"]
     ordering_fields = ["full_name", "date_joined", "last_login", "staff_level"]

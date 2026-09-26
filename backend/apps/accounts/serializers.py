@@ -78,6 +78,7 @@ PRIVILEGED_LEVELS = {StaffLevel.TOP_ADMIN, StaffLevel.ADMIN_L2}
 
 class StaffSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False, allow_blank=False)
+    total_orders = serializers.IntegerField(read_only=True, default=None, help_text="Deliveries (drivers)")
     staff_level_display = serializers.CharField(source="get_staff_level_display", read_only=True)
     department_display = serializers.CharField(source="get_department_display", read_only=True)
 
@@ -97,6 +98,7 @@ class StaffSerializer(serializers.ModelSerializer):
             "password",
             "last_login",
             "date_joined",
+            "total_orders",
         ]
         read_only_fields = ["id", "employee_id", "last_login", "date_joined"]
 

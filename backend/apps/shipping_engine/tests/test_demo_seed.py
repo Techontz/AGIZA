@@ -96,6 +96,15 @@ def test_full_demo_set_including_orders_loads_and_flushes(make_user):
     assert Invoice.objects.count() == 3 and Wallet.objects.count() == 2
     assert set(InstallmentPlan.objects.values_list("status", flat=True)) == {"active", "pending_approval"}
 
+    # People & Support: the design's tag rules ran for real; conversations are stored.
+    from apps.chat.models import Conversation
+    from apps.crm.models import CustomerTag, TagRule
+
+    assert "0 created" in run("--only", "people")
+    assert TagRule.objects.count() == 4 and CustomerTag.objects.filter(source="rule").exists()
+    assert Conversation.objects.count() == 5
+    assert Conversation.objects.filter(customer__isnull=True).count() == 0
+
     # Removing only "orders" also removes "operations" (it builds on those orders).
     out = run("--flush", "--only", "orders")
     assert "operations" in out

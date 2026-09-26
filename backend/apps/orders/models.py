@@ -234,6 +234,8 @@ class EquipmentDetails(models.Model):
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="equipment_jobs"
     )
     technician_assigned_at = models.DateTimeField(null=True, blank=True)
+    service_provider = models.ForeignKey("parties.ServiceProvider", null=True, blank=True, on_delete=models.SET_NULL,
+                                         related_name="jobs", help_text="External provider doing the work")
     expected_date = models.DateTimeField(null=True, blank=True)
     priority = models.CharField(max_length=10, choices=[("high", "High"), ("medium", "Medium"), ("low", "Low")], default="medium")
     needs_attention = models.BooleanField(default=False)

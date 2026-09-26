@@ -77,8 +77,9 @@ class CarrierFilter(django_filters.FilterSet):
 
 @extend_schema(tags=TAG)
 class CarrierViewSet(EngineViewSet):
-    # Read by Shipping & Tracking (shippers, methods) and the product editor.
-    read_modules = (Module.SHIPPING, Module.ECOMMERCE, Module.ORDERS)
+    # Read by Shipping & Tracking (shippers, methods) and the product editor; managed in People → Shippers.
+    read_modules = (Module.SHIPPING, Module.ECOMMERCE, Module.ORDERS, Module.PEOPLE)
+    edit_modules = (Module.PEOPLE,)
     serializer_class = CarrierSerializer
     protected_relations = ("methods",)
     filterset_class = CarrierFilter
@@ -86,8 +87,8 @@ class CarrierViewSet(EngineViewSet):
     ordering_fields = ["name", "created_at", "routes_count"]
 
     def get_queryset(self):
-        return Carrier.objects.prefetch_related("origins", "destinations").annotate(
-            routes_count=Count("rules__route", distinct=True)
+        return Carrier.objects.prefetch_related("origins", "destinations", "warehouses").annotate(
+            routes_count=Count("rules__route", distinct=True), total_orders=Count("parcels", distinct=True),
         ).order_by("name")
 
 

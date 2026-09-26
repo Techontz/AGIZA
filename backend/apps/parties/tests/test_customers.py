@@ -55,7 +55,9 @@ def test_search_filter_and_pagination(admin):
 def test_read_access_via_related_module_but_no_write(client_for):
     finance = client_for(StaffLevel.FINANCE)  # people=none, finance=manage, orders/intake=view
     assert finance.get("/api/customers/").status_code == 200
-    assert create(finance).status_code == 403
+    # Finance can register a customer for a manual invoice, but not edit people settings.
+    assert create(finance).status_code == 201
+    assert finance.post("/api/service-providers/", {"name": "X"}, format="json").status_code == 403
     # Sales (people=view) can register a customer because they edit orders/quotations.
     assert create(client_for(StaffLevel.SALES), phone="+255700000321").status_code == 201
     # Drivers see the recipient on their own deliveries only, never the customer list.

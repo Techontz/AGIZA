@@ -105,8 +105,10 @@ class OrderPaymentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixi
     http_method_names = ["get", "patch", "head", "options"]
 
     def get_queryset(self):
-        qs = (Order.objects.exclude(status="cancelled")
-              .select_related("customer", "procurement", "international", "shop")
+        qs = Order.objects.all()
+        if self.action == "list":  # cancelled orders stay reachable for receipts
+            qs = qs.exclude(status="cancelled")
+        qs = (qs.select_related("customer", "procurement", "international", "shop")
               .prefetch_related("items").order_by("-created_at", "-id"))
         return order_services.with_paid_total(qs)
 

@@ -1,6 +1,6 @@
 import django_filters
 from django.db import transaction
-from django.db.models import Count, DecimalField, F, OuterRef, Prefetch, Q, Subquery, Sum
+from django.db.models import Count, DecimalField, F, IntegerField, OuterRef, Prefetch, Q, Subquery, Sum
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
@@ -146,6 +146,7 @@ class OptionViewSet(CatalogViewSet):
 @extend_schema(tags=["catalog"])
 class VendorViewSet(CatalogViewSet):
     serializer_class = VendorSerializer
+    read_modules = (Module.ORDERS, Module.WAREHOUSE, Module.PEOPLE)
     filterset_fields = ["status", "profit_type", "verified"]
     search_fields = ["name", "email", "location", "reference"]
     ordering_fields = ["name", "joined_date"]
@@ -153,7 +154,10 @@ class VendorViewSet(CatalogViewSet):
     def get_queryset(self):
         sales = (OrderItem.objects.filter(variant__product__vendor=OuterRef("pk")).exclude(order__status="cancelled")
                  .order_by().values("variant__product__vendor").annotate(s=Sum("line_total")).values("s"))
+        orders = (OrderItem.objects.filter(variant__product__vendor=OuterRef("pk")).exclude(order__status="cancelled")
+                  .order_by().values("variant__product__vendor").annotate(n=Count("order", distinct=True)).values("n"))
         return (Vendor.objects.annotate(products_count=Count("products", distinct=True),
+                                        orders_count=Coalesce(Subquery(orders, output_field=IntegerField()), 0),
                                         sales_total=Subquery(sales, output_field=DecimalField(max_digits=16,
                                                                                               decimal_places=2)))
                 .order_by("name"))

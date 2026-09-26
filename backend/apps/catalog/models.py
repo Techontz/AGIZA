@@ -171,6 +171,7 @@ class Vendor(TimeStampedModel):
     profit_value = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"), validators=POSITIVE)
     profit_scope = models.CharField(max_length=12, choices=ProfitScope.choices, default=ProfitScope.ALL)
     joined_date = models.DateField(null=True, blank=True)
+    rating = models.DecimalField(max_digits=2, decimal_places=1, null=True, blank=True)
     notes = models.TextField(blank=True)
 
     class Meta:

@@ -174,7 +174,15 @@ def create_order(
             shipping.expect_client_parcel(order, user)
         else:
             procurement.open_for_order(order, user)
+    _refresh_customer(order.customer, user)
     return order
+
+
+def _refresh_customer(customer, user):
+    """Customer activity changes interests and tag-rule matches."""
+    from apps.crm import services as crm
+
+    transaction.on_commit(lambda: crm.refresh_customer(customer, user))
 
 
 # --------------------------------------------------------------------------- #
@@ -251,6 +259,7 @@ def record_payment(order: Order, *, amount: Decimal, method: str, user, kind: st
     from apps.finance import services as finance
 
     finance.on_payment(order, payment)
+    _refresh_customer(order.customer, user)
     return payment
 
 

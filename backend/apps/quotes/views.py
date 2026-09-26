@@ -39,6 +39,8 @@ class QuoteFilter(django_filters.FilterSet):
 class QuoteViewSet(AuditedViewSetMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin,
                    mixins.UpdateModelMixin, viewsets.GenericViewSet):
     module = Module.INTAKE_QUOTES
+    # Finance invoices quotations; Chat links them to conversations.
+    read_modules = (Module.FINANCE, Module.CHAT)
     permission_classes = [HasModulePermission]
     serializer_class = QuoteSerializer
     filterset_class = QuoteFilter

@@ -82,7 +82,11 @@ VENDORS = [
      "2024-03-05"),
     ("Smart Gadgets", "hello@smartgadgets.co.tz", "+255 789 654 321", "Dar es Salaam", "inactive", "percent", "12",
      "per_product", "2023-09-18"),
+    ("Mama Saida Shop", "mamasaida@shop.tz", "+255 788 333 444", "Dar es Salaam", "active", "percent", "10", "all",
+     "2025-06-10"),
 ]
+VENDOR_RATINGS = {"TechHub Electronics": "4.7", "Fashion Forward": "4.5", "Home Essentials Ltd": "4.4",
+                  "Sports Zone": "4.2", "Mama Saida Shop": "4.6"}
 # sku, name, category, sub, brand, price, cost, status, origin, profile, vendor, weight, description,
 # specs, labels, colour, stock [(warehouse, bin, qty)]
 PRODUCTS = [
@@ -221,7 +225,8 @@ def seed(stdout=None) -> Seeder:
     for name, email, phone, loc, st, ptype, pval, scope, joined in VENDORS:
         vendors[name], _ = s.get_or_create(Vendor, name=name, defaults={
             "email": email, "phone": phone, "location": loc, "status": st, "profit_type": ptype,
-            "profit_value": D(pval), "profit_scope": scope, "joined_date": joined, "verified": st == "active"})
+            "profit_value": D(pval), "profit_scope": scope, "joined_date": joined, "verified": st == "active",
+            "rating": D(VENDOR_RATINGS[name]) if name in VENDOR_RATINGS else None})
 
     # ---- Products (through the product editor service) ---------------------
     air = ShippingMethod.objects.filter(code="AIR").first()

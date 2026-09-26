@@ -47,6 +47,9 @@ INSTALLED_APPS = [
     "apps.catalog",
     "apps.inventory",
     "apps.finance",
+    "apps.crm",
+    "apps.chat",
+    "apps.notifications",
 ]
 
 MIDDLEWARE = [
@@ -197,6 +200,12 @@ SPECTACULAR_SETTINGS = {
         "ParcelSourceEnum": "apps.shipping.models.ParcelSource",
         "OriginEstimateMethodEnum": "apps.catalog.models.OriginEstimate.Method",
         "VendorProfitTypeEnum": "apps.catalog.models.Vendor.ProfitType",
+        "ChatChannelEnum": "apps.chat.models.Channel",
+        "CampaignChannelEnum": "apps.crm.models.Campaign.Channel",
+        "ConversationDepartmentEnum": "apps.chat.models.Conversation.Department",
+        "EscalationTargetEnum": [("management", "management"), ("procurement", "procurement"),
+                                 ("finance", "finance"), ("sales", "sales"), ("support", "support"),
+                                 ("delivery", "delivery")],
         # Input subsets: refunds and wallet payments have their own endpoints.
         "PaymentKindInputEnum": [("advance", "Advance"), ("installment", "Installment"), ("balance", "Balance / Full")],
         "PaymentMethodInputEnum": [("cash", "Cash"), ("mobile_money", "Mobile Money"),
@@ -231,3 +240,30 @@ LOGGING = {
 BOOTSTRAP_ADMIN_EMAIL = env("BOOTSTRAP_ADMIN_EMAIL", default="")
 BOOTSTRAP_ADMIN_PASSWORD = env("BOOTSTRAP_ADMIN_PASSWORD", default="")
 BOOTSTRAP_ADMIN_NAME = env("BOOTSTRAP_ADMIN_NAME", default="Agiza Admin")
+
+
+# --------------------------------------------------------------------------- #
+# Messaging channels (all optional: a channel is disabled until configured)
+# --------------------------------------------------------------------------- #
+EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = env("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Agiza <no-reply@agiza.co.tz>")
+
+SMS_AT_USERNAME = env("SMS_AT_USERNAME", default="")
+SMS_AT_API_KEY = env("SMS_AT_API_KEY", default="")
+SMS_SENDER_ID = env("SMS_SENDER_ID", default="")
+
+WHATSAPP_TOKEN = env("WHATSAPP_TOKEN", default="")
+WHATSAPP_PHONE_NUMBER_ID = env("WHATSAPP_PHONE_NUMBER_ID", default="")
+WHATSAPP_VERIFY_TOKEN = env("WHATSAPP_VERIFY_TOKEN", default="")
+WHATSAPP_APP_SECRET = env("WHATSAPP_APP_SECRET", default="")
+
+FACEBOOK_PAGE_TOKEN = env("FACEBOOK_PAGE_TOKEN", default="")
+FACEBOOK_VERIFY_TOKEN = env("FACEBOOK_VERIFY_TOKEN", default="")
+FACEBOOK_APP_SECRET = env("FACEBOOK_APP_SECRET", default="")
+
+TIKTOK_CLIENT_SECRET = env("TIKTOK_CLIENT_SECRET", default="")
