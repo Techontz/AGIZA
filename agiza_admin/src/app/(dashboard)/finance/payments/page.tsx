@@ -1,5 +1,17 @@
-import { ModulePlaceholder } from "@/components/layout/module-placeholder";
+import { Suspense } from "react";
+
+import { ModuleGuard } from "@/components/layout/module-guard";
+
+import { PaymentsView } from "./view";
+
+export const metadata = { title: "Order Payments" };
 
 export default function Page() {
-  return <ModulePlaceholder path="/finance/payments" />;
+  return (
+    <ModuleGuard module="finance">
+      <Suspense>
+        <PaymentsView />
+      </Suspense>
+    </ModuleGuard>
+  );
 }
