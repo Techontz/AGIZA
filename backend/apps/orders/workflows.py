@@ -9,9 +9,11 @@ class OrderType(models.TextChoices):
     EXPRESS = "express", "Express Delivery"
     INTERNATIONAL = "international", "International"
     EQUIPMENT = "equipment", "Equipment Support"
+    SHOP = "shop", "E-commerce Shop"
 
 
-REFERENCE_PREFIX = {OrderType.EXPRESS: "EXP", OrderType.INTERNATIONAL: "INT", OrderType.EQUIPMENT: "EQ"}
+REFERENCE_PREFIX = {OrderType.EXPRESS: "EXP", OrderType.INTERNATIONAL: "INT", OrderType.EQUIPMENT: "EQ",
+                    OrderType.SHOP: "ECO"}
 
 
 # --------------------------------------------------------------------------- #
@@ -153,10 +155,34 @@ EQUIPMENT_TRANSITIONS = {
 EQUIPMENT_ACTION_ONLY = {Q.ASSIGNED: "assign-technician"}
 
 
+# --------------------------------------------------------------------------- #
+# E-commerce shop orders
+# --------------------------------------------------------------------------- #
+class ShopStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    PROCESSING = "processing", "Processing"
+    SHIPPED = "shipped", "Shipped"
+    DELIVERED = "delivered", "Delivered"
+    CANCELLED = "cancelled", "Cancelled"
+
+
+P = ShopStatus
+SHOP_TRANSITIONS = {
+    P.PENDING: {P.PROCESSING, P.CANCELLED},
+    P.PROCESSING: {P.SHIPPED, P.CANCELLED},
+    P.SHIPPED: {P.DELIVERED},
+    P.DELIVERED: set(),
+    P.CANCELLED: set(),
+}
+# Shipping deducts stock and opens the delivery; Delivered comes from the delivery's proof.
+SHOP_ACTION_ONLY = {P.SHIPPED: "ship", P.DELIVERED: "deliver", P.CANCELLED: "cancel"}
+
+
 WORKFLOWS = {
     OrderType.EXPRESS: (ExpressStatus, EXPRESS_TRANSITIONS, EXPRESS_ACTION_ONLY),
     OrderType.INTERNATIONAL: (InternationalStatus, INTERNATIONAL_TRANSITIONS, INTERNATIONAL_ACTION_ONLY),
     OrderType.EQUIPMENT: (EquipmentStatus, EQUIPMENT_TRANSITIONS, EQUIPMENT_ACTION_ONLY),
+    OrderType.SHOP: (ShopStatus, SHOP_TRANSITIONS, SHOP_ACTION_ONLY),
 }
 
 TERMINAL = {"delivered", "completed", "cancelled"}

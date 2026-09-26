@@ -41,6 +41,10 @@ class Order(TimeStampedModel):
     installment_plan = models.BooleanField(default=False, help_text="Customer pays in installments")
     installment_allowed = models.BooleanField(default=False, help_text="Admin approved proceeding on installments")
     notes = models.TextField(blank=True)
+    # What the order costs Agiza (Finance → Order Payments). Empty = derived from
+    # procurement / order lines / the international cost breakdown.
+    purchase_cost = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True, validators=POSITIVE)
+    shipping_cost = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True, validators=POSITIVE)
     source_quote = models.OneToOneField(
         "quotes.QuoteRequest", null=True, blank=True, on_delete=models.SET_NULL, related_name="created_order"
     )
@@ -92,6 +96,7 @@ class Payment(TimeStampedModel):
         MOBILE_MONEY = "mobile_money", "Mobile Money"
         BANK_TRANSFER = "bank_transfer", "Bank Transfer"
         CARD = "card", "Card"
+        WALLET = "wallet", "Customer Wallet"
         OTHER = "other", "Other"
 
     class Kind(models.TextChoices):
@@ -232,3 +237,46 @@ class EquipmentDetails(models.Model):
     expected_date = models.DateTimeField(null=True, blank=True)
     priority = models.CharField(max_length=10, choices=[("high", "High"), ("medium", "Medium"), ("low", "Low")], default="medium")
     needs_attention = models.BooleanField(default=False)
+
+
+class ShopDetails(models.Model):
+    class Channel(models.TextChoices):
+        WEB = "web", "Online store"
+        APP = "app", "Mobile app"
+        WHATSAPP = "whatsapp", "WhatsApp"
+        SHOP = "shop", "Physical shop"
+        MANUAL = "manual", "Entered by staff"
+
+    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name="shop", primary_key=True)
+    customer_email = models.EmailField(blank=True)
+    shipping_address = models.CharField(max_length=255)
+    city = models.ForeignKey("locations.City", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    area = models.CharField(max_length=120, blank=True)
+    channel = models.CharField(max_length=10, choices=Channel.choices, default=Channel.WEB)
+    delivery_fee = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"), validators=POSITIVE)
+    fulfillment_warehouse = models.ForeignKey("locations.Warehouse", null=True, blank=True, on_delete=models.PROTECT,
+                                              related_name="+")
+    shipped_at = models.DateTimeField(null=True, blank=True)
+
+
+class OrderItem(models.Model):
+    """A line of a shop order. Name, SKU, price and cost are captured when ordered."""
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
+    variant = models.ForeignKey("catalog.ProductVariant", on_delete=models.PROTECT, related_name="order_items")
+    product_name = models.CharField(max_length=200)
+    variant_name = models.CharField(max_length=120, blank=True)
+    sku = models.CharField(max_length=64)
+    quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    unit_price = models.DecimalField(max_digits=14, decimal_places=2, validators=POSITIVE)
+    unit_cost = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True, validators=POSITIVE)
+    line_total = models.DecimalField(max_digits=14, decimal_places=2, validators=POSITIVE)
+    warehouse = models.ForeignKey("locations.Warehouse", null=True, blank=True, on_delete=models.PROTECT,
+                                  related_name="+", help_text="Where the stock is reserved")
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [models.CheckConstraint(name="order_item_quantity_positive", condition=Q(quantity__gte=1))]
+
+    def __str__(self) -> str:
+        return f"{self.quantity}× {self.product_name}"

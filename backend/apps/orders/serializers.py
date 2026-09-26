@@ -3,6 +3,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.accounts.models import User
+from apps.catalog.models import ProductVariant
 from apps.locations.models import City, Country
 from apps.parties.models import Customer
 
@@ -13,10 +14,12 @@ from .models import (
     InternationalDetails,
     Order,
     OrderAttachment,
+    OrderItem,
     OrderStatusHistory,
     PackageSize,
     Payment,
     Priority,
+    ShopDetails,
 )
 from .services import payment_summary
 from .workflows import EXPRESS_STAGE, WORKFLOWS, ExpressStatus, OrderType, status_label
@@ -352,3 +355,95 @@ class ExpectedDateSerializer(serializers.Serializer):
 
 class SuggestPriceSerializer(serializers.Serializer):
     method = serializers.IntegerField()
+
+
+# --------------------------------------------------------------------------- #
+# E-commerce shop orders
+# --------------------------------------------------------------------------- #
+class OrderItemSerializer(serializers.ModelSerializer):
+    unit_price = serializers.SerializerMethodField()
+    line_total = serializers.SerializerMethodField()
+    product_id = serializers.IntegerField(source="variant.product_id", read_only=True)
+    warehouse = serializers.CharField(source="warehouse.name", read_only=True, default=None)
+
+    class Meta:
+        model = OrderItem
+        fields = ["id", "product_id", "variant", "product_name", "variant_name", "sku", "quantity", "unit_price",
+                  "line_total", "warehouse"]
+
+    def get_unit_price(self, obj) -> str:
+        return _dec(obj.unit_price)
+
+    def get_line_total(self, obj) -> str:
+        return _dec(obj.line_total)
+
+
+class ShopOrderSerializer(OrderSerializer):
+    items = OrderItemSerializer(many=True, read_only=True)
+    details = serializers.SerializerMethodField()
+    payment_status = serializers.SerializerMethodField()
+    delivery = serializers.SerializerMethodField()
+
+    class Meta(OrderSerializer.Meta):
+        fields = [*OrderSerializer.Meta.fields, "items", "details", "payment_status", "delivery"]
+
+    def get_details(self, obj) -> dict:
+        d: ShopDetails = obj.shop
+        parts = [d.shipping_address, d.area, d.city.name if d.city_id else ""]
+        return {
+            "customer_email": d.customer_email,
+            "shipping_address": d.shipping_address,
+            "city": {"id": d.city_id, "name": d.city.name} if d.city_id else None,
+            "area": d.area,
+            "full_address": ", ".join(p for p in parts if p),
+            "channel": d.channel,
+            "channel_display": d.get_channel_display(),
+            "delivery_fee": _dec(d.delivery_fee),
+            "subtotal": _dec(sum((i.line_total for i in obj.items.all()), Decimal("0"))),
+            "fulfillment_warehouse": d.fulfillment_warehouse.name if d.fulfillment_warehouse_id else None,
+            "shipped_at": d.shipped_at,
+        }
+
+    def get_payment_status(self, obj) -> str:
+        """The design's payment badge: paid / pending (nothing or part paid)."""
+        return "paid" if self.get_payment(obj)["status"] == "fully_paid" else "pending"
+
+    def get_delivery(self, obj) -> dict | None:
+        rows = [d for d in obj.deliveries.all()]
+        d = rows[-1] if rows else None
+        return {"id": d.id, "reference": d.reference, "status": d.status,
+                "status_display": d.get_status_display()} if d else None
+
+
+class ShopItemWriteSerializer(serializers.Serializer):
+    variant = serializers.PrimaryKeyRelatedField(queryset=ProductVariant.objects.select_related("product"))
+    quantity = serializers.IntegerField(min_value=1, max_value=1000)
+    unit_price = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0"), required=False,
+                                          allow_null=True)
+
+
+class ShopCreateSerializer(serializers.Serializer):
+    customer = serializers.PrimaryKeyRelatedField(queryset=Customer.objects.filter(status="active"))
+    items = ShopItemWriteSerializer(many=True)
+    shipping_address = serializers.CharField(max_length=255)
+    city = serializers.PrimaryKeyRelatedField(queryset=City.objects.all(), required=False, allow_null=True)
+    area = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
+    customer_email = serializers.EmailField(required=False, allow_blank=True, default="")
+    channel = serializers.ChoiceField(choices=ShopDetails.Channel.choices, default=ShopDetails.Channel.MANUAL)
+    delivery_fee = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0"),
+                                            default=Decimal("0"))
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class ShipSerializer(serializers.Serializer):
+    driver = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), required=False, allow_null=True)
+    scheduled_at = serializers.DateTimeField(required=False, allow_null=True)
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class CancelSerializer(serializers.Serializer):
+    reason = serializers.CharField()
+
+
+class ShopNotesSerializer(serializers.Serializer):
+    notes = serializers.CharField(allow_blank=True)

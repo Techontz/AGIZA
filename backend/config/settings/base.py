@@ -44,6 +44,9 @@ INSTALLED_APPS = [
     "apps.deliveries",
     "apps.returns",
     "apps.tasks",
+    "apps.catalog",
+    "apps.inventory",
+    "apps.finance",
 ]
 
 MIDDLEWARE = [
@@ -179,6 +182,25 @@ SPECTACULAR_SETTINGS = {
         "ReturnExceptionEnum": "apps.returns.models.ExceptionFlag",
         "TaskStatusEnum": "apps.tasks.models.TaskStatus",
         "TaskDepartmentEnum": "apps.tasks.models.TaskDepartment",
+        "PaymentKindEnum": "apps.orders.models.Payment.Kind",
+        "WalletTransactionKindEnum": "apps.finance.models.WalletTransaction.Kind",
+        "WalletTransactionSourceEnum": "apps.finance.models.WalletTransaction.Source",
+        "StockMovementKindEnum": "apps.inventory.models.StockMovement.Kind",
+        "ShipmentEventKindEnum": "apps.shipping.models.ShipmentEvent.Kind",
+        "TaskActivityKindEnum": "apps.tasks.models.TaskActivity.Kind",
+        "InvoiceStatusEnum": "apps.finance.models.InvoiceStatus",
+        "InvoiceSourceEnum": "apps.finance.models.Invoice.Source",
+        "InstallmentPlanStatusEnum": "apps.finance.models.PlanStatus",
+        "InstallmentStatusEnum": "apps.finance.models.Installment.Status",
+        "ProductStatusEnum": "apps.catalog.models.ProductStatus",
+        "VariantStatusEnum": "apps.catalog.models.VariantStatus",
+        "ParcelSourceEnum": "apps.shipping.models.ParcelSource",
+        "OriginEstimateMethodEnum": "apps.catalog.models.OriginEstimate.Method",
+        "VendorProfitTypeEnum": "apps.catalog.models.Vendor.ProfitType",
+        # Input subsets: refunds and wallet payments have their own endpoints.
+        "PaymentKindInputEnum": [("advance", "Advance"), ("installment", "Installment"), ("balance", "Balance / Full")],
+        "PaymentMethodInputEnum": [("cash", "Cash"), ("mobile_money", "Mobile Money"),
+                                   ("bank_transfer", "Bank Transfer"), ("card", "Card"), ("other", "Other")],
     },
 }
 

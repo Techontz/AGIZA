@@ -2,6 +2,7 @@ from io import StringIO
 
 import pytest
 from django.core.management import call_command
+from django.db.models import F
 from django.test import override_settings
 from django.utils import timezone
 
@@ -81,6 +82,19 @@ def test_full_demo_set_including_orders_loads_and_flushes(make_user):
     assert DeliveryPhoto.objects.count() >= 4
     assert ReturnRequest.objects.filter(status="closed", refund_payment__isnull=False).count() == 1
     assert Task.objects.filter(sla_deadline__lt=timezone.now(), status="waiting_for_client").exists()
+
+    # Commerce: catalogue with stock ledger, shop orders through fulfilment, finance records.
+    from apps.catalog.models import Product
+    from apps.finance.models import Invoice, InstallmentPlan, Wallet
+    from apps.inventory.models import StockItem, StockMovement
+
+    assert "0 created" in run("--only", "commerce")
+    assert Product.objects.count() == 13
+    assert StockItem.objects.filter(reserved__gt=0, reserved=F("quantity")).exists()  # the design's "Reserved"
+    assert StockMovement.objects.filter(kind="transfer_in").count() >= 4  # shop floor
+    assert Order.objects.filter(order_type="shop", status="delivered").count() == 1
+    assert Invoice.objects.count() == 3 and Wallet.objects.count() == 2
+    assert set(InstallmentPlan.objects.values_list("status", flat=True)) == {"active", "pending_approval"}
 
     # Removing only "orders" also removes "operations" (it builds on those orders).
     out = run("--flush", "--only", "orders")

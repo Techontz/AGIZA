@@ -191,6 +191,10 @@ def close(ret: ReturnRequest, *, user, notes: str = "", refund_method: str | Non
         )
         record_audit(action="create", request=request, actor=user, instance=payment,
                      changes={"refund": [None, str(ret.refund_amount)], "return": [None, ret.reference]})
+        if refund_method == Payment.Method.WALLET:
+            from apps.finance import services as finance
+
+            finance.refund_to_wallet(order, payment, user)
         ret.refund_payment = payment
         fields.append("refund_payment")
     ret.closed_at = timezone.now()

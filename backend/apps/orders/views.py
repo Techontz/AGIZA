@@ -2,9 +2,10 @@ import mimetypes
 from decimal import Decimal
 
 import django_filters
-from django.db.models import Count, Prefetch, Q, Sum
+from django.db.models import Count, F, Prefetch, Q, Sum
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -22,10 +23,15 @@ from apps.core.workflow import run
 from apps.shipping_engine.calculator import RateCalculationError, RateCalculator, Shipment
 from apps.shipping_engine.models import ShippingMethod
 
-from . import services
-from .models import Order, OrderAttachment, OrderStatusHistory, PackageSize
+from . import services, shop
+from .models import Order, OrderAttachment, OrderItem, OrderStatusHistory, PackageSize
 from .serializers import (
     AssignSerializer,
+    CancelSerializer,
+    ShipSerializer,
+    ShopCreateSerializer,
+    ShopNotesSerializer,
+    ShopOrderSerializer,
     AttachmentSerializer,
     EquipmentCreateSerializer,
     EquipmentOrderSerializer,
@@ -70,6 +76,8 @@ class BaseOrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.
                        mixins.UpdateModelMixin, viewsets.GenericViewSet):
     module = Module.ORDERS
     permission_classes = [HasModulePermission]
+    # Deliveries, Returns, Tasks and Finance staff look orders up (pickers, linked items).
+    read_modules = (Module.DELIVERIES, Module.RETURNS, Module.TASKS, Module.FINANCE)
     order_type: OrderType
     detail_relation: str
     create_serializer = None
@@ -385,6 +393,11 @@ class InternationalOrderViewSet(BaseOrderViewSet):
         before = order.installment_allowed
         order.installment_allowed = allowed
         order.save(update_fields=["installment_allowed", "updated_at"])
+        if allowed:  # a schedule waiting for Finance is approved with the order
+            from apps.finance.models import InstallmentPlan, PlanStatus
+
+            InstallmentPlan.objects.filter(order=order, status=PlanStatus.PENDING_APPROVAL).update(
+                status=PlanStatus.ACTIVE, approved_by=request.user, approved_at=timezone.now())
         services._history(order, order.status, order.status, request.user,
                           "Installments approved" if allowed else "Installment approval withdrawn")
         record_audit(action="update", request=request, instance=order, changes={"installment_allowed": [before, allowed]})
@@ -469,3 +482,85 @@ class AttachmentFileView(APIView):
         response["Cache-Control"] = "private, max-age=300"
         return response
 
+
+
+# --------------------------------------------------------------------------- #
+# E-commerce shop orders
+# --------------------------------------------------------------------------- #
+class ShopFilter(OrderFilter):
+    payment = django_filters.ChoiceFilter(choices=[("paid", "Paid"), ("pending", "Pending")], method="filter_payment")
+
+    def filter_payment(self, qs, name, value):
+        paid = Q(paid_total__gte=F("total_amount")) & Q(total_amount__gt=0)
+        return qs.filter(paid) if value == "paid" else qs.exclude(paid)
+
+    class Meta(OrderFilter.Meta):
+        fields = [*OrderFilter.Meta.fields, "payment"]
+
+
+@extend_schema(tags=["orders"])
+class ShopOrderViewSet(BaseOrderViewSet):
+    """E-commerce shop orders: lines from the catalogue, stock reserved, shipped with a delivery."""
+
+    order_type = OrderType.SHOP
+    detail_relation = "shop"
+    detail_select = ("shop__city", "shop__fulfillment_warehouse")
+    serializer_class = ShopOrderSerializer
+    create_serializer = ShopCreateSerializer
+    update_serializer = ShopNotesSerializer
+    filterset_class = ShopFilter
+    search_fields = [*BaseOrderViewSet.search_fields, "shop__customer_email", "items__sku", "items__product_name"]
+    required_access = {**BaseOrderViewSet.required_access, "cancel": "manage"}
+
+    def get_queryset(self):
+        return super().get_queryset().prefetch_related(
+            Prefetch("items", queryset=OrderItem.objects.select_related("warehouse")), "deliveries",
+        ).distinct()
+
+    @extend_schema(request=ShopCreateSerializer, responses={201: ShopOrderSerializer})
+    def create(self, request, *args, **kwargs):
+        s = ShopCreateSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        order = run(shop.create_shop_order, user=request.user, request=request, **s.validated_data)
+        return Response(ShopOrderSerializer(self.get_queryset().get(pk=order.pk)).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(request=ShopNotesSerializer, responses=ShopOrderSerializer)
+    def partial_update(self, request, *args, **kwargs):
+        order = self.get_object()
+        if set(request.data) - {"notes"}:
+            raise ValidationError({"notes": ["Only notes can be edited on a shop order."]})
+        s = ShopNotesSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        notes = s.validated_data["notes"]
+        before = order.notes
+        order.notes = notes
+        order.save(update_fields=["notes", "updated_at"])
+        record_audit(action="update", request=request, instance=order, changes={"notes": [before, notes]})
+        return self._respond(order)
+
+    def compute_stats(self, qs):
+        live = qs.exclude(status="cancelled")
+        return {
+            "pending": qs.filter(status="pending").count(),
+            "processing": qs.filter(status="processing").count(),
+            "shipped": qs.filter(status="shipped").count(),
+            "delivered": qs.filter(status="delivered").count(),
+            "revenue": f"{live.aggregate(s=Sum('total_amount'))['s'] or 0:.2f}",
+        }
+
+    @extend_schema(request=ShipSerializer)
+    @action(detail=True, methods=["post"])
+    def ship(self, request, pk=None):
+        s = ShipSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        order = run(shop.ship, self.get_object(), user=request.user, request=request, **s.validated_data)
+        return self._respond(order)
+
+    @extend_schema(request=CancelSerializer)
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        s = CancelSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        order = run(shop.cancel, self.get_object(), user=request.user, reason=s.validated_data["reason"],
+                    request=request)
+        return self._respond(order)

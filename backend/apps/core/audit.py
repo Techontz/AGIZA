@@ -16,6 +16,7 @@ from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.db import models, transaction
 from django.db.models import ProtectedError
+from django.db.models.fields.files import FieldFile
 
 SENSITIVE_FIELDS = {"password"}
 
@@ -27,7 +28,7 @@ def _json_safe(value: Any) -> Any:
         return str(value)
     if isinstance(value, models.Model):
         return value.pk
-    if hasattr(value, "name") and hasattr(value, "url"):  # FieldFile
+    if isinstance(value, FieldFile):  # (hasattr(value, "url") raises on an empty file)
         return value.name or None
     return value
 

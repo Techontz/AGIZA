@@ -5,6 +5,8 @@ import zlib
 
 from django.core.files.base import ContentFile
 
+from apps.core.pdf import pdf
+
 
 def _chunk(kind: bytes, data: bytes) -> bytes:
     return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
@@ -44,35 +46,19 @@ def parcel_photo(seed: int = 1) -> ContentFile:
     return ContentFile(png(400, 300, pixel), name=f"delivery-photo-{seed}.png")
 
 
-def pdf(title: str, lines: list[str]) -> bytes:
-    """Single-page PDF with a title and a few lines of text."""
-    def esc(text: str) -> str:
-        return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)").encode("latin-1", "replace").decode("latin-1")
-
-    body = [f"BT /F1 18 Tf 72 740 Td ({esc(title)}) Tj ET"]
-    for i, line in enumerate(lines):
-        body.append(f"BT /F1 11 Tf 72 {705 - i * 18} Td ({esc(line)}) Tj ET")
-    stream = "\n".join(body).encode("latin-1")
-    objects = [
-        b"<< /Type /Catalog /Pages 2 0 R >>",
-        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R "
-        b"/Resources << /Font << /F1 5 0 R >> >> >>",
-        b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream",
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    ]
-    out = bytearray(b"%PDF-1.4\n")
-    offsets = []
-    for i, obj in enumerate(objects, start=1):
-        offsets.append(len(out))
-        out += f"{i} 0 obj\n".encode() + obj + b"\nendobj\n"
-    xref = len(out)
-    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
-    for off in offsets:
-        out += f"{off:010d} 00000 n \n".encode()
-    out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
-    return bytes(out)
-
-
 def pdf_file(name: str, title: str, lines: list[str]) -> ContentFile:
     return ContentFile(pdf(title, lines), name=name)
+
+
+def product_image(seed: int, rgb: tuple[int, int, int]) -> ContentFile:
+    """A clean product tile (400×400): soft background and a rounded device silhouette."""
+    r, g, b = rgb
+
+    def pixel(x, y):
+        dx, dy = abs(x - 200), abs(y - 200)
+        inside = dx < 110 and dy < 150 and not (dx > 90 and dy > 130 and (dx - 90) ** 2 + (dy - 130) ** 2 > 400)
+        if inside:
+            return (r, g, b) if dy < 135 else (max(r - 40, 0), max(g - 40, 0), max(b - 40, 0))
+        shade = 244 - (y * 12) // 400
+        return (shade, shade, min(shade + 4, 255))
+    return ContentFile(png(400, 400, pixel), name=f"product-{seed}.png")

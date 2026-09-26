@@ -26,6 +26,7 @@ from .models import (
     Order,
     OrderStatusHistory,
     Payment,
+    ShopDetails,
 )
 from .workflows import (
     INTERNATIONAL_DEPARTMENT,
@@ -35,6 +36,7 @@ from .workflows import (
     ExpressStatus,
     InternationalStatus,
     OrderType,
+    ShopStatus,
     status_label,
 )
 
@@ -126,11 +128,13 @@ INITIAL_STATUS = {
     OrderType.EXPRESS: ExpressStatus.WAITING_QUOTE,
     OrderType.INTERNATIONAL: InternationalStatus.PENDING_PAYMENT,
     OrderType.EQUIPMENT: EquipmentStatus.PENDING,
+    OrderType.SHOP: ShopStatus.PENDING,
 }
 DETAILS_MODEL = {
     OrderType.EXPRESS: ExpressDetails,
     OrderType.INTERNATIONAL: InternationalDetails,
     OrderType.EQUIPMENT: EquipmentDetails,
+    OrderType.SHOP: ShopDetails,
 }
 
 
@@ -153,7 +157,7 @@ def create_order(
                   created_by=user, **order_fields)
     if order_type == OrderType.INTERNATIONAL:
         order.department = INTERNATIONAL_DEPARTMENT[InternationalStatus(status)]
-    elif order_type == OrderType.EXPRESS:
+    elif order_type in (OrderType.EXPRESS, OrderType.SHOP):
         order.department = Department.DELIVERY
     else:
         order.department = Department.SUPPORT
@@ -244,6 +248,9 @@ def record_payment(order: Order, *, amount: Decimal, method: str, user, kind: st
     )
     record_audit(action="create", request=request, actor=user, instance=payment,
                  changes={"amount": [None, str(amount)], "order": [None, order.reference]})
+    from apps.finance import services as finance
+
+    finance.on_payment(order, payment)
     return payment
 
 

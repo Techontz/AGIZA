@@ -268,6 +268,10 @@ def complete(delivery: Delivery, *, user, signature_name: str, notes: str = "", 
             raise WorkflowError(
                 f"Mark {order.reference} as Arrived at Destination City in Express Delivery first.", conflict=True)
         order_services.transition(order, ExpressStatus.DELIVERED, user, f"Delivered ({delivery.reference})", request)
+    elif order.order_type == OrderType.SHOP:
+        from apps.orders import shop
+
+        shop.on_delivered(order, user, request)
     return delivery
 
 

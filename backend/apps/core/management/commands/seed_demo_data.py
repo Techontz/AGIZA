@@ -25,6 +25,7 @@ SETS = {
     "shipping": "apps.shipping_engine.demo",
     "orders": "apps.orders.demo",
     "operations": "apps.demo.operations",
+    "commerce": "apps.demo.commerce",
 }
 # "operations" moves the demo orders along their workflows, so the two are
 # always removed together.

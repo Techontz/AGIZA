@@ -56,7 +56,11 @@ def flush(seed: str | list[str], model_order: list[type[models.Model]]) -> dict[
                 stored = getattr(row, name)
                 if stored:
                     stored.delete(save=False)  # demo files go with their rows
-        count, _ = rows.delete()
+        if any(f.is_relation and f.related_model is model for f in model._meta.fields):
+            # Self-referencing rows (e.g. subcategories): delete children before parents.
+            count = sum(row.delete()[0] for row in rows.order_by("-pk"))
+        else:
+            count, _ = rows.delete()
         records.delete()
         removed[model.__name__] = removed.get(model.__name__, 0) + count
     return removed
