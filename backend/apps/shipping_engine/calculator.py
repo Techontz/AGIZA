@@ -260,8 +260,20 @@ class RateCalculator:
         divisor = rule.volumetric_divisor or self.settings.default_volumetric_divisor
         pricing = self._price(pricing_model, rate, currency, divisor, measures, trace)
 
-        # 7. Minimum charge
+        # 7. Minimum charge — set in the rule's currency; an override may price in
+        # another currency, so compare like with like.
         minimum = rule.minimum_charge
+        if minimum is not None and rule.currency != currency:
+            fx_min = get_exchange_rate(rule.currency, currency, on_date)
+            if fx_min is None:
+                raise RateCalculationError(
+                    f"No exchange rate configured for {rule.currency} → {currency} (needed for the minimum charge). "
+                    "Set it in Shipping Engine Settings.",
+                    code="missing_exchange_rate",
+                )
+            converted = (minimum * fx_min[0]).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            trace.ok(f"Minimum charge {money(minimum, rule.currency)} converted to {money(converted, currency)}")
+            minimum = converted
         pricing["minimum_charge"] = minimum
         pricing["minimum_applied"] = False
         if minimum is not None and self.settings.apply_minimum_charge:

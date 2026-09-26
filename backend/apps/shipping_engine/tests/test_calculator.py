@@ -376,3 +376,29 @@ def test_inactive_method_still_prices_existing_routes_but_inactive_profile_rejec
     world.electronics.save()
     with pytest.raises(RateCalculationError):
         calc(world, ship(world, profile=world.electronics))
+
+
+# Currency safety ------------------------------------------------------------ #
+def test_minimum_charge_is_compared_in_the_override_currency(world, make_rule):
+    """A USD rule with a $30 minimum and a TZS-priced promotion: the minimum is
+    converted to TZS before comparing, never compared as a bare number."""
+    make_rule(rate=D("12"), minimum_charge=D("30"))  # USD
+    RuleOverride.objects.create(route=world.cn_tz, pricing_model=PricingModel.PER_KG, rate=D("20000"), currency="TZS",
+                                reason="Shilling promo", start_date=TODAY - timedelta(days=1),
+                                end_date=TODAY + timedelta(days=1))
+    res = calc(world, ship(world, weight_kg=D("1")))
+    assert res["status"] == "priced"
+    # 1 KG × TSh 20,000 = TSh 20,000, below $30 × 2,550 = TSh 76,500 → raised to TSh 76,500.
+    assert res["pricing"]["minimum_applied"] is True
+    assert res["pricing"]["total"] == D("76500")
+
+
+def test_minimum_charge_does_not_inflate_when_override_is_in_a_stronger_currency(world, make_rule):
+    make_rule(route=world.dar_zone_c, method=world.bus, rate=D("1500"), minimum_charge=D("3000"))  # TZS
+    RuleOverride.objects.create(route=world.dar_zone_c, pricing_model=PricingModel.PER_KG, rate=D("1"), currency="USD",
+                                reason="USD promo", start_date=TODAY - timedelta(days=1),
+                                end_date=TODAY + timedelta(days=1))
+    res = calc(world, local(world, weight_kg=D("2")))
+    # 2 KG × $1 = $2 = TSh 5,100, above the TSh 3,000 minimum → no change.
+    assert res["pricing"]["minimum_applied"] is False
+    assert res["pricing"]["total"] == D("5100")
