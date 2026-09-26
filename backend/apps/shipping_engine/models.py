@@ -10,11 +10,12 @@ optionally narrowed to a destination and/or profile.
 from decimal import Decimal
 
 from django.conf import settings
-from django.contrib.postgres.fields import ArrayField
 from django.core.validators import MinValueValidator
 from django.db import models
-from django.db.models import Q
+from django.db.models import Q, Value
+from django.db.models.functions import Coalesce
 
+from apps.core.fields import StringListField
 from apps.core.models import TimeStampedModel
 from apps.core.references import next_reference
 
@@ -39,6 +40,9 @@ from .constants import (
 POSITIVE = [MinValueValidator(Decimal("0"))]
 
 
+CARRIER_SERVICES = [("air_cargo", "Air cargo"), ("sea_cargo", "Sea cargo"), ("local_land_cargo", "Local land cargo")]
+
+
 class Carrier(TimeStampedModel):
     name = models.CharField(max_length=120, unique=True)
     type = models.CharField(max_length=24, choices=CarrierType.choices)
@@ -46,11 +50,9 @@ class Carrier(TimeStampedModel):
     contact_phone = models.CharField(max_length=32, blank=True)
     origins = models.ManyToManyField("locations.Country", blank=True, related_name="carriers_shipping_from")
     destinations = models.ManyToManyField("locations.Country", blank=True, related_name="carriers_shipping_to")
-    specializations = ArrayField(models.CharField(max_length=60), default=list, blank=True)
+    specializations = StringListField(item_max_length=60, default=list, blank=True)
     # People → Shippers: services offered, linked consolidation warehouses, staff rating.
-    services = ArrayField(models.CharField(max_length=20, choices=[
-        ("air_cargo", "Air cargo"), ("sea_cargo", "Sea cargo"), ("local_land_cargo", "Local land cargo")]),
-        default=list, blank=True)
+    services = StringListField(item_max_length=20, item_choices=CARRIER_SERVICES, default=list, blank=True)
     warehouses = models.ManyToManyField("locations.Warehouse", blank=True, related_name="shippers")
     rating = models.DecimalField(max_digits=2, decimal_places=1, null=True, blank=True)
     notes = models.TextField(blank=True)
@@ -91,7 +93,7 @@ class ShippingProfile(TimeStampedModel):
     name = models.CharField(max_length=120, unique=True)
     description = models.TextField(blank=True)
     type = models.CharField(max_length=12, choices=ProfileType.choices, default=ProfileType.STANDARD)
-    handling = ArrayField(models.CharField(max_length=32, choices=Handling.choices), default=list, blank=True)
+    handling = StringListField(item_max_length=32, item_choices=Handling.choices, default=list, blank=True)
     notes = models.TextField(blank=True, help_text="Restrictions / notes")
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.ACTIVE)
 
@@ -138,10 +140,11 @@ class ZoneDestination(models.Model):
                     | Q(city__isnull=True, region__isnull=True, country__isnull=False)
                 ),
             ),
-            # A place belongs to at most one zone, so zone resolution is unambiguous.
-            models.UniqueConstraint(fields=["city"], condition=Q(city__isnull=False), name="uniq_zone_city"),
-            models.UniqueConstraint(fields=["region"], condition=Q(region__isnull=False), name="uniq_zone_region"),
-            models.UniqueConstraint(fields=["country"], condition=Q(country__isnull=False), name="uniq_zone_country"),
+            # A place belongs to at most one zone, so zone resolution is unambiguous. Empty (NULL)
+            # columns never clash in a unique index, so no condition is needed (works on MySQL too).
+            models.UniqueConstraint(fields=["city"], name="uniq_zone_city"),
+            models.UniqueConstraint(fields=["region"], name="uniq_zone_region"),
+            models.UniqueConstraint(fields=["country"], name="uniq_zone_country"),
         ]
 
     def __str__(self) -> str:
@@ -182,10 +185,15 @@ class Route(TimeStampedModel):
                     | Q(destination_zone__isnull=True, destination_country__isnull=False)
                 ),
             ),
+            # One route per origin/destination, treating empty parts as equal (the portable form of
+            # NULLS NOT DISTINCT, which MySQL lacks).
             models.UniqueConstraint(
-                fields=["origin_country", "origin_city", "destination_country", "destination_city", "destination_zone"],
+                "origin_country",
+                Coalesce("origin_city", Value(0)),
+                Coalesce("destination_country", Value(0)),
+                Coalesce("destination_city", Value(0)),
+                Coalesce("destination_zone", Value(0)),
                 name="uniq_route",
-                nulls_distinct=False,
             ),
         ]
 
@@ -400,6 +408,9 @@ class RuleOverride(TimeStampedModel):
 class EngineSettings(models.Model):
     """Singleton (pk=1) holding global Shipping Engine behaviour."""
 
+    # A plain (not auto-increment) key: MySQL refuses CHECK constraints on auto-increment
+    # columns, and the row is always id 1 anyway (see save() and the singleton constraint).
+    id = models.BigIntegerField(primary_key=True, default=1, editable=False)
     local_currency = models.CharField(max_length=3, choices=Currency.choices, default=Currency.TZS)
     international_currency = models.CharField(max_length=3, choices=Currency.choices, default=Currency.USD)
     display_currency = models.CharField(max_length=3, choices=Currency.choices, default=Currency.TZS)

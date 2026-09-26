@@ -12,7 +12,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from django.db.models import Q
+from django.db.models import Case, Q, When
 from django.utils.text import slugify
 
 from apps.core.models import TimeStampedModel
@@ -40,7 +40,8 @@ class Category(TimeStampedModel):
         verbose_name_plural = "categories"
         constraints = [
             models.UniqueConstraint(fields=["parent", "name"], name="uniq_category_name_per_parent"),
-            models.UniqueConstraint(fields=["name"], condition=Q(parent__isnull=True), name="uniq_top_category_name"),
+            # Top-level names are unique too (a partial index on PostgreSQL; this form also works on MySQL).
+            models.UniqueConstraint(Case(When(parent__isnull=True, then="name")), name="uniq_top_category_name"),
         ]
 
     def __str__(self) -> str:
@@ -368,7 +369,7 @@ class ProductVariant(TimeStampedModel):
     class Meta:
         ordering = ["-is_default", "id"]
         constraints = [
-            models.UniqueConstraint(fields=["product"], condition=Q(is_default=True), name="one_default_variant"),
+            models.UniqueConstraint(Case(When(is_default=True, then="product")), name="one_default_variant"),
         ]
 
     def __str__(self) -> str:
@@ -402,7 +403,7 @@ class ProductImage(models.Model):
     class Meta:
         ordering = ["-is_primary", "sort_order", "id"]
         constraints = [
-            models.UniqueConstraint(fields=["product"], condition=Q(is_primary=True, variant__isnull=True),
+            models.UniqueConstraint(Case(When(is_primary=True, variant__isnull=True, then="product")),
                                     name="one_primary_product_image"),
         ]
 

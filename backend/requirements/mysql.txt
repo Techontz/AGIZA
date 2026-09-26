@@ -1,0 +1,5 @@
+# MySQL 8.0+ deployments (e.g. DirectAdmin): production requirements plus the MySQL driver.
+# Building mysqlclient needs the MySQL client headers and pkg-config on the server
+# (e.g. `dnf install mysql-devel pkgconf` / `apt install default-libmysqlclient-dev pkg-config`).
+-r prod.txt
+mysqlclient>=2.2,<2.3

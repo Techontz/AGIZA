@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 
 from apps.locations.models import City, Country, Warehouse
 from apps.orders.serializers import _dec
@@ -45,6 +46,10 @@ class CategorySerializer(serializers.ModelSerializer):
         fields = ["id", "name", "slug", "parent", "parent_name", "description", "sort_order", "is_active",
                   "products_count", "created_at", "updated_at"]
         read_only_fields = ["id", "slug", "created_at", "updated_at"]
+        # The top-level-name rule is an expression constraint (portable to MySQL), which DRF does not
+        # turn into a validator by itself; this is the validator it generated from the former condition.
+        extra_kwargs = {"name": {"validators": [UniqueValidator(
+            queryset=Category.objects.filter(parent__isnull=True), message="category with this name already exists.")]}}
 
     def validate_parent(self, parent):
         if parent and parent.parent_id:

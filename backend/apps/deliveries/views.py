@@ -15,6 +15,7 @@ from apps.accounts.constants import Module, StaffLevel
 from apps.accounts.models import User
 from apps.accounts.permissions import HasModulePermission
 from apps.core.audit import diff, record_audit, snapshot
+from apps.core.dates import local_day_bounds
 from apps.core.exceptions import ConflictError
 from apps.core.uploads import IMAGE_TYPES, file_response, validate_upload
 from apps.core.workflow import run
@@ -200,12 +201,13 @@ class DeliveryViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.C
     @action(detail=False)
     def stats(self, request):
         qs = scoped(Delivery.objects.all(), request.user)
-        today = timezone.localdate()
+        today_start, today_end = local_day_bounds(timezone.localdate())
         return Response(qs.aggregate(
             pending=Count("id", filter=~Q(status__in=COMPLETED_TAB)),
             completed=Count("id", filter=Q(status__in=COMPLETED_TAB)),
             out_for_delivery=Count("id", filter=Q(status=D.OUT_FOR_DELIVERY)),
-            delivered_today=Count("id", filter=Q(status=D.DELIVERED, delivered_at__date=today)),
+            delivered_today=Count("id", filter=Q(status=D.DELIVERED, delivered_at__gte=today_start,
+                                                  delivered_at__lt=today_end)),
             failed_issues=Count("id", filter=Q(status=D.FAILED) | (~Q(exception_flag="") & ~Q(status__in=[
                 D.DELIVERED, D.RETURNED, D.CANCELLED]))),
         ))

@@ -30,10 +30,11 @@ from django.db.models import (
     Sum,
     Value,
 )
-from django.db.models.functions import Coalesce, Greatest
+from django.db.models.functions import Cast, Coalesce, Greatest
 from django.utils import timezone
 
 from apps.core.audit import record_audit
+from apps.core.dates import local_day_bounds
 from apps.core.workflow import WorkflowError
 from apps.orders.models import Order, OrderItem, Payment
 from apps.parties.models import Customer
@@ -78,8 +79,9 @@ def with_metrics(qs=None):
         total_orders=Coalesce(Subquery(count, output_field=IntegerField()), 0),
         last_order_at=Subquery(last_order, output_field=DateTimeField()),
         last_message_at_=Subquery(last_msg, output_field=DateTimeField()),
-    ).annotate(last_activity_at=Greatest(Coalesce("last_order_at", EPOCH), Coalesce("last_message_at_", EPOCH),
-                                         Coalesce("created_at", EPOCH)))
+    ).annotate(last_activity_at=Cast(  # MySQL's GREATEST/COALESCE would otherwise return text
+        Greatest(Coalesce("last_order_at", EPOCH), Coalesce("last_message_at_", EPOCH), Coalesce("created_at", EPOCH)),
+        output_field=DateTimeField()))
 
 
 def _number(value: str, *, integer: bool = False):
@@ -110,7 +112,8 @@ def condition_q(field: str, operator: str, value: str) -> Q:
         return base & Q(**{f"{column}__lt": cutoff})
     if operator == "<":
         return base & Q(**{f"{column}__gt": cutoff})
-    return base & Q(**{f"{column}__date": (now - timedelta(days=days)).date()})
+    start, end = local_day_bounds((now - timedelta(days=days)).date())
+    return base & Q(**{f"{column}__gte": start, f"{column}__lt": end})
 
 
 def rule_q(rule: TagRule) -> Q:
