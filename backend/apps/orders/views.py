@@ -76,8 +76,8 @@ class BaseOrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.
                        mixins.UpdateModelMixin, viewsets.GenericViewSet):
     module = Module.ORDERS
     permission_classes = [HasModulePermission]
-    # Deliveries, Returns, Tasks and Finance staff look orders up (pickers, linked items).
-    read_modules = (Module.DELIVERIES, Module.RETURNS, Module.TASKS, Module.FINANCE)
+    # Deliveries, Returns, Tasks, Finance and Chat staff look orders up (pickers, linked items).
+    read_modules = (Module.DELIVERIES, Module.RETURNS, Module.TASKS, Module.FINANCE, Module.CHAT)
     order_type: OrderType
     detail_relation: str
     create_serializer = None

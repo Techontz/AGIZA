@@ -72,7 +72,8 @@ class WarehouseViewSet(
 
     module = Module.WAREHOUSE
     # Locations are picked in Shipping (consolidation hubs), Deliveries, the product editor and shop orders.
-    read_modules = (Module.SHIPPING, Module.DELIVERIES, Module.ECOMMERCE, Module.ORDERS, Module.PROCUREMENT)
+    read_modules = (Module.SHIPPING, Module.DELIVERIES, Module.ECOMMERCE, Module.ORDERS, Module.PROCUREMENT,
+                    Module.PEOPLE)
     permission_classes = [HasModulePermission]
     serializer_class = WarehouseSerializer
     queryset = Warehouse.objects.select_related("country", "city")

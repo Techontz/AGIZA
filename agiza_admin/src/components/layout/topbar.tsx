@@ -9,8 +9,9 @@ import { useMe } from "@/hooks/use-me";
 import { authService } from "@/lib/api/services/auth";
 
 import { ChangePasswordDialog } from "./change-password-dialog";
+import { NotificationsBell } from "./notifications-bell";
 
-/** Top bar from Layout.tsx: menu toggle left, signed-in user + avatar right. */
+/** Top bar from Layout.tsx: menu toggle left; notifications bell, signed-in user + avatar right. */
 export function Topbar({ sidebarOpen, onToggleSidebar }: { sidebarOpen: boolean; onToggleSidebar: () => void }) {
   const { data: me } = useMe();
   const router = useRouter();
@@ -52,65 +53,68 @@ export function Topbar({ sidebarOpen, onToggleSidebar }: { sidebarOpen: boolean;
         {sidebarOpen ? <X className="size-5" /> : <Menu className="size-5" />}
       </button>
 
-      <div className="relative" ref={menuRef}>
-        <button
-          type="button"
-          onClick={() => setMenuOpen((v) => !v)}
-          className="flex items-center gap-4 rounded-lg p-1 -m-1 hover:bg-gray-50 transition-colors"
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-        >
-          <div className="text-right hidden sm:block">
-            {me ? (
-              <>
-                <p className="text-sm font-medium text-gray-900">{me.full_name}</p>
-                <p className="text-xs text-gray-500">{me.email}</p>
-              </>
-            ) : (
-              <div className="space-y-1.5">
-                <div className="h-3.5 w-24 ml-auto animate-pulse rounded bg-gray-200" />
-                <div className="h-3 w-32 animate-pulse rounded bg-gray-100" />
-              </div>
-            )}
-          </div>
-          <div className="size-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
-            {me?.initials ?? ""}
-          </div>
-        </button>
-
-        {menuOpen && me && (
-          <div
-            role="menu"
-            className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20"
+      <div className="flex items-center gap-3 sm:gap-4">
+        <NotificationsBell />
+        <div className="relative" ref={menuRef}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            className="flex items-center gap-4 rounded-lg p-1 -m-1 hover:bg-gray-50 transition-colors"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
           >
-            <div className="px-4 py-2 border-b border-gray-100 mb-1">
-              <p className="text-sm font-medium text-gray-900 truncate">{me.full_name}</p>
-              <p className="text-xs text-gray-500">
-                {me.staff_level_display} · {me.employee_id}
-              </p>
+            <div className="text-right hidden sm:block">
+              {me ? (
+                <>
+                  <p className="text-sm font-medium text-gray-900">{me.full_name}</p>
+                  <p className="text-xs text-gray-500">{me.email}</p>
+                </>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="h-3.5 w-24 ml-auto animate-pulse rounded bg-gray-200" />
+                  <div className="h-3 w-32 animate-pulse rounded bg-gray-100" />
+                </div>
+              )}
             </div>
-            <button
-              role="menuitem"
-              type="button"
-              onClick={() => {
-                setMenuOpen(false);
-                setPasswordOpen(true);
-              }}
-              className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            <div className="size-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
+              {me?.initials ?? ""}
+            </div>
+          </button>
+
+          {menuOpen && me && (
+            <div
+              role="menu"
+              className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20"
             >
-              <KeyRound className="size-4 text-gray-400" /> Change password
-            </button>
-            <button
-              role="menuitem"
-              type="button"
-              onClick={signOut}
-              disabled={signingOut}
-              className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-60"
-            >
-              <LogOut className="size-4" /> {signingOut ? "Signing out…" : "Sign out"}
-            </button>
-          </div>
-        )}
+              <div className="px-4 py-2 border-b border-gray-100 mb-1">
+                <p className="text-sm font-medium text-gray-900 truncate">{me.full_name}</p>
+                <p className="text-xs text-gray-500">
+                  {me.staff_level_display} · {me.employee_id}
+                </p>
+              </div>
+              <button
+                role="menuitem"
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setPasswordOpen(true);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                <KeyRound className="size-4 text-gray-400" /> Change password
+              </button>
+              <button
+                role="menuitem"
+                type="button"
+                onClick={signOut}
+                disabled={signingOut}
+                className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-60"
+              >
+                <LogOut className="size-4" /> {signingOut ? "Signing out…" : "Sign out"}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <ChangePasswordDialog open={passwordOpen} onClose={() => setPasswordOpen(false)} />

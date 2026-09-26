@@ -5,7 +5,7 @@ import logging
 
 import django_filters
 from django.conf import settings
-from django.db.models import Count, OuterRef, Prefetch, Q, Subquery
+from django.db.models import Count, DecimalField, OuterRef, Prefetch, Q, Subquery, Sum
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.utils import timezone
@@ -21,7 +21,7 @@ from apps.accounts.constants import Module
 from apps.accounts.models import User
 from apps.accounts.permissions import HasModulePermission
 from apps.core.workflow import run
-from apps.orders.models import Order
+from apps.orders.models import Order, Payment
 from apps.orders.serializers import _dec, _person
 from apps.parties.models import Customer
 from apps.quotes.models import QuoteRequest
@@ -29,6 +29,7 @@ from apps.quotes.models import QuoteRequest
 from . import services
 from .models import Channel, Conversation, Message, QuickReply, WebhookEvent
 
+MONEY = DecimalField(max_digits=14, decimal_places=2)
 logger = logging.getLogger("apps.chat")
 
 
@@ -163,7 +164,7 @@ class ConversationFilter(django_filters.FilterSet):
 
     class Meta:
         model = Conversation
-        fields = ["channel", "status", "department", "assigned_agent", "view"]
+        fields = ["channel", "status", "department", "assigned_agent", "customer", "view"]
 
     def filter_view(self, qs, name, value):
         user = self.request.user
@@ -196,10 +197,17 @@ class ConversationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
                   .order_by().values("conversation").annotate(n=Count("id")).values("n"))
         orders = (Order.objects.filter(customer=OuterRef("customer")).exclude(status="cancelled").order_by()
                   .values("customer").annotate(n=Count("id")).values("n"))
+        # Net spend (payments minus refunds on live orders), same definition as the CRM metrics.
+        spent = (Payment.objects.filter(order__customer=OuterRef("customer")).exclude(order__status="cancelled")
+                 .order_by().values("order__customer")
+                 .annotate(s=Coalesce(Sum("amount", filter=~Q(kind=Payment.Kind.REFUND)), 0, output_field=MONEY)
+                           - Coalesce(Sum("amount", filter=Q(kind=Payment.Kind.REFUND)), 0, output_field=MONEY))
+                 .values("s"))
         qs = (Conversation.objects.select_related("customer", "order", "quote", "assigned_agent", "active_handler")
               .prefetch_related(Prefetch("messages", queryset=Message.objects.filter(quote__isnull=False)
                                          .select_related("quote").order_by("created_at", "id"), to_attr="quote_cards"))
-              .annotate(unread_count=Coalesce(Subquery(unread), 0), customer_orders=Coalesce(Subquery(orders), 0))
+              .annotate(unread_count=Coalesce(Subquery(unread), 0), customer_orders=Coalesce(Subquery(orders), 0),
+                        customer_spent=Coalesce(Subquery(spent, output_field=MONEY), 0, output_field=MONEY))
               .order_by("-last_message_at", "-id"))
         if self.action == "list" and "status" not in self.request.query_params and \
                 self.request.query_params.get("view") != "archived":

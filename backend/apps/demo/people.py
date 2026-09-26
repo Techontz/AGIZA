@@ -142,6 +142,8 @@ def _conversations(s, track, staff, actor):
                        notes="50 units at TSh 450,000 + TSh 375,000 shipping, valid 7 days", user=sarah)
         chat.send_quote(conv, quote, user=sarah)
         track(quote)
+        for task in quote.tasks.all():  # the automatic "generate quote" task
+            track(task)
     inbound("whatsapp", conv.contact_handle, "Fatuma Hassan", "Thank you! This looks good. How do I proceed with "
                                                                "payment?")
 
