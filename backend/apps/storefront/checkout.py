@@ -126,5 +126,6 @@ def place_order(customer, *, address: Address, shipping_method_id: int, payment_
 
 
 def _address_text(address: Address) -> str:
+    """Street part only: ShopDetails keeps the area and city in their own fields (as staff-entered orders do)."""
     label = f"{address.label}: " if address.label else ""
-    return f"{label}{address.one_line}"[:255]
+    return f"{label}{address.line1}"[:255]

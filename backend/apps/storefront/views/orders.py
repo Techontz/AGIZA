@@ -74,8 +74,9 @@ def order_detail_payload(order: Order, request) -> dict:
     if order.order_type == OrderType.SHOP:
         details = order.shop
         subtotal = sum((i.line_total for i in order.items.all()), 0)
+        city = details.city.name if details.city_id else ""
         body["shipping"] = {
-            "address": details.shipping_address, "city": details.city.name if details.city_id else "",
+            "address": ", ".join(p for p in (details.shipping_address, details.area, city) if p), "city": city,
             "area": details.area, "method": details.shipping_method.name if details.shipping_method_id else None,
             "estimated_delivery": details.estimated_delivery or None,
         }

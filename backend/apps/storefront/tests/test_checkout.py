@@ -164,6 +164,8 @@ def test_place_order_creates_app_order_reserves_stock_and_clears_cart(app, shop,
     assert details.channel == "app" and details.shipping_method == shop.rider
     assert details.delivery_address == home and details.payment_preference == "pay_later"
     assert details.estimated_delivery == "0–1 days" and details.city == shop.dar
+    assert details.shipping_address == "Home: Plot 12, Mikocheni B" and details.area == "Mikocheni"
+    assert body["order"]["shipping"]["address"] == "Home: Plot 12, Mikocheni B, Mikocheni, Dar es Salaam"
     assert order.notes == "Call on arrival"
     assert StockItem.objects.get(variant=shop.variant).reserved == 2
     assert not CartItem.objects.exists()
