@@ -9,6 +9,7 @@ from apps.core.exceptions import ConflictError
 from apps.core.pagination import StandardPagination
 from apps.core.workflow import run
 from apps.deliveries.models import Delivery
+from apps.marketplace.models import VendorFulfillment
 from apps.orders import shop
 from apps.orders.models import Order, OrderItem
 from apps.orders.services import payment_summary
@@ -16,7 +17,7 @@ from apps.orders.workflows import OrderType, ShopStatus, status_label
 from apps.payments import services as payments
 from apps.payments.models import GatewayPayment
 
-from ..catalog import image_url, primary_image
+from ..catalog import image_url, primary_image, seller_payload
 from ..serializers import CancelSerializer, OrderCardSerializer, order_group
 from ..tracking import cargo_milestones, timeline
 from .base import CustomerAPIView
@@ -30,10 +31,13 @@ def customer_orders(customer):
         Order.objects.filter(customer=customer)
         .select_related("shop__city", "shop__shipping_method", "international__source_country")
         .prefetch_related(
-            Prefetch("items", queryset=OrderItem.objects.select_related("variant__product").prefetch_related(
+            Prefetch("items", queryset=OrderItem.objects.select_related("variant__product", "vendor__city")
+                     .prefetch_related(
                 Prefetch("variant__product__images", queryset=ProductImage.objects.filter(variant__isnull=True),
                          to_attr="shop_images"))),
             "payments", "status_history",
+            Prefetch("fulfillments", queryset=VendorFulfillment.objects.select_related("vendor__city")
+                     .order_by("vendor_id", "id")),
             Prefetch("deliveries", queryset=Delivery.objects.prefetch_related("events")),
         )
     )
@@ -42,8 +46,15 @@ def customer_orders(customer):
 def _items(order, request) -> list[dict]:
     return [{"name": i.product_name, "variant_name": i.variant_name, "sku": i.sku, "quantity": i.quantity,
              "unit_price": str(i.unit_price), "line_total": str(i.line_total),
-             "product_id": i.variant.product_id,
+             "product_id": i.variant.product_id, "vendor": seller_payload(request, i.vendor),
              "image": image_url(request, primary_image(i.variant.product))} for i in order.items.all()]
+
+
+def _sellers(order, request) -> list[dict]:
+    """Each seller's part of the order (one order and one payment for the customer). No commission here."""
+    return [{"vendor": seller_payload(request, f.vendor), "status": f.status, "status_display": f.get_status_display(),
+             "item_count": f.item_count, "subtotal": str(f.subtotal), "shipping_fee": str(f.shipping_fee)}
+            for f in order.fulfillments.all()]
 
 
 def _delivery(order) -> dict | None:
@@ -89,6 +100,7 @@ def order_detail_payload(order: Order, request) -> dict:
         body["amounts"] = {"subtotal": str(subtotal), "shipping_fee": str(details.delivery_fee),
                            "total": str(order.total_amount)}
         body["payment_preference"] = details.payment_preference or None
+        body["sellers"] = _sellers(order, request)
     elif order.order_type == OrderType.INTERNATIONAL:
         details = order.international
         body["international"] = {"service": details.get_service_type_display(),

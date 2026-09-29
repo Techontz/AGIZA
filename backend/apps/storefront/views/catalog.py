@@ -1,4 +1,6 @@
-from django.db.models import Prefetch, Q
+from decimal import Decimal, InvalidOperation
+
+from django.db.models import Count, Prefetch, Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
@@ -6,17 +8,33 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.response import Response
 
 from apps.catalog.models import ProductImage, StoreSettings
+from apps.catalog.search import filter_products, normalize
 from apps.core.pagination import StandardPagination
 from apps.core.uploads import file_response
 from apps.locations.models import City, Country
 
 from .. import checkout, otp
-from ..catalog import available_by_variant, visible_categories, visible_products
-from ..serializers import CategorySerializer, CitySerializer, ProductCardSerializer, ProductDetailSerializer
+from ..catalog import AGIZA_STORE_SLUG, available_by_variant, public_vendors, visible_categories, visible_products
+from ..serializers import (
+    CategorySerializer,
+    CitySerializer,
+    ProductCardSerializer,
+    ProductDetailSerializer,
+    store_payload,
+)
 from .base import PublicAPIView
 
 ORDERING = {"newest": ("-created_at", "-id"), "price": ("price", "id"), "-price": ("-price", "id"),
-            "name": ("name", "id")}
+            "name": ("name", "id"), "popular": ("-popularity", "-created_at", "-id")}
+
+
+def _price(value: str | None) -> Decimal | None:
+    if not value:
+        return None
+    try:
+        return Decimal(value)
+    except InvalidOperation:
+        raise Http404
 
 
 def _stock_for(products) -> dict[int, int]:
@@ -45,14 +63,21 @@ class CategoryListView(PublicAPIView):
 @extend_schema(tags=["app: shop"], responses=ProductCardSerializer(many=True), parameters=[
     OpenApiParameter("search", str), OpenApiParameter("category", int), OpenApiParameter("featured", bool),
     OpenApiParameter("deals", bool), OpenApiParameter("ordering", str, enum=list(ORDERING)),
+    OpenApiParameter("store", str, description='Store slug ("agiza" = sold by AGIZA)'),
+    OpenApiParameter("min_price", str), OpenApiParameter("max_price", str),
 ])
 class ProductListView(PublicAPIView):
     def get(self, request):
         qs = visible_products()
         params = request.query_params
         if search := params.get("search", "").strip()[:100]:
-            qs = qs.filter(Q(name__icontains=search) | Q(keywords__icontains=search) | Q(brand__name__icontains=search)
-                           | Q(category__name__icontains=search))
+            qs = filter_products(qs, search)  # case, accents and punctuation don't matter ("levis" → "Levi's")
+        if store := params.get("store", "").strip():
+            qs = qs.filter(vendor__isnull=True) if store == AGIZA_STORE_SLUG else qs.filter(vendor__slug=store)
+        if (low := _price(params.get("min_price"))) is not None:
+            qs = qs.filter(price__gte=low)
+        if (high := _price(params.get("max_price"))) is not None:
+            qs = qs.filter(price__lte=high)
         if category := params.get("category"):
             if not category.isdigit():
                 raise Http404
@@ -61,7 +86,11 @@ class ProductListView(PublicAPIView):
             qs = qs.filter(featured=True)
         if params.get("deals") in ("1", "true"):
             qs = qs.filter(ofa_kali=True)
-        qs = qs.order_by(*ORDERING.get(params.get("ordering", "newest"), ORDERING["newest"]))
+        ordering = params.get("ordering", "newest")
+        if ordering == "popular":
+            qs = qs.annotate(popularity=Count("variants__order_items", filter=~Q(
+                variants__order_items__order__status="cancelled")))
+        qs = qs.order_by(*ORDERING.get(ordering, ORDERING["newest"]))
         paginator = StandardPagination()
         page = paginator.paginate_queryset(qs, request, view=self)
         context = {"request": request, "stock": _stock_for(page)}
@@ -75,6 +104,54 @@ class ProductDetailView(PublicAPIView):
             "images", "specifications", "shipping_methods"), pk=pk)
         context = {"request": request, "stock": _stock_for([product])}
         return Response(ProductDetailSerializer(product, context=context).data)
+
+
+@extend_schema(tags=["app: stores"], responses=OpenApiTypes.OBJECT, parameters=[OpenApiParameter("search", str)])
+class StoreListView(PublicAPIView):
+    """Stores customers can browse: approved, active vendors (and AGIZA's own store)."""
+
+    def get(self, request):
+        counts = dict(visible_products().order_by().values("vendor_id").annotate(n=Count("id"))
+                      .values_list("vendor_id", "n"))
+        stores = public_vendors().select_related("city").order_by("-verified", "name")
+        search = normalize(request.query_params.get("search", ""))
+        if search:
+            stores = stores.filter(Q(name__icontains=search) | Q(slug__icontains=search.replace(" ", "-"))
+                                   | Q(description__icontains=search))
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(stores, request, view=self)
+        rows = [store_payload(request, v, products_count=counts.get(v.pk, 0)) for v in page]
+        if paginator.page.number == 1 and counts.get(None) and (not search or search in "agiza"):
+            rows.insert(0, store_payload(request, None, products_count=counts[None]))
+        return paginator.get_paginated_response(rows)
+
+
+@extend_schema(tags=["app: stores"], responses=OpenApiTypes.OBJECT)
+class StoreDetailView(PublicAPIView):
+    def get(self, request, slug: str):
+        if slug == AGIZA_STORE_SLUG:
+            vendor = None
+            count = visible_products().filter(vendor__isnull=True).count()
+        else:
+            vendor = get_object_or_404(public_vendors().select_related("city"), slug=slug)
+            count = visible_products().filter(vendor=vendor).count()
+        return Response(store_payload(request, vendor, products_count=count, detail=True))
+
+
+@extend_schema(tags=["app: stores"], responses={(200, "image/*"): OpenApiTypes.BINARY})
+class StoreMediaView(PublicAPIView):
+    """A public store's logo or banner."""
+
+    throttle_classes = []
+
+    def get(self, request, slug: str, kind: str):
+        vendor = get_object_or_404(public_vendors(), slug=slug)
+        file = getattr(vendor, kind)
+        if not file:
+            raise Http404
+        response = file_response(file, getattr(vendor, f"{kind}_content_type"))
+        response["Cache-Control"] = "public, max-age=3600"
+        return response
 
 
 @extend_schema(tags=["app: shop"], responses={(200, "image/*"): OpenApiTypes.BINARY})

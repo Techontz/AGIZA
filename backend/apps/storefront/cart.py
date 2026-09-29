@@ -24,17 +24,34 @@ def cart_for(customer, *, lock: bool = False) -> Cart:
     return cart
 
 
+LINE_RELATED = ("variant__product__category", "variant__product__location__city",
+                "variant__product__location__country", "variant__product__origin_country",
+                "variant__product__shipping_profile", "variant__product__vendor__city__country")
+
+
+def _line_prefetch(prefix: str = "variant__"):
+    return (f"{prefix}product__shipping_methods", f"{prefix}option_values",
+            Prefetch(f"{prefix}product__images", queryset=ProductImage.objects.filter(variant__isnull=True),
+                     to_attr="shop_images"))
+
+
 def cart_items(cart: Cart):
-    return list(
-        cart.items.select_related("variant__product__category", "variant__product__location__city",
-                                  "variant__product__location__country", "variant__product__origin_country",
-                                  "variant__product__shipping_profile")
-        .prefetch_related(
-            "variant__product__shipping_methods", "variant__option_values",
-            Prefetch("variant__product__images", queryset=ProductImage.objects.filter(variant__isnull=True),
-                     to_attr="shop_images"),
-        )
-    )
+    return list(cart.items.select_related(*LINE_RELATED).prefetch_related(*_line_prefetch()))
+
+
+MAX_GUEST_LINES = 50
+
+
+def guest_items(rows: list[dict]) -> list[CartItem]:
+    """A visitor's cart kept in their browser: priced exactly like a saved cart (unsaved CartItem rows)."""
+    wanted = {}
+    for row in rows[:MAX_GUEST_LINES]:
+        wanted[row["variant"]] = min(wanted.get(row["variant"], 0) + row["quantity"], MAX_LINE_QUANTITY)
+    variants = (ProductVariant.objects.filter(pk__in=wanted)
+                .select_related(*(r.removeprefix("variant__") for r in LINE_RELATED))
+                .prefetch_related(*_line_prefetch("")))
+    by_id = {v.pk: v for v in variants}
+    return [CartItem(variant=by_id[vid], quantity=qty) for vid, qty in wanted.items() if vid in by_id]
 
 
 def _issue(item: CartItem, available: int) -> str:
@@ -49,7 +66,10 @@ def _issue(item: CartItem, available: int) -> str:
 
 def summarize(cart: Cart) -> dict:
     """Priced lines plus problems that block checkout (unavailable items, too little stock)."""
-    items = cart_items(cart)
+    return summarize_items(cart_items(cart))
+
+
+def summarize_items(items: list[CartItem]) -> dict:
     stock = available_by_variant(i.variant_id for i in items)
     lines, subtotal = [], Decimal("0")
     for item in items:
@@ -58,16 +78,29 @@ def summarize(cart: Cart) -> dict:
         line_total = (price * item.quantity).quantize(Decimal("0.01"))
         issue = _issue(item, available)
         lines.append({"item": item, "unit_price": price, "line_total": line_total, "available": available,
-                      "issue": issue})
+                      "issue": issue, "vendor": item.variant.product.vendor})
         if not issue:
             subtotal += line_total
     return {
         "lines": lines,
+        "groups": _by_seller(lines),
         "subtotal": subtotal,
         "item_count": sum(i.quantity for i in items),
         "currency": StoreSettings.load().currency,
         "has_issues": any(line["issue"] for line in lines),
     }
+
+
+def _by_seller(lines: list[dict]) -> list[dict]:
+    """Lines grouped by who sells them (AGIZA's own products first), in the order they were added."""
+    groups: dict = {}
+    for line in lines:
+        vendor = line["vendor"]
+        group = groups.setdefault(getattr(vendor, "pk", None), {"vendor": vendor, "lines": [], "subtotal": Decimal("0")})
+        group["lines"].append(line)
+        if not line["issue"]:
+            group["subtotal"] += line["line_total"]
+    return sorted(groups.values(), key=lambda g: g["vendor"] is not None)
 
 
 def _check_quantity(variant: ProductVariant, quantity: int):
@@ -102,3 +135,34 @@ def set_quantity(item: CartItem, quantity: int) -> CartItem:
     item.quantity = quantity
     item.save(update_fields=["quantity", "updated_at"])
     return item
+
+
+@transaction.atomic
+def merge(customer, rows: list[dict]) -> list[str]:
+    """
+    Items a visitor added before signing in join their saved cart. Each is capped at what is
+    in stock; anything that can't be added is reported instead of failing the whole merge.
+    """
+    notes = []
+    cart = cart_for(customer, lock=True)
+    for item in guest_items(rows):
+        variant = item.variant
+        existing = cart.items.filter(variant=variant).first()
+        have = existing.quantity if existing else 0
+        if not is_sellable(variant):
+            notes.append(f"{variant.product.name} is no longer available.")
+            continue
+        room = min(available_by_variant([variant.pk]).get(variant.pk, 0), MAX_LINE_QUANTITY) - have
+        quantity = min(item.quantity, room)
+        if quantity <= 0:
+            if have == 0:
+                notes.append(f"{variant.product.name} is out of stock.")
+            continue
+        if quantity < item.quantity:
+            notes.append(f"Only {quantity} more of {variant.product.name} could be added.")
+        if existing:
+            existing.quantity = have + quantity
+            existing.save(update_fields=["quantity", "updated_at"])
+        else:
+            CartItem.objects.create(cart=cart, variant=variant, quantity=quantity)
+    return notes

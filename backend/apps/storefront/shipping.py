@@ -6,6 +6,11 @@ that travel together, i.e. that share an origin and a shipping profile. Lines wh
 product has a product-specific rule are priced on their own, so that rule applies.
 A method is offered only when every group can be priced with it, and the delivery
 fee is the sum of the group prices. React Native never computes a price.
+
+Marketplace: goods held in AGIZA warehouses travel together whoever sells them, but
+goods a vendor keeps at its own premises are collected there, so each such vendor is
+its own shipment (from the vendor's city). Every option lists its shipments so the
+customer sees why the fee is what it is.
 """
 from __future__ import annotations
 
@@ -40,16 +45,27 @@ class _Group:
     origin_city: City | None
     profile: ShippingProfile | None
     product_sku: str = ""
+    vendor: object = None  # set when the goods are collected from a vendor's own premises
+    vendor_ids: set = field(default_factory=set)  # sellers whose items are in this shipment (None = AGIZA)
     quantity: int = 0
     weight_kg: Decimal = Decimal("0")
     cbm: Decimal | None = Decimal("0")
     missing_weight: list[str] = field(default_factory=list)
 
 
+def _at_vendor(product) -> bool:
+    return product.location_kind == LocationKind.VENDOR and product.vendor_id is not None
+
+
 def _origin(product, store_city: City | None) -> tuple[Country | None, City | None]:
     """Where the goods ship from: the warehouse holding them, the (foreign) source country, else the store's city."""
     if product.location_kind == LocationKind.WAREHOUSE and product.location_id:
         return product.location.country, product.location.city
+    if _at_vendor(product):
+        if product.location_id:
+            return product.location.country, product.location.city
+        if product.vendor.city_id:
+            return product.vendor.city.country, product.vendor.city
     if product.origin_country_id and product.origin_country.iso2 != "TZ":
         return product.origin_country, None
     if store_city is not None:
@@ -78,8 +94,10 @@ def _groups(lines: list[Line]) -> list[_Group]:
         if country is None:
             raise RateCalculationError("The store location isn't set up for deliveries.", code="configuration")
         sku = product.sku.upper() if product.sku.upper() in product_rule_skus else ""
-        key = (country.pk, getattr(city, "pk", None), product.shipping_profile_id, sku)
-        group = groups.setdefault(key, _Group(country, city, product.shipping_profile, sku))
+        pickup_vendor = product.vendor if _at_vendor(product) else None
+        key = (country.pk, getattr(city, "pk", None), product.shipping_profile_id, sku, getattr(pickup_vendor, "pk", None))
+        group = groups.setdefault(key, _Group(country, city, product.shipping_profile, sku, pickup_vendor))
+        group.vendor_ids.add(product.vendor_id)
         weight = line.variant.weight_kg or product.weight_kg
         if not weight:
             group.missing_weight.append(product.name)
@@ -122,6 +140,31 @@ def _price_group(calculator: RateCalculator, method: ShippingMethod, group: _Gro
     return calculator.calculate(shipment)
 
 
+def _describe(group: _Group) -> dict:
+    """A shipment as the customer sees it: where it is collected and whose items are in it."""
+    place = group.origin_city.name if group.origin_city else group.origin_country.name
+    if group.vendor is not None:
+        label = f"From {group.vendor.name}, {place}"
+    elif group.origin_country.iso2 != "TZ":
+        label = f"Imported from {group.origin_country.name}"
+    else:
+        label = f"From AGIZA, {place}"
+    return {"label": label, "origin": place, "vendor_ids": sorted(group.vendor_ids, key=lambda v: (v is not None, v or 0))}
+
+
+def allocation(option: dict) -> dict:
+    """The delivery fee of an option split by seller ({vendor_id or None: fee}), for vendor accounting."""
+    shares: dict = {}
+    for shipment in option.get("shipments") or []:
+        sellers = shipment["vendor_ids"] or [None]
+        cost = shipment["cost"]
+        each = (cost / len(sellers)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        for i, seller in enumerate(sellers):
+            part = cost - each * (len(sellers) - 1) if i == len(sellers) - 1 else each
+            shares[seller] = shares.get(seller, Decimal("0")) + part
+    return shares
+
+
 def delivery_options(lines: list[Line], destination: City, *, currency: str) -> list[dict]:
     """Every candidate method with its price (or why it can't be used), cheapest available first."""
     if not lines:
@@ -136,8 +179,9 @@ def delivery_options(lines: list[Line], destination: City, *, currency: str) -> 
     for method in candidate_methods(lines):
         option = {"method_id": method.pk, "code": method.code, "name": method.name, "category": method.category,
                   "description": method.description, "available": False, "cost": None, "currency": currency,
-                  "estimated_delivery": method.estimated_delivery or None, "carrier": None, "message": ""}
-        total, rule_ids, carriers = Decimal("0"), [], set()
+                  "estimated_delivery": method.estimated_delivery or None, "carrier": None, "message": "",
+                  "shipments": []}
+        total, rule_ids, carriers, shipments = Decimal("0"), [], set(), []
         try:
             for group in groups:
                 result = _price_group(calculator, method, group, destination)
@@ -148,6 +192,7 @@ def delivery_options(lines: list[Line], destination: City, *, currency: str) -> 
                                  result["pricing"]["target_currency"], currency)
                     raise RateCalculationError("Delivery pricing is being updated. Please try again later.")
                 total += result["pricing"]["total"]
+                shipments.append({**_describe(group), "cost": result["pricing"]["total"]})
                 rule_ids.append(result["rule"]["id"])
                 if result["carrier"]:
                     carriers.add(result["carrier"]["name"])
@@ -164,7 +209,7 @@ def delivery_options(lines: list[Line], destination: City, *, currency: str) -> 
         maxes = [r[1] for r in rules if r[1] is not None]
         eta = eta_label(max(mins) if mins else None, max(maxes) if maxes else None)
         option.update(available=True, cost=total, carrier=", ".join(sorted(carriers)) or None,
-                      estimated_delivery=eta if eta != "—" else option["estimated_delivery"])
+                      estimated_delivery=eta if eta != "—" else option["estimated_delivery"], shipments=shipments)
         options.append(option)
     options.sort(key=lambda o: (not o["available"], o["cost"] if o["cost"] is not None else 0, o["name"]))
     return options

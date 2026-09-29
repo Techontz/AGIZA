@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     "apps.notifications",
     "apps.payments",
     "apps.storefront",
+    "apps.marketplace",
 ]
 
 MIDDLEWARE = [

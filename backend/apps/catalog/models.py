@@ -150,8 +150,23 @@ class ProductOptionValue(models.Model):
         return f"{self.option.name}: {self.value}"
 
 
+def vendor_media_path(instance, filename):
+    return f"catalog/vendors/{instance.pk or 'new'}/{filename}"
+
+
+# Store slugs the marketplace uses itself ("agiza" is the store of products AGIZA sells directly).
+RESERVED_STORE_SLUGS = {"agiza", "admin", "api", "new", "apply", "seller", "sell", "stores", "store"}
+
+
 class Vendor(TimeStampedModel):
-    """A seller whose products Agiza lists, with a profit agreement."""
+    """
+    A seller on the AGIZA marketplace.
+
+    Two kinds share this table: vendors AGIZA staff manage on the seller's behalf (no
+    `owner`; their goods are usually held in AGIZA warehouses) and self-service vendors
+    who applied with their AGIZA account (`owner`) and run their own store. Products
+    with no vendor are sold by AGIZA itself.
+    """
 
     class ProfitType(models.TextChoices):
         FIXED = "fixed", "Fixed Amount (TSh)"
@@ -161,19 +176,73 @@ class Vendor(TimeStampedModel):
         ALL = "all", "Apply to All Products"
         PER_PRODUCT = "per_product", "Configure Per Product"
 
+    class ApprovalStatus(models.TextChoices):
+        PENDING = "pending", "Application received"
+        UNDER_REVIEW = "under_review", "Under review"
+        CHANGES_REQUESTED = "changes_requested", "Changes requested"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+        SUSPENDED = "suspended", "Suspended"
+
+    class CommissionMode(models.TextChoices):
+        DEFAULT = "default", "Marketplace rates (category / default commission)"
+        CUSTOM = "custom", "This vendor's own agreement"
+
+    class BusinessType(models.TextChoices):
+        INDIVIDUAL = "individual", "Individual / sole trader"
+        COMPANY = "company", "Registered company"
+
+    class PayoutMethod(models.TextChoices):
+        MOBILE_MONEY = "mobile_money", "Mobile money"
+        BANK = "bank", "Bank transfer"
+
     reference = models.CharField(max_length=20, unique=True, editable=False)
     name = models.CharField(max_length=150, unique=True)
+    slug = models.SlugField(max_length=160, unique=True)
     email = models.EmailField(blank=True)
     phone = models.CharField(max_length=32, blank=True)
     location = models.CharField(max_length=120, blank=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.ACTIVE)
     verified = models.BooleanField(default=False)
+    # Commission (AGIZA's share of each sale). CUSTOM uses the profit agreement below.
+    commission_mode = models.CharField(max_length=8, choices=CommissionMode.choices, default=CommissionMode.CUSTOM)
     profit_type = models.CharField(max_length=10, choices=ProfitType.choices, default=ProfitType.PERCENT)
     profit_value = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"), validators=POSITIVE)
     profit_scope = models.CharField(max_length=12, choices=ProfitScope.choices, default=ProfitScope.ALL)
     joined_date = models.DateField(null=True, blank=True)
     rating = models.DecimalField(max_digits=2, decimal_places=1, null=True, blank=True)
     notes = models.TextField(blank=True)
+    # Self-service store
+    owner = models.OneToOneField("storefront.CustomerAccount", null=True, blank=True, on_delete=models.SET_NULL,
+                                 related_name="vendor", help_text="AGIZA account that runs this store")
+    approval_status = models.CharField(max_length=20, choices=ApprovalStatus.choices,
+                                       default=ApprovalStatus.APPROVED, db_index=True)
+    description = models.TextField(blank=True)
+    logo = models.FileField(upload_to=vendor_media_path, blank=True)
+    logo_content_type = models.CharField(max_length=100, blank=True)
+    banner = models.FileField(upload_to=vendor_media_path, blank=True)
+    banner_content_type = models.CharField(max_length=100, blank=True)
+    city = models.ForeignKey("locations.City", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    warehouse = models.OneToOneField("locations.Warehouse", null=True, blank=True, on_delete=models.PROTECT,
+                                     related_name="vendor", help_text="Where the vendor keeps the stock it sells")
+    # Business information (reviewed by AGIZA)
+    business_type = models.CharField(max_length=12, choices=BusinessType.choices, blank=True)
+    legal_name = models.CharField(max_length=200, blank=True)
+    registration_number = models.CharField(max_length=60, blank=True)
+    tin = models.CharField(max_length=30, blank=True, help_text="Tax identification number")
+    business_address = models.CharField(max_length=255, blank=True)
+    contact_person = models.CharField(max_length=150, blank=True)
+    # Payout details (where AGIZA settles the vendor's earnings)
+    payout_method = models.CharField(max_length=14, choices=PayoutMethod.choices, blank=True)
+    payout_provider = models.CharField(max_length=80, blank=True, help_text="e.g. M-Pesa, CRDB Bank")
+    payout_account_name = models.CharField(max_length=150, blank=True)
+    payout_account_number = models.CharField(max_length=60, blank=True)
+    # Review
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name="+")
+    review_note = models.TextField(blank=True, help_text="Last reason given to the vendor")
 
     class Meta:
         ordering = ["name"]
@@ -188,7 +257,18 @@ class Vendor(TimeStampedModel):
     def save(self, *args, **kwargs):
         if not self.reference:
             self.reference = next_reference("VEND", width=3)
+        if not self.slug:
+            self.slug = unique_vendor_slug(self.name, exclude_pk=self.pk)
         super().save(*args, **kwargs)
+
+    @property
+    def is_public(self) -> bool:
+        """Shown to customers and able to sell."""
+        return self.approval_status == self.ApprovalStatus.APPROVED and self.status == Status.ACTIVE
+
+    @property
+    def self_service(self) -> bool:
+        return self.owner_id is not None
 
     def profit_for(self, price: Decimal, product=None) -> Decimal:
         """Agiza's profit on one sale at `price` under this agreement."""
@@ -200,6 +280,28 @@ class Vendor(TimeStampedModel):
         if ptype == self.ProfitType.FIXED:
             return value
         return (price * value / Decimal("100")).quantize(Decimal("0.01"))
+
+
+def unique_vendor_slug(name: str, *, exclude_pk=None) -> str:
+    base = (slugify(name) or "store")[:150]
+    slug, n = base, 1
+    while slug in RESERVED_STORE_SLUGS or Vendor.objects.filter(slug=slug).exclude(pk=exclude_pk).exists():
+        n += 1
+        slug = f"{base}-{n}"
+    return slug
+
+
+class ReviewStatus(models.TextChoices):
+    """Moderation of what vendors publish. Products AGIZA staff create don't need a review."""
+
+    NOT_REQUIRED = "not_required", "No review needed"
+    PENDING = "pending", "Pending review"
+    APPROVED = "approved", "Approved"
+    REJECTED = "rejected", "Rejected"
+    DISABLED = "disabled", "Disabled by AGIZA"
+
+
+PUBLISHABLE_REVIEW = (ReviewStatus.NOT_REQUIRED, ReviewStatus.APPROVED)
 
 
 class ProductStatus(models.TextChoices):
@@ -305,6 +407,15 @@ class Product(TimeStampedModel):
     vat_applicable = models.BooleanField(default=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                    related_name="+")
+    # 15. Marketplace moderation
+    review_status = models.CharField(max_length=12, choices=ReviewStatus.choices, default=ReviewStatus.NOT_REQUIRED,
+                                     db_index=True)
+    review_note = models.TextField(blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name="+")
+    # Normalised text customers search (see apps.catalog.search); kept in step on save.
+    search_text = models.CharField(max_length=1000, blank=True, editable=False)
 
     class Meta:
         ordering = ["name"]
@@ -316,6 +427,11 @@ class Product(TimeStampedModel):
     def save(self, *args, **kwargs):
         if not self.reference:
             self.reference = next_reference("PROD", width=3)
+        from .search import product_search_text
+
+        self.search_text = product_search_text(self)
+        if kwargs.get("update_fields") is not None:
+            kwargs["update_fields"] = {*kwargs["update_fields"], "search_text"}
         super().save(*args, **kwargs)
 
     @property

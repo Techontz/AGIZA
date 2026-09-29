@@ -13,6 +13,7 @@ from .views import (
     OriginEstimateViewSet,
     ProductViewSet,
     StoreSettingsView,
+    VendorMediaFileView,
     VendorViewSet,
 )
 
@@ -29,6 +30,7 @@ router.register("catalog/origin-estimates", OriginEstimateViewSet, basename="ori
 urlpatterns = [
     path("catalog/images/<int:pk>/file/", ImageFileView.as_view(), name="product-image-file"),
     path("catalog/brands/<int:pk>/logo/file/", BrandLogoView.as_view(), name="brand-logo"),
+    path("catalog/vendors/<int:pk>/<str:kind>/file/", VendorMediaFileView.as_view(), name="vendor-media-file"),
     path("catalog/settings/", StoreSettingsView.as_view(), name="store-settings"),
     path("catalog/delivery-estimate/", DeliveryEstimateView.as_view(), name="delivery-estimate"),
     *router.urls,

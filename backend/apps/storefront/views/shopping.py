@@ -20,11 +20,12 @@ from ..serializers import (
     CartAddSerializer,
     CartQuantitySerializer,
     CheckoutPreviewSerializer,
+    GuestCartSerializer,
     PlaceOrderSerializer,
     cart_payload,
     quote_payload,
 )
-from .base import CustomerAPIView
+from .base import CustomerAPIView, PublicAPIView
 from .orders import order_detail_payload
 
 
@@ -123,6 +124,28 @@ class CartItemDetailView(_CartView):
     def delete(self, request, pk: int):
         self._get(pk).delete()
         return self.cart_response()
+
+
+@extend_schema(tags=["app: cart"], request=GuestCartSerializer, responses=OpenApiTypes.OBJECT)
+class GuestCartView(PublicAPIView):
+    """A visitor's cart (kept in their browser) priced by the server, grouped by store like a saved cart."""
+
+    def post(self, request):
+        s = GuestCartSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        return Response(cart_payload(carts.summarize_items(carts.guest_items(s.validated_data["items"])), request))
+
+
+@extend_schema(tags=["app: cart"], request=GuestCartSerializer, responses=OpenApiTypes.OBJECT)
+class CartMergeView(_CartView):
+    """After signing in: add what the visitor put in their browser cart to their saved cart."""
+
+    def post(self, request):
+        s = GuestCartSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        notes = carts.merge(self.customer, s.validated_data["items"])
+        body = cart_payload(carts.summarize(carts.cart_for(self.customer)), request)
+        return Response({**body, "notes": notes})
 
 
 # --------------------------------------------------------------------------- #

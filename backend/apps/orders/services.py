@@ -86,6 +86,10 @@ def _after_status_change(order: Order, from_status: str, to_status: str, user):
     elif order.order_type == OrderType.INTERNATIONAL:
         shipping.on_order_status(order, to_status, user)
     deliveries.on_order_status(order, to_status, user)
+    if order.order_type == OrderType.SHOP:
+        from apps.marketplace import services as marketplace
+
+        marketplace.on_order_status(order, to_status, user)
 
 
 def _check_transition(order: Order, to_status: str, via_action: str | None = None):
@@ -259,6 +263,10 @@ def record_payment(order: Order, *, amount: Decimal, method: str, user, kind: st
     from apps.finance import services as finance
 
     finance.on_payment(order, payment)
+    if order.order_type == OrderType.SHOP:
+        from apps.marketplace import services as marketplace
+
+        marketplace.on_payment(order)
     _refresh_customer(order.customer, user)
     return payment
 

@@ -16,7 +16,7 @@ from apps.orders.workflows import OrderType, status_label
 from apps.parties.models import Address, Customer
 from apps.quotes.models import QuoteRequest
 
-from .catalog import image_url, primary_image
+from .catalog import image_url, primary_image, seller_payload, vendor_media_url
 from .phone import display_phone
 
 
@@ -158,11 +158,15 @@ class ProductCardSerializer(serializers.ModelSerializer):
     category = serializers.CharField(source="category.name")
     in_stock = serializers.SerializerMethodField()
     labels = serializers.SerializerMethodField()
+    vendor = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
         fields = ["id", "name", "price", "price_max", "compare_at_price", "image", "brand", "category",
-                  "condition", "featured", "ofa_kali", "in_stock", "labels"]
+                  "condition", "featured", "ofa_kali", "in_stock", "labels", "vendor", "created_at"]
+
+    def get_vendor(self, product) -> dict:
+        return seller_payload(self.context.get("request"), product.vendor)
 
     def get_price(self, product) -> str:
         return money(_price_range(product)[0])
@@ -235,6 +239,31 @@ class ProductDetailSerializer(ProductCardSerializer):
 
 
 # --------------------------------------------------------------------------- #
+# Stores (vendors)
+# --------------------------------------------------------------------------- #
+def store_payload(request, vendor, *, products_count: int | None = None, detail: bool = False) -> dict:
+    """A store as customers see it. Never includes business, payout or commission details."""
+    if vendor is None:  # the products AGIZA sells itself
+        from apps.catalog.models import StoreSettings
+
+        store = StoreSettings.load()
+        data = {"slug": "agiza", "name": "AGIZA", "logo": None, "banner": None, "verified": True, "is_agiza": True,
+                "city": store.location.name if store.location_id else None, "rating": None, "joined": None,
+                "products_count": products_count}
+        if detail:
+            data["description"] = store.description or "Products sold and delivered by AGIZA."
+        return data
+    data = {"slug": vendor.slug, "name": vendor.name, "logo": vendor_media_url(request, vendor, "logo"),
+            "banner": vendor_media_url(request, vendor, "banner"), "verified": vendor.verified, "is_agiza": False,
+            "city": vendor.city.name if vendor.city_id else (vendor.location or None),
+            "rating": str(vendor.rating) if vendor.rating is not None else None,
+            "joined": vendor.joined_date, "products_count": products_count}
+    if detail:
+        data["description"] = vendor.description
+    return data
+
+
+# --------------------------------------------------------------------------- #
 # Cart & checkout
 # --------------------------------------------------------------------------- #
 class CartAddSerializer(serializers.Serializer):
@@ -252,7 +281,8 @@ def cart_payload(summary: dict, request) -> dict:
         item = line["item"]
         variant, product = item.variant, item.variant.product
         lines.append({
-            "id": item.pk,
+            "id": item.pk,  # null in a visitor's (browser) cart
+            "vendor": seller_payload(request, product.vendor),
             "product_id": product.pk,
             "variant_id": variant.pk,
             "name": product.name,
@@ -264,8 +294,19 @@ def cart_payload(summary: dict, request) -> dict:
             "available": line["available"],
             "issue": line["issue"],
         })
-    return {"items": lines, "item_count": summary["item_count"], "subtotal": money(summary["subtotal"]),
-            "currency": summary["currency"], "has_issues": summary["has_issues"]}
+    groups = [{"vendor": seller_payload(request, g["vendor"]), "subtotal": money(g["subtotal"]),
+               "variant_ids": [line["item"].variant_id for line in g["lines"]]} for g in summary["groups"]]
+    return {"items": lines, "groups": groups, "item_count": summary["item_count"],
+            "subtotal": money(summary["subtotal"]), "currency": summary["currency"],
+            "has_issues": summary["has_issues"]}
+
+
+class GuestCartSerializer(serializers.Serializer):
+    class Line(serializers.Serializer):
+        variant = serializers.IntegerField(min_value=1)
+        quantity = serializers.IntegerField(min_value=1, max_value=100)
+
+    items = Line(many=True, allow_empty=True, max_length=50)
 
 
 class CheckoutPreviewSerializer(serializers.Serializer):
@@ -285,7 +326,9 @@ class PlaceOrderSerializer(serializers.Serializer):
 
 
 def option_payload(option: dict) -> dict:
-    return {**option, "cost": money(option["cost"])}
+    shipments = [{"label": sh["label"], "origin": sh["origin"], "cost": money(sh["cost"])}
+                 for sh in option.get("shipments") or []]
+    return {**option, "cost": money(option["cost"]), "shipments": shipments}
 
 
 def quote_payload(quote, request, *, payment_methods: list[dict]) -> dict:

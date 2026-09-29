@@ -299,6 +299,13 @@ class OrderItem(models.Model):
     line_total = models.DecimalField(max_digits=14, decimal_places=2, validators=POSITIVE)
     warehouse = models.ForeignKey("locations.Warehouse", null=True, blank=True, on_delete=models.PROTECT,
                                   related_name="+", help_text="Where the stock is reserved")
+    # Marketplace: who sold the line and AGIZA's commission on it, captured when ordered.
+    vendor = models.ForeignKey("catalog.Vendor", null=True, blank=True, on_delete=models.PROTECT, related_name="+",
+                               help_text="Empty = sold by AGIZA")
+    fulfillment = models.ForeignKey("marketplace.VendorFulfillment", null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name="items")
+    commission_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True,
+                                            validators=POSITIVE)
 
     class Meta:
         ordering = ["id"]

@@ -58,6 +58,7 @@ class Warehouse(TimeStampedModel):
         FULFILLMENT = "fulfillment", "Fulfillment"
         PICKUP_POINT = "pickup_point", "Pickup Point"
         SHOP = "shop", "Shop"
+        VENDOR = "vendor", "Vendor location"
 
     class Status(models.TextChoices):
         ACTIVE = "active", "Active"
@@ -90,6 +91,8 @@ class Warehouse(TimeStampedModel):
         if not self.code:
             if self.type == self.Type.SHOP:
                 prefix = "WH-SHOP"
+            elif self.type == self.Type.VENDOR:
+                prefix = "WH-VEND"
             elif self.country.iso2 == "TZ":
                 prefix = "WH-TZ"
             else:

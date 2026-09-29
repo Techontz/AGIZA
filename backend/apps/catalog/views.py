@@ -2,6 +2,7 @@ import django_filters
 from django.db import transaction
 from django.db.models import Count, DecimalField, F, IntegerField, OuterRef, Prefetch, Q, Subquery, Sum
 from django.db.models.functions import Coalesce
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
@@ -143,23 +144,93 @@ class OptionViewSet(CatalogViewSet):
         return Response(OptionSerializer(self.get_queryset().get(pk=option.pk)).data)
 
 
+class VendorFilter(django_filters.FilterSet):
+    approval_status = django_filters.BaseInFilter(field_name="approval_status")
+    self_service = django_filters.BooleanFilter(field_name="owner", lookup_expr="isnull", exclude=True)
+
+    class Meta:
+        model = Vendor
+        fields = ["status", "profit_type", "verified", "approval_status", "commission_mode", "self_service"]
+
+
 @extend_schema(tags=["catalog"])
 class VendorViewSet(CatalogViewSet):
+    """
+    Vendors: staff-managed sellers and self-service stores. Application review and account
+    status go through `review` (never a plain field edit), which records history and notifies.
+    """
+
     serializer_class = VendorSerializer
-    read_modules = (Module.ORDERS, Module.WAREHOUSE, Module.PEOPLE)
-    filterset_fields = ["status", "profit_type", "verified"]
-    search_fields = ["name", "email", "location", "reference"]
-    ordering_fields = ["name", "joined_date"]
+    read_modules = (Module.ORDERS, Module.WAREHOUSE, Module.PEOPLE, Module.FINANCE)
+    filterset_class = VendorFilter
+    search_fields = ["name", "email", "location", "reference", "phone", "legal_name", "contact_person"]
+    ordering_fields = ["name", "joined_date", "submitted_at", "created_at"]
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        vendor = serializer.instance
+        if vendor.owner_id:
+            from apps.marketplace.services import ensure_stock_location
+
+            ensure_stock_location(vendor)
+
+    @extend_schema(responses=OpenApiTypes.OBJECT)
+    @action(detail=False)
+    def counts(self, request):
+        rows = dict(Vendor.objects.order_by().values("approval_status").annotate(n=Count("id"))
+                    .values_list("approval_status", "n"))
+        return Response({**{k: rows.get(k, 0) for k in Vendor.ApprovalStatus.values}, "all": sum(rows.values())})
+
+    @extend_schema(request=OpenApiTypes.OBJECT, responses=VendorSerializer)
+    @action(detail=True, methods=["post"])
+    def review(self, request, pk=None):
+        """{"status": under_review|approved|rejected|changes_requested|suspended, "note": "..."}"""
+        from apps.marketplace import services as marketplace
+
+        vendor = self.get_object()
+        run(marketplace.change_status, vendor, str(request.data.get("status", "")), user=request.user,
+            note=str(request.data.get("note", ""))[:2000], request=request)
+        return Response(self.get_serializer(self.get_queryset().get(pk=vendor.pk)).data)
+
+    @extend_schema(responses=OpenApiTypes.OBJECT)
+    @action(detail=True)
+    def history(self, request, pk=None):
+        vendor = self.get_object()
+        labels = dict(Vendor.ApprovalStatus.choices)
+        rows = vendor.status_history.select_related("changed_by").order_by("-created_at", "-id")
+        return Response([{"from_status": h.from_status, "to_status": h.to_status,
+                          "to_status_display": labels.get(h.to_status, h.to_status), "note": h.note,
+                          "by": "Vendor" if h.by_vendor else (h.changed_by.full_name if h.changed_by else "System"),
+                          "at": h.created_at} for h in rows])
+
+    @extend_schema(request=OpenApiTypes.OBJECT, responses=VendorSerializer)
+    @action(detail=True, methods=["post"], parser_classes=[MultiPartParser, FormParser],
+            url_path=r"media/(?P<kind>logo|banner)")
+    def media(self, request, pk=None, kind=None):
+        vendor = self.get_object()
+        upload = request.FILES.get("file")
+        content_type = validate_upload(upload, allowed=IMAGE_TYPES, max_bytes=4 * 1024 * 1024)
+        old = getattr(vendor, kind)
+        if old:
+            old.delete(save=False)
+        setattr(vendor, kind, upload)
+        setattr(vendor, f"{kind}_content_type", content_type)
+        vendor.save(update_fields=[kind, f"{kind}_content_type", "updated_at"])
+        record_audit(action="update", request=request, instance=vendor, changes={kind: [None, getattr(vendor, kind).name]})
+        return Response(self.get_serializer(self.get_queryset().get(pk=vendor.pk)).data)
 
     def get_queryset(self):
         sales = (OrderItem.objects.filter(variant__product__vendor=OuterRef("pk")).exclude(order__status="cancelled")
                  .order_by().values("variant__product__vendor").annotate(s=Sum("line_total")).values("s"))
         orders = (OrderItem.objects.filter(variant__product__vendor=OuterRef("pk")).exclude(order__status="cancelled")
                   .order_by().values("variant__product__vendor").annotate(n=Count("order", distinct=True)).values("n"))
-        return (Vendor.objects.annotate(products_count=Count("products", distinct=True),
-                                        orders_count=Coalesce(Subquery(orders, output_field=IntegerField()), 0),
-                                        sales_total=Subquery(sales, output_field=DecimalField(max_digits=16,
-                                                                                              decimal_places=2)))
+        pending = (Product.objects.filter(vendor=OuterRef("pk"), review_status="pending").order_by()
+                   .values("vendor").annotate(n=Count("id")).values("n"))
+        return (Vendor.objects.select_related("owner__customer", "city", "warehouse")
+                .annotate(products_count=Count("products", distinct=True),
+                          orders_count=Coalesce(Subquery(orders, output_field=IntegerField()), 0),
+                          pending_products=Coalesce(Subquery(pending, output_field=IntegerField()), 0),
+                          sales_total=Subquery(sales, output_field=DecimalField(max_digits=16, decimal_places=2)))
                 .order_by("name"))
 
 
@@ -169,9 +240,20 @@ class ProductFilter(django_filters.FilterSet):
     stock = django_filters.ChoiceFilter(choices=[("in_stock", "In stock"), ("low", "Low"), ("out", "Out of stock")],
                                         method="filter_stock")
 
+    review_status = django_filters.BaseInFilter(field_name="review_status")
+    seller = django_filters.CharFilter(method="filter_seller")
+
     class Meta:
         model = Product
-        fields = ["category", "status", "brand", "vendor", "featured", "stock"]
+        fields = ["category", "status", "brand", "vendor", "featured", "stock", "review_status", "seller"]
+
+    def filter_seller(self, qs, name, value):
+        """"agiza" = sold by AGIZA itself; "vendors" = any vendor; otherwise a vendor id."""
+        if value == "agiza":
+            return qs.filter(vendor__isnull=True)
+        if value == "vendors":
+            return qs.filter(vendor__isnull=False)
+        return qs.filter(vendor_id=value) if value.isdigit() else qs.none()
 
     def filter_category(self, qs, name, value):
         return qs.filter(Q(category_id=value) | Q(subcategory_id=value))
@@ -203,7 +285,7 @@ class ProductViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cr
         variants = ProductVariant.objects.prefetch_related(Prefetch("stock", queryset=stock), "images",
                                                            "option_values__option")
         qs = (Product.objects.select_related("brand", "category", "origin_country", "location__country",
-                                             "location__city")
+                                             "location__city", "vendor")
               .prefetch_related(Prefetch("variants", queryset=variants), "images", "labels")
               .order_by("name", "id").distinct())
         if self.action == "retrieve":
@@ -297,6 +379,20 @@ class ProductViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cr
             img.save(update_fields=["is_primary"])
         return self._respond(product)
 
+    @extend_schema(request=OpenApiTypes.OBJECT, responses=ProductDetailSerializer)
+    @action(detail=True, methods=["post"])
+    def moderate(self, request, pk=None):
+        """Review a vendor's product: {"action": "approve" | "reject" | "disable", "note": "..."}."""
+        from apps.marketplace import vendor_products
+
+        product = self.get_object()
+        action_name = str(request.data.get("action", ""))
+        if action_name not in vendor_products.MODERATION:
+            raise ValidationError({"action": ["Choose approve, reject or disable."]})
+        run(vendor_products.moderate, product, action_name, user=request.user,
+            note=str(request.data.get("note", ""))[:2000], request=request)
+        return self._respond(self.get_queryset().get(pk=product.pk))
+
     @action(detail=False)
     def stats(self, request):
         qs = Product.objects.all()
@@ -324,6 +420,22 @@ class ProductViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cr
             rows.append({"id": v.id, "sku": v.sku, "name": v.product.name if v.is_default else f"{v.product.name} — {v.name}",
                          "price": f"{v.effective_price:.2f}", "available": sum(s.available for s in v.stock.all())})
         return Response(rows)
+
+
+class VendorMediaFileView(APIView):
+    module = Module.ECOMMERCE
+    permission_classes = [HasModulePermission]
+    read_modules = (Module.ORDERS, Module.PEOPLE, Module.FINANCE)
+
+    @extend_schema(tags=["catalog"], responses={(200, "image/*"): OpenApiTypes.BINARY})
+    def get(self, request, pk, kind):
+        if kind not in ("logo", "banner"):
+            raise Http404
+        vendor = get_object_or_404(Vendor, pk=pk)
+        file = getattr(vendor, kind)
+        if not file:
+            raise Http404
+        return file_response(file, getattr(vendor, f"{kind}_content_type"))
 
 
 class ImageFileView(APIView):

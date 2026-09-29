@@ -3,6 +3,9 @@ Checkout for the customer app. The server prices everything:
 
     cart lines (live catalogue prices) + delivery fee (Shipping Engine) = total
 
+A cart may hold products from several sellers: the customer still places one order and
+pays once; the order service splits it into one part per seller (see apps.marketplace).
+
 `preview` shows exactly what `place_order` will charge. `place_order` recomputes it
 all under a lock on the cart, refuses if the total the customer saw has changed,
 creates the shop order through `orders.shop.create_shop_order` (stock reserved),
@@ -25,7 +28,7 @@ from apps.shipping_engine.models import ShippingMethod
 
 from . import cart as carts
 from .models import CheckoutRequest
-from .shipping import Line, delivery_options
+from .shipping import Line, allocation, delivery_options
 
 
 class PriceChanged(WorkflowError):
@@ -112,6 +115,7 @@ def place_order(customer, *, address: Address, shipping_method_id: int, payment_
                 customer_email=customer.email, delivery_fee=quote.shipping_fee, notes=notes.strip(),
                 delivery_address=address, shipping_method=ShippingMethod.objects.get(pk=quote.selected["method_id"]),
                 estimated_delivery=quote.selected["estimated_delivery"] or "", payment_preference=payment_method,
+                shipping_allocation=allocation(quote.selected),
             )
             if order.total_amount != quote.total:  # defensive: the order service must charge what was quoted
                 raise WorkflowError("The order total couldn't be confirmed. Please try again.", conflict=True)

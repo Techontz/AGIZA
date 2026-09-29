@@ -24,8 +24,11 @@ def create_shop_order(*, customer, items: list[dict], shipping_address: str, use
                       customer_email: str = "", channel: str = ShopDetails.Channel.WEB,
                       delivery_fee: Decimal = Decimal("0"), notes: str = "", request=None,
                       delivery_address=None, shipping_method=None, estimated_delivery: str = "",
-                      payment_preference: str = "") -> Order:
-    """items: [{"variant": ProductVariant, "quantity": int, "unit_price": Decimal | None}]"""
+                      payment_preference: str = "", shipping_allocation: dict | None = None) -> Order:
+    """
+    items: [{"variant": ProductVariant, "quantity": int, "unit_price": Decimal | None}]
+    shipping_allocation: {vendor_id or None: fee} — which seller's items each part of the delivery fee is for.
+    """
     if not items:
         raise WorkflowError("Add at least one item.", field="items")
     seen = set()
@@ -64,6 +67,9 @@ def create_shop_order(*, customer, items: list[dict], shipping_address: str, use
                                  warehouse=stock.warehouse)
     first = order.items.first()
     ShopDetails.objects.filter(order=order).update(fulfillment_warehouse=first.warehouse if first else None)
+    from apps.marketplace import services as marketplace
+
+    marketplace.record_order(order, shipping_allocation=shipping_allocation)
     return order
 
 
@@ -73,6 +79,11 @@ def ship(order: Order, *, user, driver=None, scheduled_at=None, note: str = "", 
     order = services._lock(order)
     services._require_type(order, OrderType.SHOP)
     services._check_transition(order, ShopStatus.SHIPPED, via_action="ship")
+    from apps.marketplace import services as marketplace
+
+    waiting = marketplace.waiting_for_vendors(order)
+    if waiting:
+        raise WorkflowError(f"Waiting for {', '.join(waiting)} to mark their items ready for pickup.", conflict=True)
     for line in order.items.select_related("variant", "warehouse"):
         inventory.dispatch(line, user=user)
     details = order.shop
@@ -84,10 +95,13 @@ def ship(order: Order, *, user, driver=None, scheduled_at=None, note: str = "", 
     from apps.deliveries.models import DeliveryType
 
     warehouse = details.fulfillment_warehouse
+    # A marketplace order may be collected from several places (AGIZA warehouses, vendors' premises).
+    pickups = list(dict.fromkeys(line.warehouse.name for line in order.items.select_related("warehouse")
+                                 if line.warehouse_id))
     same_city = details.city_id and warehouse and warehouse.city_id == details.city_id
     delivery = deliveries.create_delivery(
         order, user=user, delivery_address=details.shipping_address, destination_city=details.city,
-        destination_area=details.area, pickup_point=warehouse.name if warehouse else "",
+        destination_area=details.area, pickup_point=" + ".join(pickups)[:255] if pickups else (warehouse.name if warehouse else ""),
         pickup_warehouse=warehouse, scheduled_at=scheduled_at,
         delivery_type=DeliveryType.STANDARD if same_city or not details.city_id else DeliveryType.INTER_CITY,
         request=request,

@@ -20,6 +20,8 @@ LISTS = [
     "inventory/stock/", "warehouses/", "finance/order-payments/", "finance/payments/", "finance/invoices/",
     "finance/wallets/", "finance/installment-plans/", "customers/", "staff/", "service-providers/",
     "shipping-engine/carriers/", "crm/tag-rules/", "crm/campaigns/", "chat/conversations/", "audit-logs/",
+    "marketplace/fulfillments/", "marketplace/payouts/", "catalog/products/?review_status=pending",
+    "app/products/", "app/products/?ordering=popular", "app/stores/",
 ]
 MAX_QUERIES = 25
 

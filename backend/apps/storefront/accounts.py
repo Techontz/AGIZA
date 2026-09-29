@@ -147,6 +147,9 @@ def delete_account(account: CustomerAccount, *, password: str, request=None) -> 
         raise WorkflowError("Your password is incorrect.", field="password")
     customer = account.customer
     revoke_tokens(account)
+    from apps.marketplace import services as marketplace
+
+    marketplace.on_owner_account_closed(account)
     account.devices.all().delete()
     if hasattr(customer, "cart"):
         customer.cart.delete()

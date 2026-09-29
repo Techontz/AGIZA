@@ -100,17 +100,53 @@ class OptionSerializer(serializers.ModelSerializer):
 class VendorSerializer(serializers.ModelSerializer):
     products_count = serializers.IntegerField(read_only=True, default=0)
     orders_count = serializers.IntegerField(read_only=True, default=0)
+    pending_products = serializers.IntegerField(read_only=True, default=0)
     total_sales = serializers.SerializerMethodField()
     profit_value = serializers.DecimalField(**MONEY)
     rating = serializers.DecimalField(max_digits=2, decimal_places=1, min_value=0, max_value=5, required=False,
                                       allow_null=True)
+    approval_status_display = serializers.CharField(source="get_approval_status_display", read_only=True)
+    self_service = serializers.BooleanField(read_only=True)
+    owner = serializers.SerializerMethodField()
+    city = serializers.PrimaryKeyRelatedField(queryset=City.objects.filter(is_active=True), required=False,
+                                              allow_null=True)
+    city_name = serializers.CharField(source="city.name", read_only=True, default=None)
+    logo_url = serializers.SerializerMethodField()
+    banner_url = serializers.SerializerMethodField()
+    warehouse = serializers.SerializerMethodField()
 
     class Meta:
         model = Vendor
-        fields = ["id", "reference", "name", "email", "phone", "location", "status", "verified", "profit_type",
-                  "profit_value", "profit_scope", "joined_date", "rating", "notes", "products_count", "orders_count",
-                  "total_sales", "created_at", "updated_at"]
-        read_only_fields = ["id", "reference", "created_at", "updated_at"]
+        fields = ["id", "reference", "name", "slug", "email", "phone", "location", "status", "verified",
+                  "commission_mode", "profit_type", "profit_value", "profit_scope", "joined_date", "rating", "notes",
+                  "products_count", "orders_count", "pending_products", "total_sales", "created_at", "updated_at",
+                  "approval_status", "approval_status_display", "self_service", "owner", "description", "city",
+                  "city_name", "business_type", "legal_name", "registration_number", "tin", "business_address",
+                  "contact_person", "payout_method", "payout_provider", "payout_account_name",
+                  "payout_account_number", "submitted_at", "reviewed_at", "review_note", "logo_url", "banner_url",
+                  "warehouse"]
+        read_only_fields = ["id", "reference", "slug", "created_at", "updated_at", "approval_status", "submitted_at",
+                            "reviewed_at", "review_note"]
+
+    def get_owner(self, obj) -> dict | None:
+        account = obj.owner
+        if account is None:
+            return None
+        return {"customer_id": account.customer_id, "name": account.customer.full_name, "phone": f"+{account.phone}",
+                "reference": account.customer.reference}
+
+    def _media(self, obj, kind) -> str | None:
+        return f"catalog/vendors/{obj.pk}/{kind}/file" if getattr(obj, kind) else None
+
+    def get_logo_url(self, obj) -> str | None:
+        return self._media(obj, "logo")
+
+    def get_banner_url(self, obj) -> str | None:
+        return self._media(obj, "banner")
+
+    def get_warehouse(self, obj) -> dict | None:
+        w = obj.warehouse
+        return {"id": w.id, "code": w.code, "name": w.name, "status": w.status} if w else None
 
     def get_total_sales(self, obj) -> str:
         return _dec(getattr(obj, "sales_total", None) or Decimal("0"))
@@ -161,12 +197,21 @@ class ProductListSerializer(serializers.ModelSerializer):
     stock = serializers.SerializerMethodField()
     labels = serializers.SerializerMethodField()
     variants_count = serializers.SerializerMethodField()
+    seller = serializers.SerializerMethodField()
+    review_status_display = serializers.CharField(source="get_review_status_display", read_only=True)
 
     class Meta:
         model = Product
         fields = ["id", "reference", "name", "sku", "brand", "category", "status", "status_display", "price",
                   "compare_at_price", "description", "origin", "image", "stock", "low_stock_threshold", "labels",
-                  "has_variations", "variants_count", "featured", "updated_at"]
+                  "has_variations", "variants_count", "featured", "updated_at", "seller", "review_status",
+                  "review_status_display", "review_note"]
+
+    def get_seller(self, obj) -> dict:
+        v = obj.vendor
+        if v is None:
+            return {"id": None, "name": "AGIZA", "slug": "agiza", "self_service": False}
+        return {"id": v.id, "name": v.name, "slug": v.slug, "self_service": v.owner_id is not None}
 
     def get_brand(self, obj) -> dict | None:
         return _ref(obj.brand, "name")
