@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+/*
+ * AGIZA design tokens — the same values as the customer app (agiza_mobile/src/theme/tokens.ts):
+ * ink wordmark, amber → orange flame, `primary` is the flame orange darkened for AA contrast
+ * with white text. Type is Outfit. Cards are white on a soft grey canvas with 16px radius.
+ */
+@theme {
+  --font-sans: var(--font-outfit), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --color-ink: #181818;
+  --color-text: #1f2937;
+  --color-muted: #6b7280;
+  --color-subtle: #9ca3af;
+  --color-primary: #c24a04;
+  --color-primary-pressed: #a63f03;
+  --color-brand: #e25805;
+  --color-amber: #fbbd15;
+  --color-primary-soft: #fff4ec;
+  --color-canvas: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-tile: #f3f4f6;
+  --color-line: #e5e7eb;
+  --color-line-strong: #d1d5db;
+  --color-success: #15803d;
+  --color-success-soft: #ecfdf3;
+  --color-warning: #b45309;
+  --color-warning-soft: #fffbeb;
+  --color-danger: #b91c1c;
+  --color-danger-soft: #fef2f2;
+  --color-info: #1d4ed8;
+  --color-info-soft: #eff6ff;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  --shadow-card: 0 2px 8px rgb(17 24 39 / 0.06);
+  --shadow-raised: 0 8px 24px rgb(17 24 39 / 0.08);
+
+  --text-caption: 11px;
+  --text-caption--line-height: 14px;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-pressed);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+/* Horizontal product rows scroll without a visible bar (touch and trackpad). */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
