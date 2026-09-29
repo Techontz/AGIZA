@@ -15,7 +15,8 @@ export interface ShopOrderItem {
   quantity: number;
   unit_price: string;
   line_total: string;
-  warehouse: number | null;
+  /** Name of the location the line's stock is reserved at. */
+  warehouse: string | null;
 }
 
 export interface ShopOrder extends Omit<OrderBase, "status"> {

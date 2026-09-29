@@ -222,7 +222,7 @@ export function ProductsSection() {
       ) : (
         <Card className="overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[1180px] text-sm">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className={cn(th, "w-12")}>
@@ -269,7 +269,7 @@ export function ProductsSection() {
                             </div>
                           )}
                         </td>
-                        <td className="px-4 py-3 max-w-64">
+                        <td className="px-4 py-3 min-w-52 max-w-64">
                           <div className="flex flex-col">
                             <span className="font-semibold text-gray-900 leading-snug">{p.name}</span>
                             {p.brand && <span className="text-xs text-blue-600 font-medium mt-0.5">{p.brand.name}</span>}

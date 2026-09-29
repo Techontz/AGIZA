@@ -76,11 +76,17 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
               </div>
             ))}
           </div>
-          {o.details.fulfillment_warehouse && (
-            <p className="text-xs text-gray-500 mt-2">
-              Fulfilled from <span className="font-medium text-gray-700">{o.details.fulfillment_warehouse}</span>
-            </p>
-          )}
+          {(() => {
+            // A marketplace order can be collected from several places (AGIZA warehouses, vendors' premises).
+            const pickups = [...new Set(o.items.map((i) => i.warehouse).filter(Boolean))];
+            const places = pickups.length ? pickups : o.details.fulfillment_warehouse ? [o.details.fulfillment_warehouse] : [];
+            return places.length ? (
+              <p className="text-xs text-gray-500 mt-2">
+                {places.length > 1 ? "Collected from " : "Fulfilled from "}
+                <span className="font-medium text-gray-700">{places.join(" · ")}</span>
+              </p>
+            ) : null;
+          })()}
         </div>
         <div>
           <h4 className="font-semibold text-gray-900 mb-3">Shipping Address</h4>
