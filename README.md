@@ -3,21 +3,35 @@
 AGIZA is the operations and commerce platform for a Tanzanian logistics
 business: international sourcing (China, Dubai, USA, UK, India), express
 local deliveries, equipment support jobs, an e-commerce shop, warehouses,
-finance, customers, campaigns and multi-channel customer chat. Staff use the
-admin dashboard; customers use the mobile app. Both talk to the same backend.
+finance, customers, campaigns and multi-channel customer chat — and a multi-vendor
+marketplace where AGIZA and approved vendors sell. Staff use the admin dashboard; customers use
+the mobile app and the public website; vendors run their store from the website. All of them
+talk to the same backend and database.
 
 | Folder | What |
 |---|---|
 | `backend/` | Django 5.2 + Django REST Framework API on MySQL 8 (PostgreSQL also supported) — the system of record for all data and business rules. Staff API at `/api/…`, customer app API at `/api/app/…` |
 | `agiza_admin/` | Next.js 15 admin frontend (App Router, TypeScript, Tailwind v4, TanStack Query) |
 | `agiza_mobile/` | Customer app: React Native, Expo SDK 57, Expo Router — see `agiza_mobile/README.md` |
+| `agiza_web/` | Public website (customer marketplace + vendor seller area): Next.js 15, TypeScript, Tailwind v4 — see `agiza_web/README.md` |
+| `docs/MULTIVENDOR.md` | Marketplace design and API reference (vendors, moderation, commission, fulfilment, payouts, shipping per origin) |
 | `docs/Delivery Management Dashboard/` | The Figma Make design source — the visual reference, never edited |
 | `docs/cargo-main/`, `docs/agiza-server-main/` | Local-only copies of the previous staff portal and server (git-ignored references; contain credentials and data dumps) |
 
 ## Architecture
 
 ```
-Browser ──► Next.js (pages + /api/auth + /api/proxy BFF) ──► Django REST API ──► PostgreSQL
+agiza_admin (staff) ─┐
+agiza_web (public) ──┼──► backend (Django REST, one MySQL database)
+agiza_mobile (app) ──┘
+```
+
+Both Next.js apps are backends-for-frontends: browsers call their `/api/proxy`, which forwards to
+Django with JWTs kept in httpOnly cookies. The website also renders the public catalogue on the
+server for search engines. The app calls `/api/app/…` directly with its own customer tokens.
+
+```
+Browser ──► Next.js (pages + /api/auth + /api/proxy BFF) ──► Django REST API ──► MySQL
               JWTs live only in httpOnly cookies              every rule, status change,
               (agiza_at / agiza_rt); the browser never        permission and calculation
               sees a token and never calls Django directly    is enforced here
@@ -135,6 +149,29 @@ cd backend
 Sets build on each other (shipping → orders → operations → commerce → people); flushing a set also flushes
 the sets loaded after it. Demo staff (`@agiza.demo`) have unusable passwords.
 
+## Marketplace (multi-vendor)
+
+Products are sold by AGIZA itself or by vendors (`catalog.Vendor`). An AGIZA customer applies to
+sell from the website; staff approve, reject, request changes, suspend or reactivate the
+application in **E-commerce → Vendors** (every step recorded). An approved vendor gets its own
+stock location and manages products, stock, orders and earnings at `agiza_web` `/seller`.
+Vendor products are reviewed by staff before they are shown (**E-commerce → Products →
+Pending review**). One cart and one checkout can contain several sellers: the customer pays
+AGIZA once, the order is split into one fulfilment per seller with AGIZA's commission captured
+(marketplace default, category or vendor rates in **Marketplace Settings**), goods at a vendor's
+premises are priced as their own Shipping Engine shipment, and earnings become payable once the
+order is delivered and paid; staff record payouts in **Vendor Earnings & Payouts** (no automatic
+transfers). Full reference: `docs/MULTIVENDOR.md`.
+
+## Public website (agiza_web)
+
+```bash
+cd agiza_web && pnpm install && cp .env.example .env.local && pnpm dev   # http://localhost:3200
+```
+
+Browsing, search and the cart work without an account; checkout, the account area and the
+seller area need one (the same account as the app). See `agiza_web/README.md`.
+
 ## Customer app (agiza_mobile)
 
 The app never prices anything itself: the backend computes item prices, stock, delivery options
@@ -164,6 +201,8 @@ cd backend && .venv/bin/pytest
 
 # Frontend
 cd agiza_admin && pnpm typecheck && pnpm lint && pnpm build
+cd agiza_web && pnpm typecheck && pnpm lint && pnpm build && pnpm test:e2e   # e2e against a running stack
+cd agiza_mobile && npm run typecheck && npm run lint
 
 # Browser tests (Playwright, desktop 1440px + Pixel 7). Starts its own isolated stack:
 # Django on :8001 with a fresh `agiza_e2e` database (demo data loaded) + Next on :3001.
@@ -199,11 +238,17 @@ faked. Webhooks (`/api/chat/webhooks/{whatsapp,facebook,tiktok}/`) verify signat
 Backend
 1. `pip install -r requirements/prod.txt` (gunicorn + whitenoise).
 2. Environment: `DJANGO_SECRET_KEY`, `DJANGO_DEBUG=false`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS`,
-   `DATABASE_URL`, `DJANGO_NUM_PROXIES`, `MEDIA_ROOT` (or S3), `DJANGO_ADMIN_URL`, channel credentials as needed.
+   `DATABASE_URL`, `DJANGO_NUM_PROXIES`, `MEDIA_ROOT` (or S3), `DJANGO_ADMIN_URL`, channel credentials as needed,
+   `STOREFRONT_SERVER_KEY` (long random value shared with agiza_web).
 3. `python manage.py migrate && python manage.py collectstatic --noinput && python manage.py bootstrap_admin`
 4. `python manage.py check --deploy` must report no issues.
 5. Run `gunicorn config.wsgi --workers 3 --bind 127.0.0.1:8000` behind nginx (TLS, `client_max_body_size 50m`).
 6. Schedule `evaluate_tag_rules` (hourly) and `send_due_notifications` (every 5 minutes).
+
+Website (agiza_web)
+1. Same build and standalone run as the admin; environment: `DJANGO_API_URL`, `NEXT_PUBLIC_SITE_URL`
+   (the public https URL), `STOREFRONT_SERVER_KEY` (same value as the backend), `SESSION_COOKIE_SECURE=true`.
+2. Publicly reachable (it is the customer site); serve `/sitemap.xml` and `/robots.txt` as generated.
 
 Frontend
 1. `pnpm install --frozen-lockfile && pnpm build` → standalone server in `.next/standalone`.
