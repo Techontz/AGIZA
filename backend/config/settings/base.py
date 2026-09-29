@@ -333,5 +333,10 @@ SELCOM_BASE_PAYMENT_URL = env("SELCOM_BASE_PAYMENT_URL", default="")
 SELCOM_CALLBACK_BASE_URL = env("SELCOM_CALLBACK_BASE_URL", default="")
 SELCOM_FALLBACK_BUYER_EMAIL = env("SELCOM_FALLBACK_BUYER_EMAIL", default="payments@agiza.co.tz")
 
+# Public website (agiza_web). Its server renders catalogue pages by calling this API from one
+# address; with this shared secret (header X-Storefront-Key) those public GET reads skip the
+# per-IP anonymous limit. Empty = disabled. Never give it to browsers or apps.
+STOREFRONT_SERVER_KEY = env("STOREFRONT_SERVER_KEY", default="")
+
 # Expo push notifications to the customer app.
 EXPO_PUSH_ENABLED = env.bool("EXPO_PUSH_ENABLED", default=True)

@@ -186,3 +186,26 @@ def test_one_selcom_payment_funds_every_seller(app, home, shop, vendor_a, vendor
     assert Payment.objects.count() == 1 and Payment.objects.get().amount == D("371000")
     # Paid, but not delivered yet: vendor earnings stay pending until delivery.
     assert set(VendorFulfillment.objects.values_list("settlement_status", flat=True)) == {"pending"}
+
+
+# --------------------------------------------------------------------------- #
+# The website server's catalogue reads
+# --------------------------------------------------------------------------- #
+def test_website_server_key_skips_only_the_anonymous_limit_for_public_reads(api, shop, monkeypatch, settings):
+    from django.core.cache import cache
+
+    from apps.storefront.views.base import PublicAnonThrottle
+
+    monkeypatch.setattr(PublicAnonThrottle, "get_rate", lambda self: "2/min")
+    cache.clear()
+    settings.STOREFRONT_SERVER_KEY = "s3rver-key-for-tests"
+    statuses = [api.get(f"{APP}/products/").status_code for _ in range(3)]
+    assert statuses == [200, 200, 429]  # visitors are limited
+    good = {"HTTP_X_STOREFRONT_KEY": "s3rver-key-for-tests"}
+    assert all(api.get(f"{APP}/products/", **good).status_code == 200 for _ in range(5))
+    assert api.get(f"{APP}/products/", HTTP_X_STOREFRONT_KEY="wrong").status_code == 429
+    # Never for writes (sign-in, OTP): those keep their limits.
+    assert api.post(f"{APP}/auth/login/", {"phone": "0712000000", "password": "x"}, format="json",
+                    **good).status_code == 429
+    settings.STOREFRONT_SERVER_KEY = ""  # disabled: the header means nothing
+    assert api.get(f"{APP}/products/", **good).status_code == 429
