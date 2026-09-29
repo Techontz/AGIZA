@@ -16,6 +16,7 @@ import { errorText } from "@/lib/api/errors";
 import { shopOrderKeys, shopOrdersApi, type ShopOrder } from "@/lib/api/services/shop-orders";
 import { formatDateTime, formatTSh } from "@/lib/format";
 
+import { OrderSellers } from "./sellers-block";
 import { SHOP_INVALIDATE } from "./shared";
 
 type Action = "process" | "ship" | "cancel" | "pay" | null;
@@ -134,6 +135,8 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
           </div>
         </div>
       </div>
+
+      <OrderSellers orderId={o.id} />
 
       {(canProcess || canShip || canCancel || canRecord || o.delivery) && (
         <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-gray-200">

@@ -5,6 +5,7 @@ import {
   ChevronRight,
   DollarSign,
   Package,
+  Percent,
   Settings,
   Ship,
   ShoppingCart,
@@ -13,6 +14,7 @@ import {
   ToggleLeft,
   Truck,
   Users,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -25,7 +27,16 @@ import { pageMeta } from "@/lib/nav";
 
 import { compactAmount } from "./shared";
 
-export type Section = "products" | "categories" | "settings" | "vendors" | "options" | "labels" | "brands";
+export type Section =
+  | "products"
+  | "categories"
+  | "settings"
+  | "vendors"
+  | "marketplace"
+  | "earnings"
+  | "options"
+  | "labels"
+  | "brands";
 
 interface MenuItem {
   title: string;
@@ -53,8 +64,12 @@ const MENU: MenuItem[] = [
     border: "hover:border-purple-500", tile: "bg-purple-100 group-hover:bg-purple-200", iconColor: "text-purple-600", chevron: "group-hover:text-purple-600" },
   { title: "Store Settings", description: "Configure store preferences and delivery estimates", icon: Settings, section: "settings",
     border: "hover:border-gray-500", tile: "bg-gray-100 group-hover:bg-gray-200", iconColor: "text-gray-600", chevron: "group-hover:text-gray-600" },
-  { title: "Vendors", description: "Manage vendors and their profit settings", icon: Users, section: "vendors",
+  { title: "Vendors", description: "Vendor applications, stores and their profit settings", icon: Users, section: "vendors",
     border: "hover:border-indigo-500", tile: "bg-indigo-100 group-hover:bg-indigo-200", iconColor: "text-indigo-600", chevron: "group-hover:text-indigo-600" },
+  { title: "Marketplace Settings", description: "Commission rates, product review and vendor applications", icon: Percent, section: "marketplace",
+    border: "hover:border-sky-500", tile: "bg-sky-100 group-hover:bg-sky-200", iconColor: "text-sky-600", chevron: "group-hover:text-sky-600" },
+  { title: "Vendor Earnings & Payouts", description: "Sales by seller, AGIZA commission and vendor payouts", icon: Wallet, section: "earnings",
+    border: "hover:border-emerald-500", tile: "bg-emerald-100 group-hover:bg-emerald-200", iconColor: "text-emerald-600", chevron: "group-hover:text-emerald-600" },
   { title: "Product Options", description: "Manage global option sets: sizes, colors, bundles and more", icon: ToggleLeft, section: "options",
     border: "hover:border-teal-500", tile: "bg-teal-100 group-hover:bg-teal-200", iconColor: "text-teal-600", chevron: "group-hover:text-teal-600" },
   { title: "Product Labels", description: "Create and manage labels like New Arrival, Sale, Best Seller", icon: Tag, section: "labels",

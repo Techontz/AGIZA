@@ -7,6 +7,7 @@ import { Field, Input, Select, Textarea, inputClass } from "@/components/ui/form
 import { Modal } from "@/components/ui/modal";
 import {
   catalogApi,
+  type CommissionMode,
   type ProfitAgreementInput,
   type ProfitScope,
   type ProfitType,
@@ -20,7 +21,7 @@ import { FormErrors, IconSwitch, useCatalogMutation, type Errors } from "./share
 
 const EXAMPLE_PRICE = 100_000;
 
-function localProfitError(p: ProfitAgreementInput): string | null {
+function localProfitError(p: Pick<VendorInput, "profit_type" | "profit_value">): string | null {
   if (p.profit_value.trim() === "") return "Enter the profit value.";
   const n = Number(p.profit_value);
   if (!Number.isFinite(n) || n < 0) return "Enter a positive number.";
@@ -195,16 +196,22 @@ export function VendorModal({ vendor, onClose }: { vendor: Vendor | null; onClos
   );
 }
 
-const PROFIT_FIELDS = ["profit_type", "profit_value", "profit_scope"] as const;
+const PROFIT_FIELDS = ["commission_mode", "profit_type", "profit_value", "profit_scope"] as const;
+
+const COMMISSION_MODES: { value: CommissionMode; title: string; description: string }[] = [
+  { value: "default", title: "Marketplace rates", description: "AGIZA's category commission, or the marketplace default rate" },
+  { value: "custom", title: "This vendor's own agreement", description: "A fixed amount or percentage agreed with this vendor" },
+];
 
 export function ProfitAgreementModal({ vendor, onClose }: { vendor: Vendor; onClose: () => void }) {
   const [form, setForm] = useState<ProfitAgreementInput>({
+    commission_mode: vendor.commission_mode ?? "custom",
     profit_type: vendor.profit_type,
     profit_value: String(Number(vendor.profit_value)),
     profit_scope: vendor.profit_scope,
   });
   const [errors, setErrors] = useState<Errors>({});
-  const save = useCatalogMutation((body: ProfitAgreementInput) => catalogApi.vendors.update(vendor.id, body), {
+  const save = useCatalogMutation((body: Partial<ProfitAgreementInput>) => catalogApi.vendors.update(vendor.id, body), {
     success: (v) => `Profit agreement for ${v.name} updated`,
     onSuccess: onClose,
     setErrors,
@@ -212,6 +219,10 @@ export function ProfitAgreementModal({ vendor, onClose }: { vendor: Vendor; onCl
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (form.commission_mode === "default") {
+      setErrors({});
+      return save.mutate({ commission_mode: "default" });
+    }
     const pe = localProfitError(form);
     if (pe) return setErrors({ profit_value: pe });
     setErrors({});
@@ -260,6 +271,43 @@ export function ProfitAgreementModal({ vendor, onClose }: { vendor: Vendor; onCl
           </div>
         </div>
 
+        <fieldset className="space-y-3">
+          <legend className="font-semibold text-gray-900 mb-3">Commission</legend>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {COMMISSION_MODES.map((m) => (
+              <label
+                key={m.value}
+                className={cn(
+                  "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors",
+                  form.commission_mode === m.value ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:bg-gray-50",
+                )}
+              >
+                <input
+                  type="radio"
+                  name="commission_mode"
+                  value={m.value}
+                  checked={form.commission_mode === m.value}
+                  onChange={() => setForm({ ...form, commission_mode: m.value })}
+                  className="mt-1 accent-blue-600"
+                />
+                <span>
+                  <span className="block font-semibold text-gray-900 text-sm">{m.title}</span>
+                  <span className="block text-xs text-gray-600 mt-0.5">{m.description}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          {errors.commission_mode && <p className="text-xs text-red-600">{errors.commission_mode}</p>}
+        </fieldset>
+
+        {form.commission_mode === "default" ? (
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm text-gray-700">
+            <FormErrors errors={errors} fields={PROFIT_FIELDS} />
+            AGIZA&apos;s commission on this vendor&apos;s sales follows the marketplace rates: a category or subcategory rate when one is set,
+            otherwise the marketplace default (E-commerce → Marketplace Settings). The rate is captured on each order line when the order is placed.
+          </div>
+        ) : (
+        <>
         <div className="space-y-4">
           <h3 className="font-semibold text-gray-900">Profit Agreement Settings</h3>
           <FormErrors errors={errors} fields={PROFIT_FIELDS} />
@@ -302,6 +350,8 @@ export function ProfitAgreementModal({ vendor, onClose }: { vendor: Vendor; onCl
         </div>
 
         <ExampleCalculation type={form.profit_type} value={form.profit_value} />
+        </>
+        )}
       </form>
     </Modal>
   );

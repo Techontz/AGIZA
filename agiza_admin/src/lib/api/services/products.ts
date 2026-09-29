@@ -64,6 +64,17 @@ export interface ProductLabelRef {
   color: LabelColor;
 }
 
+export type ReviewStatus = "not_required" | "pending" | "approved" | "rejected" | "disabled";
+export type ModerationAction = "approve" | "reject" | "disable";
+
+/** Who sells the product: AGIZA itself (`id: null`) or a vendor. */
+export interface ProductSeller {
+  id: number | null;
+  name: string;
+  slug: string;
+  self_service: boolean;
+}
+
 export interface ProductRow {
   id: number;
   reference: string;
@@ -87,6 +98,10 @@ export interface ProductRow {
   variants_count: number;
   featured: boolean;
   updated_at: string;
+  seller: ProductSeller;
+  review_status: ReviewStatus;
+  review_status_display: string;
+  review_note: string;
 }
 
 export interface ProductImage {
@@ -336,6 +351,9 @@ export interface ProductListQuery extends QueryParams {
   stock?: string;
   brand?: string;
   vendor?: string;
+  /** "agiza" | "vendors" | a vendor id. */
+  seller?: string;
+  review_status?: string;
   page?: number;
   page_size?: number;
 }
@@ -347,6 +365,9 @@ export const productsApi = {
   update: (id: number, data: Partial<ProductWrite>) => api.patch<ProductDetail>(`${P}/${id}`, data),
   remove: (id: number) => api.delete(`${P}/${id}`),
   stats: () => api.get<ProductStats>(`${P}/stats`),
+  /** Review a self-service vendor's product; `note` is required to reject or disable. */
+  moderate: (id: number, body: { action: ModerationAction; note: string }) =>
+    api.post<ProductDetail>(`${P}/${id}/moderate`, body),
   uploadImage: (id: number, file: File, variant?: number) => {
     const body = new FormData();
     body.append("file", file);

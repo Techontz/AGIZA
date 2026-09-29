@@ -1,7 +1,7 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Edit, Eye, Image as ImageIcon, Package, Plus, Trash2 } from "lucide-react";
+import { Clock, Edit, Eye, Image as ImageIcon, Package, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -27,7 +27,10 @@ import {
 } from "@/lib/api/services/products";
 import { cn } from "@/lib/cn";
 
+import { ReviewStatusBadge, SellerKindTag } from "../marketplace-ui";
+
 import { LABEL_COLORS, ProductEditor } from "./product-editor";
+import { ProductModerationButtons } from "./product-moderation";
 
 const th = "text-left text-xs font-semibold text-gray-500 px-4 py-3 whitespace-nowrap";
 const PAGE_SIZE = 20;
@@ -59,22 +62,38 @@ export function ProductsSection() {
   const canEdit = can(me.data, "ecommerce", "edit");
   const canDelete = can(me.data, "ecommerce", "manage");
 
-  const [f, setF] = useUrlFilters({ q: "", cat: "all", pstatus: "all", page: "1", product: "" });
+  const [f, setF] = useUrlFilters({ q: "", cat: "all", pstatus: "all", seller: "all", review: "all", page: "1", product: "" });
   const [search, setSearch] = useState(f.q);
   const debounced = useDebouncedValue(search);
   useEffect(() => {
     if (debounced !== f.q) setF({ q: debounced });
   }, [debounced, f.q, setF]);
 
-  const query = { search: f.q, category: f.cat, status: f.pstatus, page: Number(f.page) || 1, page_size: PAGE_SIZE };
+  const query = {
+    search: f.q,
+    category: f.cat,
+    status: f.pstatus,
+    seller: f.seller,
+    review_status: f.review,
+    page: Number(f.page) || 1,
+    page_size: PAGE_SIZE,
+  };
   const list = useQuery({
     queryKey: productKeys.list(query),
     queryFn: ({ signal }) => productsApi.list(query, signal),
     placeholderData: keepPreviousData,
   });
   const categories = useQuery({ queryKey: productKeys.lookup("categories"), queryFn: productLookups.categories, staleTime: LOOKUP_STALE });
+  const vendors = useQuery({ queryKey: productKeys.lookup("vendors"), queryFn: productLookups.vendors, staleTime: LOOKUP_STALE });
   const rows = list.data?.results ?? [];
-  const filtered = Boolean(f.q || f.cat !== "all" || f.pstatus !== "all");
+  const filtered = Boolean(f.q || f.cat !== "all" || f.pstatus !== "all" || f.seller !== "all" || f.review !== "all");
+  const pendingQuery = { review_status: "pending", page_size: 1 };
+  const pendingReview = useQuery({
+    queryKey: productKeys.list(pendingQuery),
+    queryFn: ({ signal }) => productsApi.list(pendingQuery, signal),
+  });
+  const pendingCount = pendingReview.data?.count ?? 0;
+  const knownSeller = ["all", "agiza", "vendors"].includes(f.seller) || (vendors.data ?? []).some((v) => String(v.id) === f.seller);
 
   // If the current page disappears (e.g. after deleting its last row), go back one.
   useEffect(() => {
@@ -124,16 +143,28 @@ export function ProductsSection() {
         </div>
       )}
 
+      {pendingCount > 0 && f.review !== "pending" && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
+          <span className="flex items-center gap-2">
+            <Clock className="size-4 flex-shrink-0" />
+            {pendingCount} vendor product{pendingCount === 1 ? " is" : "s are"} waiting for review.
+          </span>
+          <button type="button" onClick={() => setF({ review: "pending", seller: "all" })} className="font-semibold text-amber-900 hover:underline">
+            Review now
+          </button>
+        </div>
+      )}
+
       {/* Filters */}
       <Card className="p-4 sm:p-6 mb-6">
-        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+        <div className="flex flex-col 2xl:flex-row gap-4 items-start 2xl:items-center justify-between">
           <SearchInput
             placeholder="Search products by name or SKU..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             aria-label="Search products by name or SKU"
           />
-          <div className="flex gap-3 flex-wrap w-full lg:w-auto">
+          <div className="flex gap-3 flex-wrap w-full 2xl:w-auto">
             <Select className="w-full sm:w-auto" aria-label="Filter by category" value={f.cat} onChange={(e) => setF({ cat: e.target.value })}>
               <option value="all">All Categories</option>
               {top.map((c) => {
@@ -159,6 +190,28 @@ export function ProductsSection() {
                 </option>
               ))}
             </Select>
+            <Select className="w-full sm:w-auto" aria-label="Filter by seller" value={f.seller} onChange={(e) => setF({ seller: e.target.value })}>
+              <option value="all">All Sellers</option>
+              <option value="agiza">Sold by AGIZA</option>
+              <option value="vendors">All Vendors</option>
+              {!knownSeller && <option value={f.seller}>Vendor #{f.seller}</option>}
+              {(vendors.data ?? []).length > 0 && (
+                <optgroup label="Vendor">
+                  {(vendors.data ?? []).map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </Select>
+            <Select className="w-full sm:w-auto" aria-label="Filter by review status" value={f.review} onChange={(e) => setF({ review: e.target.value })}>
+              <option value="all">Any Review Status</option>
+              <option value="pending">Pending review</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+              <option value="disabled">Disabled</option>
+            </Select>
           </div>
         </div>
       </Card>
@@ -178,6 +231,7 @@ export function ProductsSection() {
                   <th className={th}>Product</th>
                   <th className={th}>SKU</th>
                   <th className={th}>Category</th>
+                  <th className={th}>Seller</th>
                   <th className={th}>Price</th>
                   <th className={th}>Stock</th>
                   <th className={th}>Origin</th>
@@ -196,7 +250,7 @@ export function ProductsSection() {
                           <div className="h-4 w-40 rounded bg-gray-200 animate-pulse" />
                           <div className="mt-1.5 h-3 w-24 rounded bg-gray-100 animate-pulse" />
                         </td>
-                        {Array.from({ length: 7 }).map((__, j) => (
+                        {Array.from({ length: 8 }).map((__, j) => (
                           <td key={j} className="px-4 py-3">
                             <div className="h-4 w-16 rounded bg-gray-200 animate-pulse" />
                           </td>
@@ -241,6 +295,12 @@ export function ProductsSection() {
                         </td>
                         <td className="px-4 py-3 text-gray-600 text-xs">{p.category?.name ?? "—"}</td>
                         <td className="px-4 py-3">
+                          <div className="flex flex-col items-start gap-1">
+                            <span className={cn("text-xs font-medium whitespace-nowrap", p.seller?.id ? "text-gray-900" : "text-blue-700")}>{p.seller?.name ?? "AGIZA"}</span>
+                            {p.seller?.id && <SellerKindTag selfService={p.seller.self_service} />}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
                           <span className="font-bold text-blue-600 whitespace-nowrap">TSh {Number(p.price).toLocaleString("en-US", { maximumFractionDigits: 2 })}</span>
                         </td>
                         <td className="px-4 py-3">
@@ -248,7 +308,15 @@ export function ProductsSection() {
                         </td>
                         <td className="px-4 py-3 text-gray-500 text-xs">{p.origin || "—"}</td>
                         <td className="px-4 py-3">
-                          <StatusPill p={p} />
+                          <div className="flex flex-col items-start gap-1">
+                            <StatusPill p={p} />
+                            <ReviewStatusBadge status={p.review_status} label={p.review_status_display} />
+                            {p.review_note && (p.review_status === "rejected" || p.review_status === "disabled") && (
+                              <span className="text-[11px] text-gray-500 max-w-40 line-clamp-2" title={p.review_note}>
+                                {p.review_note}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1">
@@ -261,6 +329,7 @@ export function ProductsSection() {
                               {canEdit ? <Edit className="size-3.5" /> : <Eye className="size-3.5" />}
                               {canEdit ? "Edit" : "View"}
                             </button>
+                            {canEdit && <ProductModerationButtons product={p} />}
                             {canDelete && (
                               <button
                                 type="button"

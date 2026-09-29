@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Edit, Info, Plus, Ship, Trash2, X } from "lucide-react";
+import { Edit, Info, Plus, Ship, Store, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -34,10 +34,13 @@ import {
 import { cn } from "@/lib/cn";
 import { formatTSh } from "@/lib/format";
 
+import { ReviewStatusBadge } from "../marketplace-ui";
+
 import { DeliveryEstimator } from "./delivery-estimator";
 import { Chip, EditorDialog, FI, FS, FTA, SecHead, SI, YesNo } from "./editor-ui";
 import { emptyForm, formFromDetail, measures, sentVariants, toPayload, type ProductForm, type VariantForm } from "./form-model";
 import { ImagesMedia, uploadAll, type QueuedImage } from "./images-media";
+import { ProductModerationButtons } from "./product-moderation";
 import { ProductPicker } from "./product-picker";
 import { VariationModal } from "./variation-modal";
 
@@ -381,6 +384,25 @@ function EditorForm({ product, onClose }: { product: ProductDetail | null; onClo
         {!canEdit && me.data && (
           <div className="mb-4 flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-600">
             <Info className="size-4 flex-shrink-0" /> You have view-only access to E-commerce products.
+          </div>
+        )}
+        {product?.seller?.self_service && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 text-xs text-indigo-900">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <Store className="size-4 flex-shrink-0" />
+                <span>
+                  Listed by <span className="font-semibold">{product.seller.name}</span> (self-service vendor)
+                </span>
+                <ReviewStatusBadge status={product.review_status} label={product.review_status_display} />
+              </div>
+              {product.review_note && <p className="mt-1 text-indigo-800">Review note: {product.review_note}</p>}
+            </div>
+            {canEdit && (
+              <div className="flex flex-wrap gap-1.5">
+                <ProductModerationButtons product={product} compact={false} />
+              </div>
+            )}
           </div>
         )}
         {lookupError && (

@@ -112,11 +112,13 @@ export function SectionHeader({
   description,
   onBack,
   actions,
+  backLabel = "Back to E-commerce Platform",
 }: {
-  title: string;
-  description: string;
+  title: React.ReactNode;
+  description: React.ReactNode;
   onBack: () => void;
   actions?: React.ReactNode;
+  backLabel?: string;
 }) {
   return (
     <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -125,7 +127,8 @@ export function SectionHeader({
           type="button"
           onClick={onBack}
           className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          aria-label="Back to E-commerce Platform"
+          aria-label={backLabel}
+          title={backLabel}
         >
           <ChevronRight className="size-6 text-gray-600 rotate-180" />
         </button>
