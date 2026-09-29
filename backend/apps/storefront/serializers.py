@@ -159,11 +159,23 @@ class ProductCardSerializer(serializers.ModelSerializer):
     in_stock = serializers.SerializerMethodField()
     labels = serializers.SerializerMethodField()
     vendor = serializers.SerializerMethodField()
+    rating = serializers.SerializerMethodField()
+    rating_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
         fields = ["id", "name", "price", "price_max", "compare_at_price", "image", "brand", "category",
-                  "condition", "featured", "ofa_kali", "in_stock", "labels", "vendor", "created_at"]
+                  "condition", "featured", "ofa_kali", "in_stock", "labels", "vendor", "created_at", "rating",
+                  "rating_count"]
+
+    def _rating(self, product) -> dict:
+        return self.context.get("ratings", {}).get(product.pk, {"rating": None, "rating_count": 0})
+
+    def get_rating(self, product) -> str | None:
+        return self._rating(product)["rating"]
+
+    def get_rating_count(self, product) -> int:
+        return self._rating(product)["rating_count"]
 
     def get_vendor(self, product) -> dict:
         return seller_payload(self.context.get("request"), product.vendor)
@@ -241,23 +253,32 @@ class ProductDetailSerializer(ProductCardSerializer):
 # --------------------------------------------------------------------------- #
 # Stores (vendors)
 # --------------------------------------------------------------------------- #
-def store_payload(request, vendor, *, products_count: int | None = None, detail: bool = False) -> dict:
-    """A store as customers see it. Never includes business, payout or commission details."""
+def store_payload(request, vendor, *, products_count: int | None = None, detail: bool = False,
+                  rating: dict | None = None) -> dict:
+    """
+    A store as customers see it. Never includes business, payout or commission details. The rating
+    is computed from customer reviews (pass it in to avoid a query per store).
+    """
+    from apps.marketplace import reviews
+
     if vendor is None:  # the products AGIZA sells itself
         from apps.catalog.models import StoreSettings
 
         store = StoreSettings.load()
+        rating = rating or reviews.agiza_rating()
         data = {"slug": "agiza", "name": "AGIZA", "logo": None, "banner": None, "verified": True, "is_agiza": True,
-                "city": store.location.name if store.location_id else None, "rating": None, "joined": None,
-                "products_count": products_count}
+                "city": store.location.name if store.location_id else None, "rating": rating["rating"],
+                "rating_count": rating["rating_count"], "joined": None, "products_count": products_count}
         if detail:
             data["description"] = store.description or "Products sold and delivered by AGIZA."
         return data
     data = {"slug": vendor.slug, "name": vendor.name, "logo": vendor_media_url(request, vendor, "logo"),
             "banner": vendor_media_url(request, vendor, "banner"), "verified": vendor.verified, "is_agiza": False,
             "city": vendor.city.name if vendor.city_id else (vendor.location or None),
-            "rating": str(vendor.rating) if vendor.rating is not None else None,
             "joined": vendor.joined_date, "products_count": products_count}
+    rating = rating if rating is not None else reviews.store_ratings([vendor.pk]).get(vendor.pk, {})
+    data["rating"] = rating.get("rating")
+    data["rating_count"] = rating.get("rating_count", 0)
     if detail:
         data["description"] = vendor.description
     return data

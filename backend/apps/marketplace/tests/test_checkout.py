@@ -139,10 +139,25 @@ def test_staff_see_the_full_order_and_every_vendor_part(app, home, shop, vendor_
     assert [r["vendor"]["name"] for r in only_a] == ["Vendor A Electronics"]
 
 
+def collect_pickups(order, staff):
+    """A rider collects each vendor's items and brings them to the hub (through the staff API)."""
+    from apps.accounts.models import User
+
+    rider = User.objects.filter(staff_level=StaffLevel.DRIVER).first() or User.objects.create(
+        email="pickup-rider@agiza.test", full_name="Pickup Rider", staff_level=StaffLevel.DRIVER)
+    for task in order.pickup_tasks.exclude(status__in=["cancelled", "at_hub"]):
+        assert staff.post(f"/api/deliveries/pickups/{task.pk}/assign/", {"driver": rider.pk},
+                          format="json").status_code == 200
+        assert staff.post(f"/api/deliveries/pickups/{task.pk}/advance/",
+                          {"status": "collected", "handed_over_by": "Shop assistant"}, format="json").status_code == 200
+        assert staff.post(f"/api/deliveries/pickups/{task.pk}/advance/", {"status": "at_hub"},
+                          format="json").status_code == 200
+
+
 def _deliver(order, admin):
     delivery = order.deliveries.get()
-    driver = __import__("apps.accounts.models", fromlist=["User"]).User.objects.create(
-        email="rider@agiza.test", full_name="Rider One", staff_level=StaffLevel.DRIVER)
+    driver, _ = __import__("apps.accounts.models", fromlist=["User"]).User.objects.get_or_create(
+        email="rider@agiza.test", defaults={"full_name": "Rider One", "staff_level": StaffLevel.DRIVER})
     deliveries.assign_driver(delivery, driver, user=admin)
     deliveries.transition(delivery, "out_for_delivery", user=admin)
     deliveries.complete(delivery, user=admin, signature_name="Neema Joseph")
@@ -160,11 +175,15 @@ def test_fulfilment_payment_delivery_settlement_and_payout(app, home, shop, vend
         assert seller.client.post(f"{SELLER}/orders/{part.pk}/ready/").status_code == 409  # accept first
         assert seller.client.post(f"{SELLER}/orders/{part.pk}/accept/").json()["status"] == "accepted"
         assert seller.client.post(f"{SELLER}/orders/{part.pk}/ready/").json()["status"] == "ready"
+    # The two vendors' items are collected to AGIZA's warehouse first (one pickup task each).
+    res = staff.post(f"/api/orders/shop/{order.pk}/ship/", {}, format="json")
+    assert res.status_code == 409 and "pickups" in res.json()["error"]["message"]
+    collect_pickups(order, staff)
     assert staff.post(f"/api/orders/shop/{order.pk}/ship/", {}, format="json").status_code == 200
     order.refresh_from_db()
     assert set(VendorFulfillment.objects.filter(order=order).values_list("status", flat=True)) == {"shipped"}
     delivery = order.deliveries.get()
-    assert "Vendor A Electronics (vendor)" in delivery.pickup_point and "Dar Central" in delivery.pickup_point
+    assert delivery.pickup_warehouse == shop.warehouse  # consolidated at AGIZA's warehouse
     assert StockItem.objects.get(variant=vendor_a.variant).quantity == 9  # dispatched from the vendor
     # Delivered but unpaid: earnings still pending.
     _deliver(order, admin)
@@ -189,6 +208,9 @@ def test_fulfilment_payment_delivery_settlement_and_payout(app, home, shop, vend
     assert part_a.settlement_status == "settled" and part_a.payout == VendorPayout.objects.get()
     assert vendor_a.client.get(f"{SELLER}/earnings/").json()["summary"]["paid_out"] == "288000.00"
     assert finance.post("/api/marketplace/payouts/", {"vendor": vendor_a.vendor.pk, "method": "cash"},
+                        format="json").status_code == 400  # a paid payout needs its transfer reference
+    assert finance.post("/api/marketplace/payouts/", {"vendor": vendor_a.vendor.pk, "method": "cash",
+                                                      "transaction_reference": "CASH-1"},
                         format="json").status_code == 409  # nothing left to pay
     # Vendor B hasn't been paid.
     summary = staff.get("/api/marketplace/earnings/").json()

@@ -12,6 +12,7 @@ from django.db.models import Q
 
 from apps.core.models import TimeStampedModel
 from apps.core.references import next_reference
+from apps.core.uploads import safe_filename
 
 from .workflows import REFERENCE_PREFIX, OrderType
 
@@ -126,7 +127,7 @@ class Payment(TimeStampedModel):
 
 
 def attachment_path(instance, filename):
-    return f"orders/{instance.order_id}/{filename}"
+    return f"orders/{instance.order_id}/{safe_filename(filename)}"
 
 
 class OrderAttachment(TimeStampedModel):
@@ -313,3 +314,28 @@ class OrderItem(models.Model):
 
     def __str__(self) -> str:
         return f"{self.quantity}× {self.product_name}"
+
+
+class OrderAdjustment(models.Model):
+    """
+    An explicit change to what an order costs after it was placed (e.g. a seller couldn't supply its
+    items). The order total is updated, and this row keeps the before/after and why — nothing is
+    rewritten silently. Rows are never edited.
+    """
+
+    order = models.ForeignKey(Order, on_delete=models.PROTECT, related_name="adjustments")
+    amount = models.DecimalField(max_digits=14, decimal_places=2, help_text="Change to the total (negative = lower)")
+    total_before = models.DecimalField(max_digits=14, decimal_places=2)
+    total_after = models.DecimalField(max_digits=14, decimal_places=2)
+    reason = models.CharField(max_length=255)
+    fulfillment = models.ForeignKey("marketplace.VendorFulfillment", null=True, blank=True, on_delete=models.PROTECT,
+                                    related_name="order_adjustments")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.order_id}: {self.amount}"

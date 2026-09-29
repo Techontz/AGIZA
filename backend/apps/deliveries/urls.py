@@ -1,9 +1,10 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
-from .views import DeliveryViewSet, PhotoFileView, SignatureFileView
+from .views import DeliveryViewSet, PhotoFileView, PickupTaskViewSet, SignatureFileView
 
 router = DefaultRouter()
+router.register("deliveries/pickups", PickupTaskViewSet, basename="pickup-task")
 router.register("deliveries", DeliveryViewSet, basename="delivery")
 
 urlpatterns = [

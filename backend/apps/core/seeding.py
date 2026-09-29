@@ -50,6 +50,7 @@ def flush(seed: str | list[str], model_order: list[type[models.Model]]) -> dict[
         if not ids:
             continue
         rows = model.objects.filter(pk__in=ids)
+        _remove_derived(model, rows)
         file_fields = [f.name for f in model._meta.fields if isinstance(f, models.FileField)]
         for row in rows if file_fields else ():
             for name in file_fields:
@@ -64,3 +65,20 @@ def flush(seed: str | list[str], model_order: list[type[models.Model]]) -> dict[
         records.delete()
         removed[model.__name__] = removed.get(model.__name__, 0) + count
     return removed
+
+
+def _remove_derived(model, rows):
+    """
+    Records the platform derives from demo orders (vendor ledger rows, pickup tasks, order
+    adjustments) are demo data too. Real ledger rows are never deleted: this runs only for rows
+    registered as demo data, from `seed_demo_data --flush`.
+    """
+    if model._meta.label != "orders.Order":
+        return
+    from apps.deliveries.models import PickupTask
+    from apps.marketplace.models import VendorLedgerEntry
+    from apps.orders.models import OrderAdjustment
+
+    VendorLedgerEntry.objects.filter(fulfillment__order__in=rows).delete()  # queryset delete: demo only
+    PickupTask.objects.filter(order__in=rows).delete()
+    OrderAdjustment.objects.filter(order__in=rows).delete()

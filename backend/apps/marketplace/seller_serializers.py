@@ -214,8 +214,13 @@ def fulfillment_payload(f: VendorFulfillment, request, *, detail: bool = False) 
         "customer": _first_name(order.customer.full_name),
         "delivery_city": shop.city.name if shop and shop.city_id else None,
         "created_at": f.created_at, "accepted_at": f.accepted_at, "ready_at": f.ready_at,
-        "can_accept": f.status == "pending" and order.status != "cancelled",
-        "can_mark_ready": f.status == "accepted" and order.status != "cancelled",
+        "can_accept": f.status == "pending" and order.status != "cancelled" and not f.issue_open,
+        "can_mark_ready": f.status == "accepted" and order.status != "cancelled" and not f.issue_open,
+        "can_report_issue": (f.status in ("pending", "accepted", "ready") and not f.issue_open
+                             and order.status in ("pending", "processing")),
+        "issue": ({"type": f.issue_type, "type_display": f.get_issue_type_display(), "note": f.issue_note,
+                   "reported_at": f.issue_reported_at, "resolved_at": f.issue_resolved_at,
+                   "resolution": f.issue_resolution} if f.issue_reported_at else None),
     }
     if detail:
         body["items"] = [{"name": i.product_name, "variant_name": i.variant_name, "sku": i.sku, "quantity": i.quantity,

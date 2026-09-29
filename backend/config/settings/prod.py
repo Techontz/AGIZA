@@ -1,6 +1,14 @@
 from .base import *  # noqa: F401,F403
 
 DEBUG = False
+OTP_LOG_CODES = False
+
+# Fail at start-up rather than run with development defaults.
+ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")  # noqa: F405 - required (no default)
+if not ALLOWED_HOSTS or any(h in ("*", "localhost", "127.0.0.1") for h in ALLOWED_HOSTS):
+    raise RuntimeError("Set DJANGO_ALLOWED_HOSTS to the production host names.")
+if ADMIN_URL == "admin/":  # noqa: F405
+    raise RuntimeError("Set DJANGO_ADMIN_URL to a non-default path for the Django admin.")
 
 MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")  # noqa: F405
 STORAGES = {

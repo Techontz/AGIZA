@@ -12,6 +12,7 @@ from django.db import models
 
 from apps.core.models import TimeStampedModel
 from apps.core.references import next_reference
+from apps.core.uploads import safe_filename
 
 POSITIVE = [MinValueValidator(Decimal("0"))]
 
@@ -53,6 +54,8 @@ class ReturnType(models.TextChoices):
     DAMAGED_ITEM = "damaged_item", "Damaged Item"
     WRONG_ITEM = "wrong_item", "Wrong Item"
     CANCELLATION_AFTER_DISPATCH = "cancellation_after_dispatch", "Cancellation After Dispatch"
+    CUSTOMER_REQUEST = "customer_request", "Customer Return Request"
+    SELLER_CANNOT_FULFILL = "seller_cannot_fulfill", "Seller Couldn't Fulfil"
 
 
 class ReasonCode(models.TextChoices):
@@ -61,6 +64,9 @@ class ReasonCode(models.TextChoices):
     DAMAGED_IN_TRANSIT = "damaged_in_transit", "Damaged in Transit"
     CUSTOMER_CHANGED_MIND = "customer_changed_mind", "Customer Changed Mind"
     ITEM_MISMATCH = "item_mismatch", "Item Mismatch"
+    DEFECTIVE = "defective", "Defective / doesn't work"
+    NOT_AS_DESCRIBED = "not_as_described", "Not as described"
+    SELLER_UNAVAILABLE = "seller_unavailable", "Seller couldn't supply the item"
 
 
 class FinancialImpact(models.TextChoices):
@@ -118,6 +124,12 @@ class ReturnRequest(TimeStampedModel):
     notes = models.TextField(blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                    related_name="+")
+    # Requested by the customer (app / website)
+    requested_by_customer = models.BooleanField(default=False)
+    customer_note = models.TextField(blank=True, help_text="The customer's explanation")
+    customer_message = models.TextField(blank=True, help_text="What AGIZA tells the customer (shown to them)")
+    restocked = models.BooleanField(default=False, help_text="Returned items were put back into sellable stock")
+    reconciled_at = models.DateTimeField(null=True, blank=True, help_text="Vendor earnings adjusted for the refund")
 
     class Meta:
         ordering = ["-created_at", "-id"]
@@ -148,3 +160,55 @@ class ReturnStatusHistory(models.Model):
 
     def __str__(self) -> str:
         return f"{self._meta.verbose_name} #{self.pk}"
+
+
+
+class ReturnLine(models.Model):
+    """Which order lines (and how many units) the return covers — this decides which seller is affected."""
+
+    return_request = models.ForeignKey(ReturnRequest, on_delete=models.CASCADE, related_name="lines")
+    order_item = models.ForeignKey("orders.OrderItem", on_delete=models.PROTECT, related_name="return_lines")
+    quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    amount = models.DecimalField(max_digits=14, decimal_places=2, validators=POSITIVE,
+                                 help_text="Value of these units as sold")
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self) -> str:
+        return f"{self.quantity}× {self.order_item_id}"
+
+
+def return_attachment_path(instance, filename):
+    return f"private/returns/{instance.return_request_id}/{safe_filename(filename)}"
+
+
+class ReturnAttachment(models.Model):
+    """Evidence (photos) for a return. Private: the customer who sent it, the sellers involved and staff."""
+
+    return_request = models.ForeignKey(ReturnRequest, on_delete=models.CASCADE, related_name="attachments")
+    file = models.FileField(upload_to=return_attachment_path)
+    content_type = models.CharField(max_length=100)
+    uploaded_by_customer = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self) -> str:
+        return f"{self._meta.verbose_name} #{self.pk}"
+
+
+class ReturnVendorResponse(models.Model):
+    """A seller's comment on a return affecting its items. Sellers can't approve or change refunds."""
+
+    return_request = models.ForeignKey(ReturnRequest, on_delete=models.CASCADE, related_name="vendor_responses")
+    vendor = models.ForeignKey("catalog.Vendor", on_delete=models.CASCADE, related_name="+")
+    message = models.TextField(max_length=2000)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.return_request_id} · {self.vendor_id}"

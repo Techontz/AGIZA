@@ -1,3 +1,5 @@
+import logging
+
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
@@ -27,6 +29,8 @@ from ..serializers import (
 )
 from .base import CustomerAPIView, PublicAPIView
 from .orders import order_detail_payload
+
+logger = logging.getLogger("apps.storefront")
 
 
 # --------------------------------------------------------------------------- #
@@ -180,9 +184,11 @@ class PlaceOrderView(CustomerAPIView):
                 expected_total=data.get("expected_total"), request=request, channel=_channel(request),
             )
         except checkout.PriceChanged as exc:
+            logger.info("Checkout refused for customer %s: total changed", self.customer.pk)
             return Response({"error": {"code": "price_changed", "message": exc.message, "details": quote_payload(
                 exc.preview, request, payment_methods=checkout.payment_methods())}}, status=status.HTTP_409_CONFLICT)
         except WorkflowError as exc:
+            logger.info("Checkout refused for customer %s: %s", self.customer.pk, exc.message)
             if exc.conflict:
                 raise ConflictError(exc.message)
             raise ValidationError({exc.field or "non_field_errors": [exc.message]})

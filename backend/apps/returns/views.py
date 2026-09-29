@@ -1,6 +1,8 @@
 import django_filters
 from django.db.models import Count, F, Q, Sum
 from django.db.models.functions import Coalesce
+from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -66,7 +68,8 @@ class ReturnViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cre
     def get_queryset(self):
         return (
             ReturnRequest.objects.select_related("order", "order__customer", "delivery", "handler")
-            .prefetch_related("history")
+            .prefetch_related("history", "attachments", "vendor_responses__vendor",
+                              "lines__order_item__fulfillment__vendor")
             .order_by("-updated_at", "-id")
         )
 
@@ -140,6 +143,22 @@ class ReturnViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cre
         s.is_valid(raise_exception=True)
         ret = run(services.close, ret, user=request.user, request=request, **s.validated_data)
         return self._respond(ret)
+
+    @extend_schema(request=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["post"])
+    def message(self, request, pk=None):
+        """Tell the customer something about their return: {"message": "..."}."""
+        ret = run(services.message_customer, self.get_object(), user=request.user,
+                  message=str(request.data.get("message", "")), request=request)
+        return self._respond(ret)
+
+    @extend_schema(responses={(200, "image/*"): OpenApiTypes.BINARY})
+    @action(detail=True, url_path=r"attachments/(?P<attachment_id>\d+)/file")
+    def attachment_file(self, request, pk=None, attachment_id=None):
+        from apps.core.uploads import file_response
+
+        attachment = get_object_or_404(self.get_object().attachments, pk=attachment_id)
+        return file_response(attachment.file, attachment.content_type)
 
     @extend_schema(request=ReassignSerializer)
     @action(detail=True, methods=["post"])

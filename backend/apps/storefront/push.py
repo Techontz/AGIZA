@@ -47,7 +47,16 @@ def _send(tokens: list[str], title: str, body: str, data: dict):
 
 
 def notify_customer(customer, *, title: str, body: str, data: dict | None = None):
-    """Queue a push to every active device of the customer's app account (no-op without one)."""
+    """
+    Keep the notification in the customer's in-app inbox, then queue a push to every active device
+    of their app account (push is skipped when disabled or without devices).
+    """
+    if customer is None:
+        return
+    from .models import CustomerNotification
+
+    CustomerNotification.objects.create(customer=customer, title=title[:150], body=(body or "")[:500],
+                                        data=data or {})
     if not settings.EXPO_PUSH_ENABLED:
         return
     account = getattr(customer, "account", None) if customer is not None else None

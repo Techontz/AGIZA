@@ -55,3 +55,15 @@ def file_response(fieldfile, content_type: str = ""):
     response["Cache-Control"] = "private, max-age=300"
     response["X-Content-Type-Options"] = "nosniff"
     return response
+
+
+SAFE_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "pdf"}
+
+
+def safe_filename(filename: str) -> str:
+    """A random stored name: the uploader's filename is never used (only a known, lower-case extension)."""
+    import uuid
+
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    ext = "jpg" if ext == "jpeg" else ext
+    return f"{uuid.uuid4().hex}.{ext if ext in SAFE_EXTENSIONS else 'bin'}"

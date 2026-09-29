@@ -40,6 +40,12 @@ class ReturnSerializer(serializers.ModelSerializer):
     last_update = serializers.SerializerMethodField()
     actions = serializers.SerializerMethodField()
     allowed_transitions = serializers.SerializerMethodField()
+    lines = serializers.SerializerMethodField()
+    attachments = serializers.SerializerMethodField()
+    vendor_responses = serializers.SerializerMethodField()
+    refund_status = serializers.SerializerMethodField()
+    customer_status_display = serializers.SerializerMethodField()
+    sellers = serializers.SerializerMethodField()
 
     class Meta:
         model = ReturnRequest
@@ -49,7 +55,37 @@ class ReturnSerializer(serializers.ModelSerializer):
                   "exception_flag", "exception_flag_display", "item_condition", "item_condition_display",
                   "inspection_notes", "inspected_at", "decision_notes", "decided_at", "refund_amount",
                   "resolution_notes", "closed_at", "notes", "last_update", "actions", "allowed_transitions",
-                  "created_at", "updated_at"]
+                  "created_at", "updated_at", "requested_by_customer", "customer_note", "customer_message",
+                  "restocked", "reconciled_at", "lines", "attachments", "vendor_responses", "refund_status",
+                  "customer_status_display", "sellers"]
+
+    def get_lines(self, obj) -> list[dict]:
+        return [{"id": line.pk, "item": line.order_item_id, "name": line.order_item.product_name,
+                 "variant_name": line.order_item.variant_name, "quantity": line.quantity, "amount": _dec(line.amount),
+                 "seller": (line.order_item.fulfillment.vendor.name if line.order_item.fulfillment_id
+                            and line.order_item.fulfillment.vendor_id else "AGIZA")} for line in obj.lines.all()]
+
+    def get_attachments(self, obj) -> list[dict]:
+        return [{"id": a.pk, "url": f"returns/{obj.pk}/attachments/{a.pk}/file",
+                 "content_type": a.content_type, "at": a.created_at} for a in obj.attachments.all()]
+
+    def get_vendor_responses(self, obj) -> list[dict]:
+        return [{"vendor": r.vendor.name, "message": r.message, "at": r.created_at} for r in obj.vendor_responses.all()]
+
+    def get_refund_status(self, obj) -> str:
+        from .services import customer_status
+
+        return customer_status(obj)[1]
+
+    def get_customer_status_display(self, obj) -> str:
+        from .services import customer_status
+
+        return customer_status(obj)[0]
+
+    def get_sellers(self, obj) -> list[str]:
+        names = {line.order_item.fulfillment.vendor.name if line.order_item.fulfillment_id
+                 and line.order_item.fulfillment.vendor_id else "AGIZA" for line in obj.lines.all()}
+        return sorted(names)
 
     def get_order(self, obj) -> dict:
         return {"id": obj.order_id, "reference": obj.order.reference, "order_type": obj.order.order_type}
@@ -126,6 +162,8 @@ class InspectSerializer(serializers.Serializer):
     item_condition = serializers.ChoiceField(choices=ItemCondition.choices)
     notes = serializers.CharField()
     financial_impact = serializers.ChoiceField(choices=FinancialImpact.choices, required=False)
+    restock = serializers.BooleanField(required=False, allow_null=True, default=None,
+                                       help_text="Put the returned units back in stock (default: when resellable)")
 
 
 class DecideSerializer(serializers.Serializer):

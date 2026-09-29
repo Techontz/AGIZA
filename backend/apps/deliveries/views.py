@@ -3,6 +3,7 @@ from django.db.models import Count, Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -20,8 +21,8 @@ from apps.core.exceptions import ConflictError
 from apps.core.uploads import IMAGE_TYPES, file_response, validate_upload
 from apps.core.workflow import run
 
-from . import services
-from .models import CLOSED, Delivery, DeliveryPhoto, DeliveryProof, DeliveryStatus
+from . import pickups, services
+from .models import CLOSED, Delivery, DeliveryPhoto, DeliveryProof, DeliveryStatus, PickupTask
 from .serializers import (
     AssignDriverSerializer,
     CompleteSerializer,
@@ -35,6 +36,7 @@ from .serializers import (
 D = DeliveryStatus
 SOURCE_TYPES = {"international": ["international"], "shop": ["shop"], "local_delivery": ["express", "equipment"]}
 COMPLETED_TAB = [D.DELIVERED, D.FAILED, D.RETURNED, D.CANCELLED]
+
 
 
 def is_driver(user) -> bool:
@@ -242,3 +244,80 @@ class PhotoFileView(_ProofFileView):
         photo = get_object_or_404(DeliveryPhoto, pk=pk)
         self._delivery(request, photo.delivery_id)
         return file_response(photo.file, photo.content_type)
+
+
+# --------------------------------------------------------------------------- #
+# Pickup tasks (collecting marketplace items to the AGIZA hub)
+# --------------------------------------------------------------------------- #
+def pickup_row(t) -> dict:
+    return {
+        "id": t.pk, "reference": t.reference, "status": t.status, "status_display": t.get_status_display(),
+        "order": {"id": t.order_id, "reference": t.order.reference},
+        "vendor": {"id": t.vendor_id, "name": t.vendor.name} if t.vendor_id else None,
+        "origin": {"id": t.origin_id, "name": t.origin.name, "address": t.origin.address, "phone": t.origin.phone,
+                   "city": t.origin.city.name},
+        "destination": {"id": t.destination_id, "name": t.destination.name, "city": t.destination.city.name},
+        "driver": {"id": t.driver_id, "name": t.driver.full_name} if t.driver_id else None,
+        "scheduled_at": t.scheduled_at, "collected_at": t.collected_at, "arrived_at": t.arrived_at,
+        "handed_over_by": t.handed_over_by, "notes": t.notes, "created_at": t.created_at,
+        "events": [{"from": e.from_status, "to": e.to_status, "note": e.note, "at": e.created_at,
+                    "by": e.changed_by.full_name if e.changed_by_id else "System"} for e in t.events.all()],
+    }
+
+
+class PickupFilter(django_filters.FilterSet):
+    status = django_filters.BaseInFilter(field_name="status")
+    order = django_filters.NumberFilter(field_name="order_id")
+    driver = django_filters.NumberFilter(field_name="driver_id")
+    vendor = django_filters.NumberFilter(field_name="vendor_id")
+
+    class Meta:
+        model = PickupTask
+        fields = ["status", "order", "driver", "vendor"]
+
+
+@extend_schema(tags=["deliveries"], responses=OpenApiTypes.OBJECT)
+class PickupTaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    """Collection legs of marketplace orders. Drivers see only the pickups assigned to them."""
+
+    module = Module.DELIVERIES
+    permission_classes = [HasModulePermission]
+    read_modules = (Module.ORDERS, Module.ECOMMERCE)
+    filterset_class = PickupFilter
+    search_fields = ["reference", "order__reference", "vendor__name", "origin__name"]
+
+    def get_queryset(self):
+        qs = (PickupTask.objects.select_related("order", "vendor", "origin__city", "destination__city", "driver")
+              .prefetch_related("events__changed_by").order_by("-created_at", "-id"))
+        return scoped(qs, self.request.user)
+
+    def list(self, request, *args, **kwargs):
+        page = self.paginate_queryset(self.filter_queryset(self.get_queryset()))
+        return self.get_paginated_response([pickup_row(t) for t in page])
+
+    def retrieve(self, request, *args, **kwargs):
+        return Response(pickup_row(self.get_object()))
+
+    def _respond(self, task):
+        return Response(pickup_row(self.get_queryset().get(pk=task.pk)))
+
+    @extend_schema(request=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["post"])
+    def assign(self, request, pk=None):
+        """{"driver": id, "scheduled_at"?}"""
+        no_drivers(request.user, "assign pickups")
+        from apps.accounts.models import User
+
+        driver = User.objects.filter(pk=request.data.get("driver"), staff_level="driver", is_active=True).first()
+        task = run(pickups.assign, self.get_object(), driver, user=request.user,
+                   scheduled_at=request.data.get("scheduled_at") or None, request=request)
+        return self._respond(task)
+
+    @extend_schema(request=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["post"])
+    def advance(self, request, pk=None):
+        """{"status": "collected" | "at_hub" | "failed", "handed_over_by"?, "note"?}"""
+        task = run(pickups.advance, self.get_object(), str(request.data.get("status", "")), user=request.user,
+                   note=str(request.data.get("note", ""))[:255],
+                   handed_over_by=str(request.data.get("handed_over_by", "")), request=request)
+        return self._respond(task)

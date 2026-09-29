@@ -177,6 +177,11 @@ REST_FRAMEWORK = {
         "customer_login": env("THROTTLE_CUSTOMER_LOGIN_RATE", default="10/min"),
         "otp": env("THROTTLE_OTP_RATE", default="5/min"),
         "checkout": env("THROTTLE_CHECKOUT_RATE", default="20/min"),
+        "reviews": env("THROTTLE_REVIEWS_RATE", default="20/hour"),
+        "returns": env("THROTTLE_RETURNS_RATE", default="10/hour"),
+        "uploads": env("THROTTLE_UPLOADS_RATE", default="60/hour"),
+        "support": env("THROTTLE_SUPPORT_RATE", default="30/min"),
+        "seller_apply": env("THROTTLE_SELLER_APPLY_RATE", default="10/hour"),
     },
     # Number of trusted reverse proxies in front of Django (Next.js BFF, nginx...).
     # DRF uses it to pick the real client IP from X-Forwarded-For for throttling.
@@ -205,6 +210,10 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Backend API for the AGIZA logistics & commerce admin platform.",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    # The schema and Swagger UI need a signed-in staff user (they are not public documentation).
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],
+    "SERVE_AUTHENTICATION": ["rest_framework_simplejwt.authentication.JWTAuthentication",
+                             "rest_framework.authentication.SessionAuthentication"],
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": r"/api/",
     "ENUM_NAME_OVERRIDES": {
@@ -287,6 +296,17 @@ LOGGING = {
     },
 }
 
+# Optional error monitoring: set SENTRY_DSN and `pip install sentry-sdk` (not required to run).
+SENTRY_DSN = env("SENTRY_DSN", default="")
+if SENTRY_DSN:
+    try:
+        import sentry_sdk
+
+        sentry_sdk.init(dsn=SENTRY_DSN, send_default_pii=False, traces_sample_rate=0.0,
+                        environment=env("SENTRY_ENVIRONMENT", default="production"))
+    except ImportError:  # the variable is set but the library isn't installed: run without it
+        pass
+
 # Bootstrap admin (used by `manage.py bootstrap_admin`)
 BOOTSTRAP_ADMIN_EMAIL = env("BOOTSTRAP_ADMIN_EMAIL", default="")
 BOOTSTRAP_ADMIN_PASSWORD = env("BOOTSTRAP_ADMIN_PASSWORD", default="")
@@ -332,6 +352,10 @@ SELCOM_BASE_PAYMENT_URL = env("SELCOM_BASE_PAYMENT_URL", default="")
 # Public base URL of this API, for Selcom's payment notifications (e.g. https://api.agiza.co.tz).
 SELCOM_CALLBACK_BASE_URL = env("SELCOM_CALLBACK_BASE_URL", default="")
 SELCOM_FALLBACK_BUYER_EMAIL = env("SELCOM_FALLBACK_BUYER_EMAIL", default="payments@agiza.co.tz")
+
+# Development only: with no SMS provider configured, write verification codes to the log so
+# the app can be tested locally. Never enable in production.
+OTP_LOG_CODES = False
 
 # Public website (agiza_web). Its server renders catalogue pages by calling this API from one
 # address; with this shared secret (header X-Storefront-Key) those public GET reads skip the

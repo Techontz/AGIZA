@@ -70,7 +70,16 @@ def create_shop_order(*, customer, items: list[dict], shipping_address: str, use
     from apps.marketplace import services as marketplace
 
     marketplace.record_order(order, shipping_allocation=shipping_allocation)
+    from apps.deliveries import pickups
+
+    pickups.plan(order)
     return order
+
+
+def _live_lines(order):
+    """Order lines still being supplied (a seller's cancelled part has already released its stock)."""
+    return (order.items.select_related("variant", "warehouse", "fulfillment")
+            .exclude(fulfillment__status="cancelled"))
 
 
 @transaction.atomic
@@ -84,7 +93,11 @@ def ship(order: Order, *, user, driver=None, scheduled_at=None, note: str = "", 
     waiting = marketplace.waiting_for_vendors(order)
     if waiting:
         raise WorkflowError(f"Waiting for {', '.join(waiting)} to mark their items ready for pickup.", conflict=True)
-    for line in order.items.select_related("variant", "warehouse"):
+    from apps.deliveries import pickups as pickup_tasks
+
+    # Items kept in several places are collected to an AGIZA hub first (pickup tasks), then delivered.
+    hub = pickup_tasks.require_consolidated(order)
+    for line in _live_lines(order):
         inventory.dispatch(line, user=user)
     details = order.shop
     details.shipped_at = timezone.now()
@@ -95,9 +108,12 @@ def ship(order: Order, *, user, driver=None, scheduled_at=None, note: str = "", 
     from apps.deliveries.models import DeliveryType
 
     warehouse = details.fulfillment_warehouse
-    # A marketplace order may be collected from several places (AGIZA warehouses, vendors' premises).
-    pickups = list(dict.fromkeys(line.warehouse.name for line in order.items.select_related("warehouse")
-                                 if line.warehouse_id))
+    if hub is not None:
+        warehouse = hub
+    pickups = [warehouse.name] if hub is not None else list(dict.fromkeys(
+        line.warehouse.name for line in _live_lines(order) if line.warehouse_id))
+    if hub is None and _live_lines(order).first() is not None:
+        warehouse = _live_lines(order).first().warehouse or warehouse
     same_city = details.city_id and warehouse and warehouse.city_id == details.city_id
     delivery = deliveries.create_delivery(
         order, user=user, delivery_address=details.shipping_address, destination_city=details.city,
@@ -118,7 +134,7 @@ def cancel(order: Order, *, user, reason: str, request=None) -> Order:
     if not reason.strip():
         raise WorkflowError("Give the reason for cancelling.", field="reason")
     services._check_transition(order, ShopStatus.CANCELLED, via_action="cancel")
-    for line in order.items.select_related("variant", "warehouse"):
+    for line in _live_lines(order):
         inventory.release(line, user=user, note=f"{order.reference} cancelled")
     services._set_status(order, ShopStatus.CANCELLED, user, reason, request)
     record_audit(action="update", request=request, actor=user, instance=order, changes={"cancel_reason": [None, reason]})

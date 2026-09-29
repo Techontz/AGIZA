@@ -11,6 +11,7 @@ from django.db import models
 
 from apps.core.models import TimeStampedModel
 from apps.core.references import next_reference
+from apps.core.uploads import safe_filename
 
 
 class DeliveryStatus(models.TextChoices):
@@ -111,7 +112,7 @@ class DeliveryEvent(models.Model):
 
 def proof_path(instance, filename):
     delivery_id = getattr(instance, "delivery_id", None)
-    return f"deliveries/{delivery_id}/{filename}"
+    return f"deliveries/{delivery_id}/{safe_filename(filename)}"
 
 
 class DeliveryProof(models.Model):
@@ -141,3 +142,80 @@ class DeliveryPhoto(models.Model):
 
     def __str__(self) -> str:
         return f"{self._meta.verbose_name} #{self.pk}"
+
+
+
+class PickupStatus(models.TextChoices):
+    PENDING = "pending", "Waiting for the seller"
+    READY = "ready", "Ready to collect"
+    ASSIGNED = "assigned", "Rider assigned"
+    COLLECTED = "collected", "Collected"
+    AT_HUB = "at_hub", "At AGIZA hub"
+    CANCELLED = "cancelled", "Cancelled"
+    FAILED = "failed", "Collection failed"
+
+
+PICKUP_TRANSITIONS = {
+    PickupStatus.PENDING: {PickupStatus.READY, PickupStatus.CANCELLED},
+    PickupStatus.READY: {PickupStatus.ASSIGNED, PickupStatus.CANCELLED},
+    PickupStatus.ASSIGNED: {PickupStatus.COLLECTED, PickupStatus.FAILED, PickupStatus.CANCELLED},
+    PickupStatus.COLLECTED: {PickupStatus.AT_HUB},
+    PickupStatus.FAILED: {PickupStatus.ASSIGNED, PickupStatus.CANCELLED},
+    PickupStatus.AT_HUB: set(),
+    PickupStatus.CANCELLED: set(),
+}
+
+
+class PickupTask(TimeStampedModel):
+    """
+    One collection leg of a marketplace order: a rider collects a seller's items from where they are
+    kept and brings them to the AGIZA hub, where the order is consolidated for the final Delivery.
+    Created only when an order's items are in more than one place; a single-origin order is
+    delivered straight from that origin.
+    """
+
+    reference = models.CharField(max_length=20, unique=True, editable=False)
+    order = models.ForeignKey("orders.Order", on_delete=models.PROTECT, related_name="pickup_tasks")
+    fulfillment = models.OneToOneField("marketplace.VendorFulfillment", null=True, blank=True,
+                                       on_delete=models.PROTECT, related_name="pickup_task")
+    vendor = models.ForeignKey("catalog.Vendor", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    origin = models.ForeignKey("locations.Warehouse", on_delete=models.PROTECT, related_name="+")
+    destination = models.ForeignKey("locations.Warehouse", on_delete=models.PROTECT, related_name="+",
+                                    help_text="The AGIZA hub the items are brought to")
+    status = models.CharField(max_length=10, choices=PickupStatus.choices, default=PickupStatus.PENDING,
+                              db_index=True)
+    driver = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name="pickup_tasks")
+    scheduled_at = models.DateTimeField(null=True, blank=True)
+    collected_at = models.DateTimeField(null=True, blank=True)
+    arrived_at = models.DateTimeField(null=True, blank=True)
+    handed_over_by = models.CharField(max_length=150, blank=True, help_text="Who handed the items over at the seller")
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["driver", "status"])]
+
+    def __str__(self) -> str:
+        return f"{self.reference} · {self.order_id}"
+
+    def save(self, *args, **kwargs):
+        if not self.reference:
+            self.reference = next_reference("PCK")
+        super().save(*args, **kwargs)
+
+
+class PickupEvent(models.Model):
+    task = models.ForeignKey(PickupTask, on_delete=models.CASCADE, related_name="events")
+    from_status = models.CharField(max_length=10, blank=True)
+    to_status = models.CharField(max_length=10)
+    note = models.CharField(max_length=255, blank=True)
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.task_id}: {self.from_status or '∅'} → {self.to_status}"

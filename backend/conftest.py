@@ -52,3 +52,21 @@ def client_for(api, make_user):
         return client
 
     return _client
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _restore_migration_data_after_transactional_tests(django_db_setup, django_db_blocker):
+    """
+    Transactional tests (real commits, e.g. the concurrency tests) end by flushing every table,
+    including rows data migrations created (countries, cities, role permissions…). pytest-django
+    runs them last; restore that data at the end so a reused test database (--reuse-db) stays whole.
+    """
+    yield
+    from django.db import connection
+
+    from apps.locations.models import Country
+
+    with django_db_blocker.unblock():
+        contents = getattr(connection, "_test_serialized_contents", None)
+        if contents and not Country.objects.exists():
+            connection.creation.deserialize_db_from_string(contents)

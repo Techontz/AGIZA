@@ -41,6 +41,12 @@ def _stock_for(products) -> dict[int, int]:
     return available_by_variant(v.pk for p in products for v in getattr(p, "shop_variants", []))
 
 
+def _card_context(request, products) -> dict:
+    from apps.marketplace.reviews import product_ratings
+
+    return {"request": request, "stock": _stock_for(products), "ratings": product_ratings(p.pk for p in products)}
+
+
 @extend_schema(tags=["app: shop"], responses=OpenApiTypes.OBJECT)
 class ConfigView(PublicAPIView):
     """What the app needs at start-up: store currency, payment methods, verification availability."""
@@ -65,6 +71,7 @@ class CategoryListView(PublicAPIView):
     OpenApiParameter("deals", bool), OpenApiParameter("ordering", str, enum=list(ORDERING)),
     OpenApiParameter("store", str, description='Store slug ("agiza" = sold by AGIZA)'),
     OpenApiParameter("min_price", str), OpenApiParameter("max_price", str),
+    OpenApiParameter("in_stock", bool, description="Only products that can be bought now"),
 ])
 class ProductListView(PublicAPIView):
     def get(self, request):
@@ -78,6 +85,17 @@ class ProductListView(PublicAPIView):
             qs = qs.filter(price__gte=low)
         if (high := _price(params.get("max_price"))) is not None:
             qs = qs.filter(price__lte=high)
+        if params.get("in_stock") in ("1", "true"):
+            from django.db.models import Exists, F, OuterRef
+
+            from apps.inventory.models import StockItem
+
+            from ..catalog import RESERVABLE_WAREHOUSE_STATUSES
+
+            sellable = StockItem.objects.filter(variant__product=OuterRef("pk"), variant__status="active",
+                                                warehouse__status__in=RESERVABLE_WAREHOUSE_STATUSES,
+                                                quantity__gt=F("reserved"))
+            qs = qs.filter(status="active").filter(Exists(sellable))
         if category := params.get("category"):
             if not category.isdigit():
                 raise Http404
@@ -93,8 +111,8 @@ class ProductListView(PublicAPIView):
         qs = qs.order_by(*ORDERING.get(ordering, ORDERING["newest"]))
         paginator = StandardPagination()
         page = paginator.paginate_queryset(qs, request, view=self)
-        context = {"request": request, "stock": _stock_for(page)}
-        return paginator.get_paginated_response(ProductCardSerializer(page, many=True, context=context).data)
+        return paginator.get_paginated_response(
+            ProductCardSerializer(page, many=True, context=_card_context(request, page)).data)
 
 
 @extend_schema(tags=["app: shop"], responses=ProductDetailSerializer)
@@ -102,8 +120,11 @@ class ProductDetailView(PublicAPIView):
     def get(self, request, pk: int):
         product = get_object_or_404(visible_products().prefetch_related(
             "images", "specifications", "shipping_methods"), pk=pk)
-        context = {"request": request, "stock": _stock_for([product])}
-        return Response(ProductDetailSerializer(product, context=context).data)
+        from apps.marketplace.reviews import distribution
+
+        body = ProductDetailSerializer(product, context=_card_context(request, [product])).data
+        body["rating_distribution"] = distribution(product)
+        return Response(body)
 
 
 @extend_schema(tags=["app: stores"], responses=OpenApiTypes.OBJECT, parameters=[OpenApiParameter("search", str)])
@@ -120,7 +141,11 @@ class StoreListView(PublicAPIView):
                                    | Q(description__icontains=search))
         paginator = StandardPagination()
         page = paginator.paginate_queryset(stores, request, view=self)
-        rows = [store_payload(request, v, products_count=counts.get(v.pk, 0)) for v in page]
+        from apps.marketplace.reviews import store_ratings
+
+        ratings = store_ratings(v.pk for v in page)
+        rows = [store_payload(request, v, products_count=counts.get(v.pk, 0), rating=ratings.get(v.pk, {}))
+                for v in page]
         if paginator.page.number == 1 and counts.get(None) and (not search or search in "agiza"):
             rows.insert(0, store_payload(request, None, products_count=counts[None]))
         return paginator.get_paginated_response(rows)

@@ -186,6 +186,8 @@ def change_status(vendor: Vendor, to_status: str, *, user, note: str = "", reque
     if vendor.owner_id:
         ensure_stock_location(vendor)  # a suspended vendor's location stops being reservable
     _history(vendor, from_status, to_status, user=user, note=note)
+    logger.info("Vendor %s (%s): %s → %s by user %s", vendor.pk, vendor.slug, from_status, to_status,
+                getattr(user, "pk", None))
     record_audit(action="status_change", request=request, actor=user, instance=vendor,
                  changes={"approval_status": [from_status, to_status], **({"note": [None, note]} if note else {})})
     messages = {
@@ -301,6 +303,8 @@ def vendor_advance(fulfillment: VendorFulfillment, to_status: str, *, vendor: Ve
         raise WorkflowError("Your store is not active, so orders can't be updated.", conflict=True)
     if fulfillment.order.status == "cancelled":
         raise WorkflowError("This order was cancelled.", conflict=True)
+    if fulfillment.issue_open:
+        raise WorkflowError("You reported a problem on this order; wait for AGIZA's decision.", conflict=True)
     if to_status not in VENDOR_TRANSITIONS.get(fulfillment.status, set()):
         labels = dict(FulfillmentStatus.choices)
         raise WorkflowError(f"This order can't go from {labels[fulfillment.status]} to "
@@ -316,6 +320,9 @@ def vendor_advance(fulfillment: VendorFulfillment, to_status: str, *, vendor: Ve
                  changes={f"vendor_{vendor.pk}_fulfillment": [None, to_status]},
                  object_repr=f"{fulfillment.reference} · {vendor.name}")
     if to_status == FulfillmentStatus.READY:
+        from apps.deliveries import pickups
+
+        pickups.on_vendor_ready(fulfillment)
         _notify_staff(f"Ready for pickup · {fulfillment.order.reference}",
                       f"{vendor.name} has {fulfillment.item_count} item(s) ready to collect.",
                       f"/orders/ecommerce?order={fulfillment.order_id}")
@@ -360,22 +367,41 @@ def on_order_status(order, to_status: str, user):
     refresh_settlement(order)
 
 
+def _fully_paid(order) -> bool:
+    """Everything charged was received. Later refunds don't count against it: they are reconciled
+    separately (vendor refund debits), so settled earnings never flip back to pending."""
+    from django.db.models import Sum
+
+    from apps.orders.models import Payment
+
+    received = (order.payments.exclude(kind=Payment.Kind.REFUND).aggregate(t=Sum("amount"))["t"]
+                or Decimal("0"))
+    return order.total_amount is not None and received >= order.total_amount
+
+
 def refresh_settlement(order):
     """
-    Vendor earnings become payable once the order is delivered AND fully paid; a cancelled
-    order voids them. Settled (paid out) parts never change.
+    Vendor earnings become payable once the order is delivered AND fully paid (posted to the vendor
+    ledger then, once); a cancelled order voids them. Parts already payable, settled or cancelled
+    don't move back.
     """
-    from apps.orders.services import payment_summary
+    from . import ledger
 
     if order.status == "cancelled":
         target = SettlementStatus.VOID
-    elif order.status == "delivered" and payment_summary(order).status == "fully_paid":
+    elif order.status == "delivered" and _fully_paid(order):
         target = SettlementStatus.PAYABLE
     else:
         target = SettlementStatus.PENDING
-    (VendorFulfillment.objects.filter(order=order, vendor__isnull=False)
-     .exclude(settlement_status__in=[SettlementStatus.SETTLED, target])
-     .update(settlement_status=target, updated_at=timezone.now()))
+    rows = (VendorFulfillment.objects.select_for_update().filter(order=order, vendor__isnull=False)
+            .exclude(settlement_status__in=[SettlementStatus.SETTLED, SettlementStatus.PAYABLE, target]))
+    if target != SettlementStatus.VOID:  # a seller's cancelled part stays void
+        rows = rows.exclude(status=FulfillmentStatus.CANCELLED)
+    for f in rows.select_related("order", "vendor"):
+        f.settlement_status = target
+        f.save(update_fields=["settlement_status", "updated_at"])
+        if target == SettlementStatus.PAYABLE:
+            ledger.post_earning(f)
 
 
 def on_payment(order):
@@ -383,29 +409,158 @@ def on_payment(order):
 
 
 # --------------------------------------------------------------------------- #
-# Payouts (recorded; the transfer itself happens outside the system)
+# Payouts: see apps.marketplace.ledger (append-only ledger, payout lifecycle)
+# --------------------------------------------------------------------------- #
+def record_payout(vendor: Vendor, *, user, method: str, paid_at=None, transaction_reference: str = "",
+                  notes: str = "", request=None) -> VendorPayout:
+    """A transfer already made to the vendor: its whole payable balance, recorded as paid."""
+    from . import ledger
+
+    return ledger.record_payout(vendor, user=user, method=method, transaction_reference=transaction_reference,
+                                paid_at=paid_at, notes=notes, request=request)
+
+
+# --------------------------------------------------------------------------- #
+# Fulfilment problems reported by vendors
 # --------------------------------------------------------------------------- #
 @transaction.atomic
-def record_payout(vendor: Vendor, *, user, method: str, paid_at=None, transaction_reference: str = "",
-                  notes: str = "", fulfillment_ids: list[int] | None = None, request=None) -> VendorPayout:
-    rows = VendorFulfillment.objects.select_for_update().filter(vendor=vendor,
-                                                                settlement_status=SettlementStatus.PAYABLE)
-    if fulfillment_ids is not None:
-        rows = rows.filter(pk__in=fulfillment_ids)
-    rows = list(rows)
-    if fulfillment_ids is not None and len(rows) != len(set(fulfillment_ids)):
-        raise WorkflowError("Some of the chosen orders aren't payable (not delivered and paid, or already paid out).",
-                            field="fulfillments")
-    if not rows:
-        raise WorkflowError(f"{vendor.name} has no payable earnings.", conflict=True)
-    amount = sum((r.vendor_net for r in rows), Decimal("0"))
-    if amount <= 0:
-        raise WorkflowError("The payable amount is zero.", conflict=True)
-    payout = VendorPayout.objects.create(vendor=vendor, amount=amount, method=method, paid_at=paid_at or timezone.now(),
-                                         transaction_reference=transaction_reference, notes=notes, recorded_by=user)
-    VendorFulfillment.objects.filter(pk__in=[r.pk for r in rows]).update(
-        settlement_status=SettlementStatus.SETTLED, payout=payout, updated_at=timezone.now())
-    record_audit(action="create", request=request, actor=user, instance=payout,
-                 changes={"vendor": [None, vendor.name], "amount": [None, str(amount)], "orders": [None, len(rows)]})
-    _notify_owner(vendor, "Payout sent", f"AGIZA sent you {amount:,.0f} {payout.currency} ({payout.reference}).")
-    return payout
+def report_issue(fulfillment: VendorFulfillment, *, vendor: Vendor, issue_type: str, note: str,
+                 request=None) -> VendorFulfillment:
+    """A vendor can't (fully) supply its part. It reports why; AGIZA decides what happens next."""
+    from .models import IssueType
+
+    fulfillment = VendorFulfillment.objects.select_for_update().select_related("order", "vendor").get(pk=fulfillment.pk)
+    if fulfillment.vendor_id != vendor.pk:
+        raise WorkflowError("Order not found.", conflict=True)
+    if issue_type not in IssueType.values:
+        raise WorkflowError("Choose what the problem is.", field="issue_type")
+    note = note.strip()
+    if len(note) < 5:
+        raise WorkflowError("Explain the problem so AGIZA can help the customer.", field="note")
+    if fulfillment.status not in (FulfillmentStatus.PENDING, FulfillmentStatus.ACCEPTED, FulfillmentStatus.READY) \
+            or fulfillment.order.status in ("shipped", "delivered", "cancelled"):
+        raise WorkflowError("This order can no longer be changed. Contact AGIZA.", conflict=True)
+    if fulfillment.issue_open:
+        raise WorkflowError("A problem is already reported on this order; AGIZA is looking at it.", conflict=True)
+    fulfillment.issue_type = issue_type
+    fulfillment.issue_note = note
+    fulfillment.issue_reported_at = timezone.now()
+    fulfillment.issue_resolved_at = None
+    fulfillment.issue_resolution = ""
+    fulfillment.save(update_fields=["issue_type", "issue_note", "issue_reported_at", "issue_resolved_at",
+                                    "issue_resolution", "updated_at"])
+    FulfillmentEvent.objects.create(fulfillment=fulfillment, from_status=fulfillment.status,
+                                    to_status=fulfillment.status, by_vendor=True,
+                                    note=f"Problem reported: {IssueType(issue_type).label}")
+    record_audit(action="update", request=request, actor=None, instance=fulfillment.order,
+                 changes={f"vendor_{vendor.pk}_issue": [None, issue_type], "note": [None, note]},
+                 object_repr=f"{fulfillment.reference} · {vendor.name}")
+    logger.info("Fulfilment problem reported on %s by vendor %s: %s", fulfillment.reference, vendor.pk, issue_type)
+    _notify_staff(f"Fulfilment problem · {fulfillment.order.reference}",
+                  f"{vendor.name}: {IssueType(issue_type).label}. {note}"[:500],
+                  f"/orders/ecommerce?search={fulfillment.order.reference}")
+    from apps.storefront.notifications import notify
+
+    notify(fulfillment.order.customer, title=f"Update on order {fulfillment.order.reference}",
+           body="A seller reported a problem with part of your order. AGIZA is on it and will update you.",
+           data={"type": "order", "order": fulfillment.order.reference, "screen": "order"})
+    return fulfillment
+
+
+@transaction.atomic
+def resolve_issue(fulfillment: VendorFulfillment, *, user, action: str, note: str, request=None) -> VendorFulfillment:
+    """AGIZA's decision: carry on with this seller's part, or cancel only that part."""
+    fulfillment = VendorFulfillment.objects.select_for_update().get(pk=fulfillment.pk)
+    if not fulfillment.issue_open:
+        raise WorkflowError("There is no open problem on this order part.", conflict=True)
+    note = note.strip()
+    if not note:
+        raise WorkflowError("Say what was decided.", field="note")
+    if action == "continue":
+        fulfillment.issue_resolved_at = timezone.now()
+        fulfillment.issue_resolution = note
+        fulfillment.save(update_fields=["issue_resolved_at", "issue_resolution", "updated_at"])
+        FulfillmentEvent.objects.create(fulfillment=fulfillment, from_status=fulfillment.status,
+                                        to_status=fulfillment.status, changed_by=user, note=f"Resolved: {note}"[:255])
+        if fulfillment.vendor_id:
+            _notify_owner(fulfillment.vendor, f"Order {fulfillment.order.reference}", f"AGIZA: {note}",
+                          {"fulfillment": fulfillment.pk})
+    elif action == "cancel_part":
+        cancel_part(fulfillment, user=user, reason=note, request=request)
+    else:
+        raise WorkflowError("Choose continue or cancel_part.", field="action")
+    record_audit(action="status_change", request=request, actor=user, instance=fulfillment.order,
+                 changes={f"fulfillment_{fulfillment.pk}_issue": ["open", action], "note": [None, note]})
+    return fulfillment
+
+
+@transaction.atomic
+def cancel_part(fulfillment: VendorFulfillment, *, user, reason: str, request=None):
+    """
+    Cancel one seller's part and keep the rest of the order. Its stock is released, its earnings
+    void and its pickup cancelled. The order total goes down by the part's goods and delivery share
+    (an explicit OrderAdjustment row keeps the before/after), and if the customer had already paid
+    more than the new total, a refund is opened for AGIZA to pay back.
+    """
+    from apps.inventory import services as inventory
+    from apps.orders import services as order_services
+    from apps.orders.models import OrderAdjustment
+    from apps.orders.workflows import ShopStatus
+
+    order = order_services._lock(fulfillment.order)
+    fulfillment = VendorFulfillment.objects.select_for_update().get(pk=fulfillment.pk)
+    if fulfillment.status in (FulfillmentStatus.CANCELLED, FulfillmentStatus.SHIPPED, FulfillmentStatus.DELIVERED):
+        raise WorkflowError("This part of the order can't be cancelled now.", conflict=True)
+    if order.status not in (ShopStatus.PENDING, ShopStatus.PROCESSING):
+        raise WorkflowError(f"{order.reference} has already left; handle it as a return.", conflict=True)
+    remaining = order.fulfillments.exclude(pk=fulfillment.pk).exclude(status=FulfillmentStatus.CANCELLED)
+    if not remaining.exists():  # nothing else left: cancel the whole order the usual way
+        from apps.orders import shop
+
+        shop.cancel(order, user=user, reason=reason, request=request)
+        _close_issue(fulfillment, user, reason)
+        return fulfillment
+    seller = fulfillment.vendor.name if fulfillment.vendor_id else "AGIZA"
+    for line in fulfillment.items.select_related("variant", "warehouse", "order"):
+        inventory.release(line, user=user, note=f"{order.reference}: {seller} part cancelled")
+    _event(fulfillment, FulfillmentStatus.CANCELLED, user=user, note=f"Cancelled: {reason}")
+    fulfillment.settlement_status = SettlementStatus.VOID
+    fulfillment.save(update_fields=["status", "settlement_status", "updated_at"])
+    _close_issue(fulfillment, user, reason)
+    task = getattr(fulfillment, "pickup_task", None)
+    if task is not None:
+        from apps.deliveries import pickups
+
+        pickups.cancel(task, user=user, note=reason)
+    amount = fulfillment.subtotal + fulfillment.shipping_fee
+    before = order.total_amount or Decimal("0")
+    after = max(before - amount, Decimal("0"))
+    OrderAdjustment.objects.create(order=order, amount=after - before, total_before=before, total_after=after,
+                                   reason=f"{seller} part cancelled: {reason}"[:255],
+                                   fulfillment=fulfillment, created_by=user)
+    order.total_amount = after
+    order.save(update_fields=["total_amount", "updated_at"])
+    record_audit(action="update", request=request, actor=user, instance=order,
+                 changes={"total_amount": [str(before), str(after)], "reason": [None, reason]})
+    paid = order_services.net_paid(order)
+    if paid > after:
+        from apps.returns import services as returns
+
+        returns.open_refund_obligation(order, fulfillment=fulfillment, amount=min(paid - after, amount), user=user,
+                                       reason=reason)
+    from apps.storefront.notifications import notify
+
+    notify(order.customer, title=f"Order {order.reference} updated",
+           body=f"Part of your order couldn't be supplied and was removed. New total: {after:,.0f} {order.currency}.",
+           data={"type": "order", "order": order.reference, "screen": "order"})
+    if fulfillment.vendor_id:
+        _notify_owner(fulfillment.vendor, f"Order {order.reference} cancelled", reason, {"fulfillment": fulfillment.pk})
+    refresh_settlement(order)
+    return fulfillment
+
+
+def _close_issue(fulfillment, user, reason):
+    if fulfillment.issue_reported_at and not fulfillment.issue_resolved_at:
+        fulfillment.issue_resolved_at = timezone.now()
+        fulfillment.issue_resolution = f"Part cancelled: {reason}"
+        fulfillment.save(update_fields=["issue_resolved_at", "issue_resolution", "updated_at"])

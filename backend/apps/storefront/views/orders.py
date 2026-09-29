@@ -31,7 +31,9 @@ def customer_orders(customer):
         Order.objects.filter(customer=customer)
         .select_related("shop__city", "shop__shipping_method", "international__source_country")
         .prefetch_related(
-            Prefetch("items", queryset=OrderItem.objects.select_related("variant__product", "vendor__city")
+            "adjustments", "returns__history",
+            Prefetch("items", queryset=OrderItem.objects.select_related("variant__product", "vendor__city", "fulfillment")
+                     .prefetch_related("return_lines__return_request")
                      .prefetch_related(
                 Prefetch("variant__product__images", queryset=ProductImage.objects.filter(variant__isnull=True),
                          to_attr="shop_images"))),
@@ -46,7 +48,8 @@ def customer_orders(customer):
 def _items(order, request) -> list[dict]:
     return [{"name": i.product_name, "variant_name": i.variant_name, "sku": i.sku, "quantity": i.quantity,
              "unit_price": str(i.unit_price), "line_total": str(i.line_total),
-             "product_id": i.variant.product_id, "vendor": seller_payload(request, i.vendor),
+             "product_id": i.variant.product_id, "vendor": seller_payload(request, i.vendor), "item": i.pk,
+             "cancelled": bool(i.fulfillment_id and i.fulfillment.status == "cancelled"),
              "image": image_url(request, primary_image(i.variant.product))} for i in order.items.all()]
 
 
@@ -90,17 +93,26 @@ def order_detail_payload(order: Order, request) -> dict:
     }
     if order.order_type == OrderType.SHOP:
         details = order.shop
-        subtotal = sum((i.line_total for i in order.items.all()), 0)
+        subtotal = sum((i.line_total for i in order.items.all()
+                        if not (i.fulfillment_id and i.fulfillment.status == "cancelled")), 0)
         city = details.city.name if details.city_id else ""
         body["shipping"] = {
             "address": ", ".join(p for p in (details.shipping_address, details.area, city) if p), "city": city,
             "area": details.area, "method": details.shipping_method.name if details.shipping_method_id else None,
             "estimated_delivery": details.estimated_delivery or None,
         }
+        adjustments = [{"amount": str(a.amount), "reason": a.reason, "at": a.created_at} for a in order.adjustments.all()]
         body["amounts"] = {"subtotal": str(subtotal), "shipping_fee": str(details.delivery_fee),
                            "total": str(order.total_amount)}
+        body["adjustments"] = adjustments
         body["payment_preference"] = details.payment_preference or None
         body["sellers"] = _sellers(order, request)
+        from apps.returns import services as returns
+
+        body["can_return"] = returns.return_window_open(order) and any(
+            returns.returnable(i) for i in order.items.all() if not (i.fulfillment and i.fulfillment.status == "cancelled"))
+        body["returns"] = [{"reference": r.reference, "status_display": returns.customer_status(r)[0],
+                            "refund_status": returns.customer_status(r)[1]} for r in order.returns.all()]
     elif order.order_type == OrderType.INTERNATIONAL:
         details = order.international
         body["international"] = {"service": details.get_service_type_display(),

@@ -3,7 +3,7 @@ from django.urls import path, register_converter
 
 from apps.marketplace import seller
 
-from .views import account, catalog, orders, requests, shopping
+from .views import account, catalog, engagement, orders, requests, shopping
 
 
 class MediaKind:
@@ -39,6 +39,7 @@ urlpatterns = [
     path("categories/", catalog.CategoryListView.as_view(), name="categories"),
     path("products/", catalog.ProductListView.as_view(), name="products"),
     path("products/<int:pk>/", catalog.ProductDetailView.as_view(), name="product"),
+    path("products/<int:pk>/reviews/", engagement.ProductReviewsView.as_view(), name="product-reviews"),
     path("images/<int:pk>/", catalog.ProductImageView.as_view(), name="product-image"),
     path("stores/", catalog.StoreListView.as_view(), name="stores"),
     path("stores/<slug:slug>/", catalog.StoreDetailView.as_view(), name="store"),
@@ -61,6 +62,20 @@ urlpatterns = [
     path("orders/<str:reference>/cancel/", orders.OrderCancelView.as_view(), name="order-cancel"),
     path("orders/<str:reference>/pay/", orders.OrderPayView.as_view(), name="order-pay"),
     path("orders/<str:reference>/check-payment/", orders.OrderPaymentCheckView.as_view(), name="order-check-payment"),
+    path("orders/<str:reference>/returns/", engagement.OrderReturnsView.as_view(), name="order-returns"),
+    # Returns, reviews, saved products, notifications
+    path("returns/", engagement.ReturnListView.as_view(), name="returns"),
+    path("returns/<str:reference>/", engagement.ReturnDetailView.as_view(), name="return"),
+    path("returns/<str:reference>/evidence/", engagement.ReturnEvidenceView.as_view(), name="return-evidence"),
+    path("returns/<str:reference>/evidence/<int:pk>/", engagement.ReturnEvidenceFileView.as_view(),
+         name="return-evidence-file"),
+    path("me/reviews/", engagement.MyReviewsView.as_view(), name="my-reviews"),
+    path("me/reviews/<int:pk>/", engagement.MyReviewDetailView.as_view(), name="my-review"),
+    path("wishlist/", engagement.WishlistView.as_view(), name="wishlist"),
+    path("wishlist/merge/", engagement.WishlistMergeView.as_view(), name="wishlist-merge"),
+    path("wishlist/<int:product_id>/", engagement.WishlistItemView.as_view(), name="wishlist-item"),
+    path("notifications/", engagement.NotificationListView.as_view(), name="notifications"),
+    path("notifications/read/", engagement.NotificationReadView.as_view(), name="notifications-read"),
     # Buy for me / Deliver for me, support
     path("requests/", requests.QuoteListView.as_view(), name="requests"),
     path("requests/<int:pk>/", requests.QuoteDetailView.as_view(), name="request"),
@@ -80,6 +95,14 @@ urlpatterns = [
     path("seller/images/<int:pk>/", seller.ImageFileView.as_view(), name="seller-image"),
     path("seller/orders/", seller.OrderListView.as_view(), name="seller-orders"),
     path("seller/orders/<int:pk>/", seller.OrderDetailView.as_view(), name="seller-order"),
-    path("seller/orders/<int:pk>/<str:action>/", seller.OrderActionView.as_view(), name="seller-order-action"),
     path("seller/earnings/", seller.EarningsView.as_view(), name="seller-earnings"),
+    path("seller/orders/<int:pk>/issue/", seller.OrderIssueView.as_view(), name="seller-order-issue"),
+    path("seller/orders/<int:pk>/<str:action>/", seller.OrderActionView.as_view(), name="seller-order-action"),
+    path("seller/returns/", seller.ReturnListView.as_view(), name="seller-returns"),
+    path("seller/returns/<str:reference>/", seller.ReturnDetailView.as_view(), name="seller-return"),
+    path("seller/returns/<str:reference>/evidence/<int:pk>/", seller.ReturnEvidenceFileView.as_view(),
+         name="seller-return-evidence"),
+    path("seller/reviews/", seller.ReviewListView.as_view(), name="seller-reviews"),
+    path("seller/reviews/<int:pk>/<str:action>/", seller.ReviewActionView.as_view(), name="seller-review-action"),
+    path("seller/documents/", seller.DocumentListView.as_view(), name="seller-documents"),
 ]

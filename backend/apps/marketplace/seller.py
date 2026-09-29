@@ -28,7 +28,7 @@ from apps.core.workflow import run
 from apps.inventory.models import StockItem
 from apps.orders.models import OrderItem
 from apps.storefront.serializers import money
-from apps.storefront.views.base import CustomerAPIView
+from apps.storefront.views.base import CustomerAPIView, WriteThrottleMixin
 
 from . import services, vendor_products
 from .models import FulfillmentStatus, MarketplaceSettings, SettlementStatus, VendorFulfillment, VendorPayout
@@ -77,10 +77,10 @@ def _payload(vendor, request):
 # Application and store profile
 # --------------------------------------------------------------------------- #
 @extend_schema(tags=["seller"], request=ApplicationSerializer, responses=OpenApiTypes.OBJECT)
-class ApplicationView(SellerAPIView):
+class ApplicationView(WriteThrottleMixin, SellerAPIView):
     """GET: my store / application (404 if none). POST: apply. PATCH: edit a pending application."""
 
-    throttle_scope = "checkout"
+    throttle_scope = "seller_apply"
 
     def get(self, request):
         return Response(_payload(self.get_vendor(), request))
@@ -111,10 +111,11 @@ class ApplicationView(SellerAPIView):
 
 
 @extend_schema(tags=["seller"], responses=OpenApiTypes.OBJECT)
-class StoreMediaUploadView(SellerAPIView):
+class StoreMediaUploadView(WriteThrottleMixin, SellerAPIView):
     """POST a logo or banner image; GET it (the owner can see it before the store is public)."""
 
     parser_classes = [MultiPartParser, FormParser]
+    throttle_scope = "uploads"
 
     def get(self, request, kind: str):
         vendor = self.get_vendor()
@@ -142,17 +143,18 @@ class StoreMediaUploadView(SellerAPIView):
 # Dashboard
 # --------------------------------------------------------------------------- #
 def _earnings(vendor) -> dict:
-    rows = VendorFulfillment.objects.filter(vendor=vendor)
-    live = rows.exclude(settlement_status=SettlementStatus.VOID)
+    """Sales figures from the order parts; what is payable / paid from the ledger (the source of truth)."""
+    from . import ledger
+
+    live = VendorFulfillment.objects.filter(vendor=vendor).exclude(settlement_status=SettlementStatus.VOID)
     agg = live.aggregate(gross=Sum("subtotal"), commission=Sum("commission"), net=Sum("vendor_net"))
-    by_state = dict(live.values("settlement_status").annotate(n=Sum("vendor_net")).values_list("settlement_status", "n"))
     zero = Decimal("0")
+    bal = ledger.balance(vendor)
     return {
         "gross_sales": money(agg["gross"] or zero), "commission": money(agg["commission"] or zero),
-        "net_earnings": money(agg["net"] or zero), "pending": money(by_state.get(SettlementStatus.PENDING) or zero),
-        "payable": money(by_state.get(SettlementStatus.PAYABLE) or zero),
-        "paid_out": money(by_state.get(SettlementStatus.SETTLED) or zero),
-        "orders": live.count(),
+        "net_earnings": money(agg["net"] or zero), "pending": money(bal.pending), "payable": money(bal.payable),
+        "in_payout": money(bal.in_payout), "paid_out": money(bal.paid_out), "refunds": money(bal.refunds),
+        "adjustments": money(bal.adjustments), "orders": live.count(),
     }
 
 
@@ -237,6 +239,7 @@ class ProductDetailView(SellerAPIView):
 @extend_schema(tags=["seller"], responses=OpenApiTypes.OBJECT)
 class ProductImageUploadView(SellerAPIView):
     parser_classes = [MultiPartParser, FormParser]
+    throttle_scope = "uploads"
 
     def post(self, request, pk: int):
         vendor = self.approved_vendor()
@@ -345,8 +348,11 @@ class OrderActionView(SellerAPIView):
 @extend_schema(tags=["seller"], responses=OpenApiTypes.OBJECT)
 class EarningsView(SellerAPIView):
     def get(self, request):
+        from .models import VendorLedgerEntry
+
         vendor = self.approved_vendor()
         payouts = VendorPayout.objects.filter(vendor=vendor).annotate(orders=Count("fulfillments"))[:50]
+        entries = VendorLedgerEntry.objects.filter(vendor=vendor).order_by("-created_at", "-id")[:100]
         return Response({
             "summary": _earnings(vendor),
             "payout_schedule": MarketplaceSettings.load().payout_schedule,
@@ -354,6 +360,179 @@ class EarningsView(SellerAPIView):
                                "provider": vendor.payout_provider, "account_name": vendor.payout_account_name,
                                "account_number": vendor.payout_account_number},
             "payouts": [{"reference": p.reference, "amount": money(p.amount), "method": p.get_method_display(),
-                         "transaction_reference": p.transaction_reference, "paid_at": p.paid_at, "orders": p.orders}
-                        for p in payouts],
+                         "status": p.status, "status_display": p.get_status_display(),
+                         "gross_sales": money(p.gross_sales), "commission": money(p.commission),
+                         "refund_deductions": money(p.refund_deductions), "adjustments": money(p.adjustments),
+                         "transaction_reference": p.transaction_reference, "paid_at": p.paid_at,
+                         "created_at": p.created_at, "orders": p.orders} for p in payouts],
+            "ledger": [{"kind": e.kind, "kind_display": e.get_kind_display(), "amount": money(e.amount),
+                        "reference": e.reference, "note": e.note, "at": e.created_at} for e in entries],
         })
+
+
+# --------------------------------------------------------------------------- #
+# Fulfilment problems
+# --------------------------------------------------------------------------- #
+@extend_schema(tags=["seller"], request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT)
+class OrderIssueView(SellerAPIView):
+    """Report that this order part can't be (fully) supplied: {"issue_type", "note"}. AGIZA decides."""
+
+    def post(self, request, pk: int):
+        vendor = self.approved_vendor()
+        if not vendor.is_public:
+            raise PermissionDenied("Your store is suspended. Contact AGIZA.")
+        fulfillment = get_object_or_404(VendorFulfillment.objects.filter(vendor=vendor), pk=pk)
+        run(services.report_issue, fulfillment, vendor=vendor, issue_type=str(request.data.get("issue_type", "")),
+            note=str(request.data.get("note", ""))[:2000], request=request)
+        return Response(fulfillment_payload(get_object_or_404(_fulfillments(vendor), pk=pk), request, detail=True))
+
+
+# --------------------------------------------------------------------------- #
+# Returns affecting this vendor's items (read and respond; AGIZA decides refunds)
+# --------------------------------------------------------------------------- #
+def _vendor_returns(vendor):
+    from apps.returns.models import ReturnRequest
+
+    return (ReturnRequest.objects.filter(lines__order_item__fulfillment__vendor=vendor).distinct()
+            .select_related("order").prefetch_related("lines__order_item__fulfillment", "attachments",
+                                                      "vendor_responses", "history")
+            .order_by("-created_at", "-id"))
+
+
+def _return_payload(ret, vendor, request, *, detail=False) -> dict:
+    from apps.returns import services as returns
+
+    label, refund = returns.customer_status(ret)
+    mine = [line for line in ret.lines.all() if line.order_item.fulfillment and
+            line.order_item.fulfillment.vendor_id == vendor.pk]
+    body = {"reference": ret.reference, "order_reference": ret.order.reference, "status": ret.status,
+            "status_display": label, "refund_status": refund, "reason": ret.get_reason_code_display(),
+            "created_at": ret.created_at,
+            "items": [{"name": line.order_item.product_name, "variant_name": line.order_item.variant_name,
+                       "quantity": line.quantity, "amount": money(line.amount)} for line in mine]}
+    if detail:
+        body["explanation"] = ret.customer_note
+        body["evidence"] = [request.build_absolute_uri(f"/api/app/seller/returns/{ret.reference}/evidence/{a.pk}/")
+                            for a in ret.attachments.all()]
+        body["responses"] = [{"message": r.message, "at": r.created_at} for r in ret.vendor_responses.all()
+                             if r.vendor_id == vendor.pk]
+        body["can_respond"] = ret.status != "closed"
+    return body
+
+
+@extend_schema(tags=["seller"], responses=OpenApiTypes.OBJECT)
+class ReturnListView(SellerAPIView):
+    def get(self, request):
+        vendor = self.approved_vendor()
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(_vendor_returns(vendor), request, view=self)
+        return paginator.get_paginated_response([_return_payload(r, vendor, request) for r in page])
+
+
+@extend_schema(tags=["seller"], request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT)
+class ReturnDetailView(SellerAPIView):
+    def get(self, request, reference: str):
+        vendor = self.approved_vendor()
+        ret = get_object_or_404(_vendor_returns(vendor), reference=reference)
+        return Response(_return_payload(ret, vendor, request, detail=True))
+
+    def post(self, request, reference: str):
+        """Respond to the return (the seller's side of the story). No say over the refund."""
+        from apps.returns import services as returns
+
+        vendor = self.approved_vendor()
+        ret = get_object_or_404(_vendor_returns(vendor), reference=reference)
+        run(returns.vendor_respond, ret, vendor=vendor, message=str(request.data.get("message", "")))
+        return Response(_return_payload(_vendor_returns(vendor).get(pk=ret.pk), vendor, request, detail=True))
+
+
+@extend_schema(tags=["seller"], responses={(200, "image/*"): OpenApiTypes.BINARY})
+class ReturnEvidenceFileView(SellerAPIView):
+    throttle_classes = []
+
+    def get(self, request, reference: str, pk: int):
+        from apps.returns.models import ReturnAttachment
+
+        vendor = self.approved_vendor()
+        ret = get_object_or_404(_vendor_returns(vendor), reference=reference)
+        attachment = get_object_or_404(ReturnAttachment, pk=pk, return_request=ret)
+        return file_response(attachment.file, attachment.content_type)
+
+
+# --------------------------------------------------------------------------- #
+# Reviews of this vendor's products
+# --------------------------------------------------------------------------- #
+@extend_schema(tags=["seller"], responses=OpenApiTypes.OBJECT)
+class ReviewListView(SellerAPIView):
+    def get(self, request):
+        from . import reviews
+        from .models import ProductReview
+
+        vendor = self.approved_vendor()
+        qs = (ProductReview.objects.filter(vendor=vendor).exclude(status="hidden").select_related("customer", "product")
+              .order_by("-created_at", "-id"))
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(qs, request, view=self)
+        body = paginator.get_paginated_response([
+            {"id": r.pk, "product_id": r.product_id, "product_name": r.product.name, "rating": r.rating,
+             "title": r.title, "body": r.body, "author": r.customer.full_name.split(" ")[0] if r.customer.full_name else "",
+             "status": r.status, "created_at": r.created_at, "vendor_reply": r.vendor_reply or None,
+             "flag_reason": r.flag_reason or None} for r in page]).data
+        body["summary"] = reviews.store_ratings([vendor.pk]).get(vendor.pk, {"rating": None, "rating_count": 0})
+        return Response(body)
+
+
+@extend_schema(tags=["seller"], request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT)
+class ReviewActionView(SellerAPIView):
+    """POST {"text"} to reply, or {"flag": "reason"} to ask AGIZA to look at the review."""
+
+    def post(self, request, pk: int, action: str):
+        from . import reviews
+        from .models import ProductReview
+
+        vendor = self.approved_vendor()
+        review = get_object_or_404(ProductReview.objects.filter(vendor=vendor), pk=pk)
+        if action == "reply":
+            run(reviews.reply, review, vendor=vendor, text=str(request.data.get("text", "")))
+        elif action == "flag":
+            run(reviews.flag, review, vendor=vendor, reason=str(request.data.get("reason", "")))
+        else:
+            raise Http404
+        return Response({"id": review.pk, "ok": True})
+
+
+# --------------------------------------------------------------------------- #
+# Business documents (private)
+# --------------------------------------------------------------------------- #
+@extend_schema(tags=["seller"], responses=OpenApiTypes.OBJECT)
+class DocumentListView(WriteThrottleMixin, SellerAPIView):
+    """GET my documents; POST multipart {kind, file} (PDF or image). Seen only by me and AGIZA staff."""
+
+    parser_classes = [MultiPartParser, FormParser]
+    throttle_scope = "uploads"
+
+    def get(self, request):
+        vendor = self.get_vendor()
+        return Response([{"id": d.pk, "kind": d.kind, "kind_display": d.get_kind_display(),
+                          "uploaded_at": d.created_at} for d in vendor.documents.all()])
+
+    def post(self, request):
+        from apps.core.uploads import DOCUMENT_TYPES
+
+        from .models import VendorDocument
+
+        vendor = self.get_vendor()
+        if vendor.approval_status in ("rejected", "suspended"):
+            raise PermissionDenied("Your store can't be changed now.")
+        kind = str(request.data.get("kind", ""))
+        if kind not in VendorDocument.Kind.values:
+            return Response({"error": {"code": "invalid", "message": "Choose the document type.",
+                                       "details": {"kind": ["Choose the document type."]}}}, status=400)
+        if vendor.documents.count() >= 10:
+            return Response({"error": {"code": "conflict", "message": "You can upload up to 10 documents.",
+                                       "details": None}}, status=409)
+        upload = request.FILES.get("file")
+        content_type = validate_upload(upload, allowed=DOCUMENT_TYPES)
+        VendorDocument.objects.create(vendor=vendor, kind=kind, file=upload, content_type=content_type,
+                                      original_name=(upload.name or "")[:150])
+        return self.get(request)

@@ -138,3 +138,36 @@ class PushDevice(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.platform} · {self.account_id}"
+
+
+class WishlistItem(models.Model):
+    """A product the customer saved for later."""
+
+    customer = models.ForeignKey("parties.Customer", on_delete=models.CASCADE, related_name="wishlist")
+    product = models.ForeignKey("catalog.Product", on_delete=models.CASCADE, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [models.UniqueConstraint(fields=["customer", "product"], name="uniq_wishlist_product")]
+
+    def __str__(self) -> str:
+        return f"{self.customer_id} ♡ {self.product_id}"
+
+
+class CustomerNotification(models.Model):
+    """In-app inbox: every customer-facing notification is kept here (push is just a way to deliver it)."""
+
+    customer = models.ForeignKey("parties.Customer", on_delete=models.CASCADE, related_name="app_notifications")
+    title = models.CharField(max_length=150)
+    body = models.CharField(max_length=500, blank=True)
+    data = models.JSONField(default=dict, blank=True, help_text="Where it leads: screen, order, return…")
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["customer", "read_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.customer_id}: {self.title}"

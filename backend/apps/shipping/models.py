@@ -16,6 +16,7 @@ from django.core.validators import MinValueValidator
 from django.db import models
 
 from apps.core.models import TimeStampedModel
+from apps.core.uploads import safe_filename
 
 POSITIVE = [MinValueValidator(Decimal("0"))]
 
@@ -171,7 +172,7 @@ class ShipmentEvent(models.Model):
 
 
 def document_path(instance, filename):
-    return f"shipments/{instance.shipment_id}/{filename}"
+    return f"shipments/{instance.shipment_id}/{safe_filename(filename)}"
 
 
 class ShipmentDocument(TimeStampedModel):

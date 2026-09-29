@@ -66,7 +66,9 @@ def test_codes_are_not_sent_without_sms_outside_debug(api):
 
 
 @override_settings(DEBUG=True)
-def test_debug_without_sms_logs_the_code_instead(api, caplog):
+def test_debug_without_sms_logs_the_code_instead(api, caplog, settings):
+    settings.DEBUG = True
+    settings.OTP_LOG_CODES = True  # the explicit development switch (config.settings.dev)
     res = api.post(f"{APP}/auth/request-code/", {"phone": "0754111222", "purpose": "register"})
     assert res.status_code == 200 and res.json()["sms_configured"] is False
     assert "verification code for +255754111222" in caplog.text

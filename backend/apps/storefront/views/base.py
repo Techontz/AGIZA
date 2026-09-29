@@ -40,3 +40,13 @@ class PublicAPIView(APIView):
     authentication_classes = [OptionalCustomerAuthentication]
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle, PublicAnonThrottle]
+
+
+class WriteThrottleMixin:
+    """Apply the view's `throttle_scope` only to writes (reading reviews or photos isn't limited by it)."""
+
+    def get_throttles(self):
+        throttles = super().get_throttles()
+        if self.request.method in ("GET", "HEAD", "OPTIONS"):
+            return [t for t in throttles if not isinstance(t, ScopedRateThrottle)]
+        return throttles

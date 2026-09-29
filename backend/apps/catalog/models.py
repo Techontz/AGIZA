@@ -17,6 +17,7 @@ from django.utils.text import slugify
 
 from apps.core.models import TimeStampedModel
 from apps.core.references import next_reference
+from apps.core.uploads import safe_filename
 
 POSITIVE = [MinValueValidator(Decimal("0"))]
 
@@ -59,7 +60,7 @@ class Category(TimeStampedModel):
 
 
 def brand_logo_path(instance, filename):
-    return f"catalog/brands/{filename}"
+    return f"catalog/brands/{safe_filename(filename)}"
 
 
 class Brand(TimeStampedModel):
@@ -151,7 +152,7 @@ class ProductOptionValue(models.Model):
 
 
 def vendor_media_path(instance, filename):
-    return f"catalog/vendors/{instance.pk or 'new'}/{filename}"
+    return f"catalog/vendors/{instance.pk or 'new'}/{safe_filename(filename)}"
 
 
 # Store slugs the marketplace uses itself ("agiza" is the store of products AGIZA sells directly).
@@ -501,7 +502,7 @@ class ProductVariant(TimeStampedModel):
 
 
 def product_image_path(instance, filename):
-    return f"catalog/products/{instance.product_id}/{filename}"
+    return f"catalog/products/{instance.product_id}/{safe_filename(filename)}"
 
 
 class ProductImage(models.Model):

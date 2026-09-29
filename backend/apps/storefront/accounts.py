@@ -7,6 +7,8 @@ WhatsApp then show in the app); otherwise a new customer is created.
 """
 from __future__ import annotations
 
+import logging
+
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
@@ -24,6 +26,9 @@ from .models import CustomerAccount, PhoneVerification
 from .phone import normalize_phone
 
 Purpose = PhoneVerification.Purpose
+
+
+logger = logging.getLogger("apps.storefront")
 
 
 def require_phone(value: str) -> str:
@@ -101,6 +106,9 @@ def login(*, phone: str, password: str) -> dict:
     account = (CustomerAccount.objects.select_related("customer")
                .filter(phone=normalize_phone(phone)).first())
     if account is None or not account.check_password(password or ""):
+        from .otp import mask_phone
+
+        logger.warning("Customer sign-in failed for %s", mask_phone(normalize_phone(phone) or ""))
         raise WorkflowError("Incorrect phone number or password.", conflict=False, field="non_field_errors")
     if not account.is_active or account.customer.status != Customer.Status.ACTIVE:
         raise WorkflowError("This account is disabled. Contact AGIZA support.", field="non_field_errors")
@@ -140,12 +148,19 @@ def revoke_tokens(account: CustomerAccount) -> None:
 @transaction.atomic
 def delete_account(account: CustomerAccount, *, password: str, request=None) -> None:
     """
-    Close the app account (Google Play data-deletion requirement). Orders and payments stay
-    with the customer record for accounting; the login, devices and cart are removed.
+    Close the app account (Google Play data-deletion requirement). Orders, payments and returns stay
+    for accounting, but the person is anonymised: name, phone and email are removed from the customer
+    record, and addresses, saved products, notifications, cart and devices are deleted. Not possible
+    while an order is still on its way (AGIZA needs the contact details to deliver it).
     """
     if not account.check_password(password or ""):
         raise WorkflowError("Your password is incorrect.", field="password")
     customer = account.customer
+    active = customer.orders.exclude(status__in=["delivered", "completed", "cancelled"]).values_list(
+        "reference", flat=True)
+    if active:
+        raise WorkflowError(f"You have orders in progress ({', '.join(active[:3])}). You can delete your account "
+                            "once they are delivered or cancelled, or contact AGIZA support.", conflict=True)
     revoke_tokens(account)
     from apps.marketplace import services as marketplace
 
@@ -153,6 +168,24 @@ def delete_account(account: CustomerAccount, *, password: str, request=None) -> 
     account.devices.all().delete()
     if hasattr(customer, "cart"):
         customer.cart.delete()
-    record_audit(action="delete", request=request, instance=customer, object_repr=f"App account for {customer}",
-                 changes={"app_account": [f"+{account.phone}", None]})
+    record_audit(action="delete", request=request, instance=customer,
+                 object_repr=f"App account for customer {customer.reference}",
+                 changes={"app_account": ["closed by the customer", None]})
     account.delete()
+    _anonymise(customer)
+
+
+def _anonymise(customer):
+    from .models import CustomerNotification, WishlistItem
+
+    customer.addresses.all().delete()
+    WishlistItem.objects.filter(customer=customer).delete()
+    CustomerNotification.objects.filter(customer=customer).delete()
+    customer.full_name = f"Former customer {customer.reference}"
+    customer.phone = ""
+    customer.email = ""
+    fields = ["full_name", "phone", "email", "updated_at"]
+    if hasattr(customer, "company_name"):
+        customer.company_name = ""
+        fields.append("company_name")
+    customer.save(update_fields=fields)

@@ -24,6 +24,12 @@ from .models import PhoneVerification
 
 logger = logging.getLogger("apps.storefront")
 
+
+def mask_phone(phone: str) -> str:
+    """For logs: +2557•••••678 (enough to recognise, not enough to use)."""
+    digits = "".join(ch for ch in str(phone) if ch.isdigit())
+    return f"+{digits[:4]}•••••{digits[-3:]}" if len(digits) > 7 else "+•••"
+
 OTP_TTL = timedelta(minutes=10)
 RESEND_AFTER = timedelta(seconds=60)
 CODE_LENGTH = 6
@@ -51,13 +57,14 @@ def issue(phone: str, purpose: str) -> PhoneVerification:
     try:
         SmsProvider().send(f"+{phone}", _message(code, purpose))
     except NotConfigured:
-        if not settings.DEBUG:
+        if not (settings.DEBUG and getattr(settings, "OTP_LOG_CODES", False)):
             verification.delete()
+            logger.error("Verification SMS not sent: the SMS provider (Beem) isn't configured")
             raise WorkflowError("Phone verification is unavailable right now. Please try again later.", conflict=True)
-        logger.warning("SMS not configured (DEBUG): verification code for +%s (%s) is %s", phone, purpose, code)
+        logger.warning("SMS not configured (development): verification code for +%s (%s) is %s", phone, purpose, code)
     except SendError as exc:
         verification.delete()
-        logger.error("Sending the verification SMS to +%s failed: %s", phone, exc)
+        logger.error("Sending the verification SMS to %s failed: %s", mask_phone(phone), exc)
         raise WorkflowError("We couldn't send the code by SMS. Check the number and try again.")
     return verification
 

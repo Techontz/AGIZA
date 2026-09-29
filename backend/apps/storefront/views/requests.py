@@ -22,7 +22,7 @@ from apps.quotes.models import QuoteRequest, QuoteStatusHistory, ServiceType
 from apps.tasks import services as tasks
 
 from ..serializers import ChatSendSerializer, QuoteCreateSerializer, QuoteRequestSerializer, ReplySerializer
-from .base import CustomerAPIView
+from .base import CustomerAPIView, WriteThrottleMixin
 
 REQUEST_MARKER = {"buy_for_me": "[Buy for me]", "deliver_for_me": "[Deliver for me]"}
 
@@ -110,7 +110,9 @@ def _message(m: Message) -> dict:
 
 
 @extend_schema(tags=["app: support"], request=ChatSendSerializer, responses=None)
-class SupportChatView(CustomerAPIView):
+class SupportChatView(WriteThrottleMixin, CustomerAPIView):
+    throttle_scope = "support"
+
     def _conversation(self):
         handle = f"+{self.request.user.phone}"
         return (Conversation.objects.filter(channel="web", customer=self.customer, contact_handle=handle)
