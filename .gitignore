@@ -30,3 +30,10 @@ next-env.d.ts
 playwright-report/
 test-results/
 **/e2e/.auth/
+
+# Local reference/backup copies (contain credentials and production data dumps; never commit)
+/docs/cargo-main/
+/docs/cargo-main.zip
+/docs/agiza-server-main/
+/docs/agiza-server-main.zip
+/agiza-backend-*.zip

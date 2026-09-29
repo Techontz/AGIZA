@@ -54,7 +54,15 @@ order can't be moved into those stages by hand.
 - Python 3.11+, PostgreSQL 14+ (the DB role needs `CREATEDB` to run tests)
 - Node.js 20+ and pnpm 10
 
-## PostgreSQL setup
+## Database
+
+PostgreSQL is used for development and tests. MySQL 8.0+ is also supported (for example on DirectAdmin):
+`pip install -r requirements/mysql.txt`, create the database as `utf8mb4` / `utf8mb4_0900_ai_ci`, and set
+`DATABASE_URL=mysql://user:password@host:3306/dbname`. Strict mode, utf8mb4 and READ COMMITTED are configured
+automatically; MySQL time-zone tables are not needed. MySQL's default collation compares text case- and
+accent-insensitively, so unique names/codes that differ only by case (e.g. "DHL" and "dhl") are treated as equal.
+
+### PostgreSQL setup
 
 ```bash
 createuser agiza --pwprompt --createdb
