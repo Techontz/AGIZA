@@ -177,7 +177,7 @@ class PlaceOrderView(CustomerAPIView):
             order, created = checkout.place_order(
                 self.customer, address=address, shipping_method_id=data["shipping_method"],
                 payment_method=data["payment_method"], notes=data["notes"], idempotency_key=data["idempotency_key"],
-                expected_total=data.get("expected_total"), request=request,
+                expected_total=data.get("expected_total"), request=request, channel=_channel(request),
             )
         except checkout.PriceChanged as exc:
             return Response({"error": {"code": "price_changed", "message": exc.message, "details": quote_payload(
@@ -191,6 +191,14 @@ class PlaceOrderView(CustomerAPIView):
             payment = start_payment(order, request.user)
         body = {"order": order_detail_payload(_reload(order), request), "created": created, "payment": payment}
         return Response(body, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+def _channel(request) -> str:
+    """Where the order was placed, for staff reports: the website says so; otherwise it's the app."""
+    from apps.orders.models import ShopDetails
+
+    web = request.headers.get("X-Agiza-Channel", "").lower() == "web"
+    return ShopDetails.Channel.WEB if web else ShopDetails.Channel.APP
 
 
 def _reload(order: Order) -> Order:

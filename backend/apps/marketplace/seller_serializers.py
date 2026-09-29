@@ -14,7 +14,7 @@ from apps.locations.models import City
 from apps.storefront.serializers import money
 
 from . import commission as commissions
-from .models import VendorFulfillment
+from .models import FulfillmentStatus, VendorFulfillment
 from .vendor_products import listing_state
 
 BUSINESS_FIELDS = ["name", "description", "city", "business_address", "contact_person", "phone", "email",
@@ -221,7 +221,9 @@ def fulfillment_payload(f: VendorFulfillment, request, *, detail: bool = False) 
         body["items"] = [{"name": i.product_name, "variant_name": i.variant_name, "sku": i.sku, "quantity": i.quantity,
                           "unit_price": money(i.unit_price), "line_total": money(i.line_total),
                           "commission": money(i.commission_amount)} for i in f.items.all()]
-        body["events"] = [{"status": e.to_status, "note": e.note, "at": e.created_at, "by_you": e.by_vendor}
+        labels = dict(FulfillmentStatus.choices)
+        body["events"] = [{"status": e.to_status, "status_display": labels.get(e.to_status, e.to_status), "note": e.note,
+                           "at": e.created_at, "by_you": e.by_vendor}
                           for e in f.events.all()]
         body["payout"] = f.payout.reference if f.payout_id else None
     return body

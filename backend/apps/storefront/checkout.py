@@ -92,7 +92,8 @@ def preview(customer, *, address: Address, shipping_method_id: int | None = None
 
 
 def place_order(customer, *, address: Address, shipping_method_id: int, payment_method: str, notes: str,
-                idempotency_key: str, expected_total: Decimal | None, request=None) -> tuple[Order, bool]:
+                idempotency_key: str, expected_total: Decimal | None, request=None,
+                channel: str = ShopDetails.Channel.APP) -> tuple[Order, bool]:
     """Returns (order, created). created=False when the idempotency key was already used."""
     if payment_method not in {m["code"] for m in payment_methods()}:
         raise WorkflowError("Choose a payment method.", field="payment_method")
@@ -109,7 +110,7 @@ def place_order(customer, *, address: Address, shipping_method_id: int, payment_
                 raise PriceChanged(quote)
             lines = quote.summary["lines"]
             order = shop.create_shop_order(
-                customer=customer, user=None, request=request, channel=ShopDetails.Channel.APP,
+                customer=customer, user=None, request=request, channel=channel,
                 items=[{"variant": line["item"].variant, "quantity": line["item"].quantity} for line in lines],
                 shipping_address=_address_text(address), city=address.city, area=address.area,
                 customer_email=customer.email, delivery_fee=quote.shipping_fee, notes=notes.strip(),

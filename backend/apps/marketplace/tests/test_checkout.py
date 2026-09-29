@@ -243,3 +243,12 @@ def test_guest_cart_is_priced_by_the_server_and_merged_at_sign_in(anon, app, sho
     assert quantities == {"Tecno Spark 20": 10, "USB-C Cable": 1}  # capped at the 10 in stock
     assert "Only 1 more of Tecno Spark 20 could be added." in merged["notes"]
     assert "Unreleased Phone is no longer available." in merged["notes"]
+
+
+def test_website_orders_are_recorded_as_online_store(app, home, shop, vendor_a):
+    fill_cart(app, [(vendor_a.variant, 1)])
+    res = app.post(f"{APP}/checkout/place-order/", {"address": home.pk, "shipping_method": shop.rider.pk,
+                                                     "payment_method": "pay_later", "idempotency_key": "mv-web-0001"},
+                   format="json", HTTP_X_AGIZA_CHANNEL="web")
+    assert res.status_code == 201
+    assert Order.objects.get().shop.channel == "web"
