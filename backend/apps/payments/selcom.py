@@ -5,7 +5,8 @@ Requests are signed as Selcom requires: `Authorization: SELCOM base64(api key)` 
 an HS256 `Digest` over "timestamp=...&<field>=<value>..." for the `Signed-Fields`.
 
 Settings: SELCOM_VENDOR_CODE, SELCOM_API_KEY, SELCOM_SECRET_KEY, SELCOM_BASE_PAYMENT_URL
-(e.g. https://apigw.selcommobile.com/v1) and SELCOM_CALLBACK_BASE_URL (this API's public URL).
+(https://apigw.selcommobile.com/v1) and SELCOM_CALLBACK_BASE_URL: this API's public base URL
+(e.g. https://api.agiza.co.tz), to which /api/payments/selcom/webhook/ is appended.
 """
 from __future__ import annotations
 
@@ -29,9 +30,23 @@ class SelcomError(Exception):
     pass
 
 
+REQUIRED = ("SELCOM_VENDOR_CODE", "SELCOM_API_KEY", "SELCOM_SECRET_KEY", "SELCOM_BASE_PAYMENT_URL",
+            "SELCOM_CALLBACK_BASE_URL")
+
+
 def configured() -> bool:
-    return all(getattr(settings, name, "") for name in
-               ("SELCOM_VENDOR_CODE", "SELCOM_API_KEY", "SELCOM_SECRET_KEY", "SELCOM_BASE_PAYMENT_URL"))
+    """All five settings: without the callback base Selcom has nowhere to notify us."""
+    return all(getattr(settings, name, "") for name in REQUIRED)
+
+
+def valid_callback_signature(payload: dict, signature: str) -> bool:
+    """
+    Selcom's optional X-SEL-SIGNATURE: hex HMAC-SHA256 (secret key) of order_id + amount + resultcode,
+    as the previous AGIZA server checked it.
+    """
+    message = f"{payload.get('order_id', '')}{payload.get('amount', '')}{payload.get('resultcode', '')}"
+    expected = hmac.new(settings.SELCOM_SECRET_KEY.encode(), message.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature.strip().lower())
 
 
 def _timestamp() -> str:

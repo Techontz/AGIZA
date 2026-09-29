@@ -155,3 +155,41 @@ def test_pay_is_refused_for_other_customers_and_paid_orders(other_app, app, paid
         app.post(f"{APP}/orders/{reference}/check-payment/")
         assert app.post(f"{APP}/orders/{reference}/pay/").status_code == 409
         assert app.post(f"{APP}/orders/{reference}/cancel/", {"reason": "x"}).status_code == 409  # paid online
+
+
+def signed(payload: dict, secret="secret") -> str:
+    import hashlib
+    import hmac
+
+    message = f"{payload['order_id']}{payload['amount']}{payload['resultcode']}"
+    return hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()
+
+
+def test_mobile_money_needs_the_callback_base_url(api, shop):
+    with override_settings(**{**SELCOM, "SELCOM_CALLBACK_BASE_URL": ""}):
+        assert [m["code"] for m in api.get(f"{APP}/config/").json()["payment_methods"]] == ["pay_later"]
+
+
+def test_webhook_with_a_wrong_signature_is_rejected(api, paid_checkout, gateway):
+    gp = GatewayPayment.objects.get()
+    gateway.status = {"payment_status": "COMPLETED", "amount": "853000", "transid": "SEL5"}
+    payload = {"order_id": gp.provider_order_id, "amount": "853000", "resultcode": "000", "result": "SUCCESS"}
+    with override_settings(**SELCOM):
+        bad = api.post("/api/payments/selcom/webhook/", payload, format="json", HTTP_X_SEL_SIGNATURE="deadbeef")
+        assert bad.status_code == 400 and not Payment.objects.exists()
+        good = api.post("/api/payments/selcom/webhook/", payload, format="json",
+                        HTTP_X_SEL_SIGNATURE=signed(payload))
+    assert good.status_code == 200
+    assert Payment.objects.get().reference == "SEL5"
+
+
+def test_deploy_checks_flag_bad_selcom_settings():
+    from apps.payments.checks import selcom_configuration
+
+    with override_settings(**SELCOM):
+        assert selcom_configuration(None) == []
+    legacy = "https://management.agizastore.com/cargo/api/v1/invoice/selcom-callback/"
+    with override_settings(**{**SELCOM, "SELCOM_CALLBACK_BASE_URL": legacy}):
+        assert [w.id for w in selcom_configuration(None)] == ["payments.W003"]
+    with override_settings(**{**SELCOM, "SELCOM_API_KEY": "", "SELCOM_BASE_PAYMENT_URL": "http://apigw.test/v1"}):
+        assert {w.id for w in selcom_configuration(None)} == {"payments.W001", "payments.W002"}

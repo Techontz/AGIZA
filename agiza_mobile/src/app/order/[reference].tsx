@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
 import { CircleCheck, Copy, MessageCircle } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
@@ -17,10 +16,11 @@ import { Text } from '@/components/ui/text';
 import { orderApi } from '@/lib/api/endpoints';
 import type { OrderDetail } from '@/lib/api/types';
 import { date, dateTime, isFree, money } from '@/lib/format';
+import { openPaymentPage } from '@/lib/payment-page';
 import { keys } from '@/lib/query';
 import { colors, space } from '@/theme/tokens';
 
-function Confirmation({ order, paymentFailed }: { order: OrderDetail; paymentFailed: boolean }) {
+function Confirmation({ order, paymentFailed, paymentPending }: { order: OrderDetail; paymentFailed: boolean; paymentPending: boolean }) {
   const [copied, setCopied] = useState(false);
   return (
     <Card style={styles.confirm}>
@@ -44,6 +44,9 @@ function Confirmation({ order, paymentFailed }: { order: OrderDetail; paymentFai
       <Text variant="small" color={colors.textMuted} style={styles.center}>
         {copied ? 'Order number copied.' : "We'll notify you as it moves. Keep this order number for support."}
       </Text>
+      {paymentPending && !paymentFailed ? (
+        <Notice tone="info">We&apos;re waiting for Selcom to confirm your payment. Tap &quot;I&apos;ve paid, check status&quot; below if it doesn&apos;t update.</Notice>
+      ) : null}
       {paymentFailed ? (
         <Notice tone="warning">The mobile money payment couldn&apos;t start. Your order is saved; tap Pay now below to try again.</Notice>
       ) : null}
@@ -51,8 +54,28 @@ function Confirmation({ order, paymentFailed }: { order: OrderDetail; paymentFai
   );
 }
 
+/** What Selcom told us after the customer came back from the payment page. */
+function PaymentResult({ result }: { result: Awaited<ReturnType<typeof orderApi.checkPayment>> }) {
+  const latest = result.gateway[result.gateway.length - 1];
+  if (result.payment.status === 'fully_paid') return <Notice tone="success">Payment received. Thank you!</Notice>;
+  if (latest?.status === 'completed') return <Notice tone="success">Payment received. Your balance is updated.</Notice>;
+  if (latest?.status === 'failed' || !latest) {
+    return <Notice tone="warning">The payment was not completed. You can try again or choose to pay later.</Notice>;
+  }
+  return (
+    <Notice tone="info">
+      Selcom hasn&apos;t confirmed this payment yet. If you approved it on your phone, check again in a minute.
+    </Notice>
+  );
+}
+
 export default function OrderScreen() {
-  const { reference, placed, paymentFailed } = useLocalSearchParams<{ reference: string; placed?: string; paymentFailed?: string }>();
+  const { reference, placed, paymentFailed, paymentPending } = useLocalSearchParams<{
+    reference: string;
+    placed?: string;
+    paymentFailed?: string;
+    paymentPending?: string;
+  }>();
   const queryClient = useQueryClient();
   const order = useQuery({ queryKey: keys.order(reference), queryFn: () => orderApi.get(reference) });
   const [cancelling, setCancelling] = useState(false);
@@ -65,12 +88,13 @@ export default function OrderScreen() {
   const pay = useMutation({
     mutationFn: async () => {
       const start = await orderApi.pay(reference);
-      if (start.checkout_url) await WebBrowser.openBrowserAsync(start.checkout_url);
+      if (start.checkout_url) await openPaymentPage(start.checkout_url);
       return orderApi.checkPayment(reference);
     },
     onSettled: refreshAll,
   });
   const check = useMutation({ mutationFn: () => orderApi.checkPayment(reference), onSettled: refreshAll });
+  const checked = check.data ?? pay.data;
   const cancel = useMutation({
     mutationFn: () => orderApi.cancel(reference, reason.trim()),
     onSuccess: (updated) => {
@@ -92,7 +116,7 @@ export default function OrderScreen() {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={order.isRefetching} onRefresh={() => order.refetch()} tintColor={colors.brand} />}>
       <Stack.Screen options={{ title: o.reference }} />
-      {placed && o.status !== 'cancelled' ? <Confirmation order={o} paymentFailed={!!paymentFailed} /> : null}
+      {placed && o.status !== 'cancelled' ? <Confirmation order={o} paymentFailed={!!paymentFailed} paymentPending={!!paymentPending && !!due} /> : null}
 
       <Card style={styles.head}>
         <View style={styles.headRow}>
@@ -212,6 +236,7 @@ export default function OrderScreen() {
           ))}
         </Card>
         {actionError ? <Notice tone="danger">{errorMessage(actionError)}</Notice> : null}
+        {checked && !actionError ? <PaymentResult result={checked} /> : null}
         {o.can_pay && due ? (
           <View style={styles.actions}>
             <Button title={`Pay ${money(due, o.currency)} with mobile money`} onPress={() => pay.mutate()} loading={pay.isPending} />

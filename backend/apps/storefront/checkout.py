@@ -40,7 +40,7 @@ def payment_methods() -> list[dict]:
     methods = []
     if payments.available():
         methods.append({"code": PaymentPreference.MOBILE_MONEY, "label": "Mobile money",
-                        "description": "Pay now with M-Pesa, Tigo Pesa, Airtel Money, HaloPesa or card (Selcom)."})
+                        "description": "Pay now with mobile money or card on Selcom's secure checkout page."})
     methods.append({"code": PaymentPreference.PAY_LATER, "label": "Pay later",
                     "description": "Pay AGIZA by cash on delivery, bank transfer or Lipa number. We confirm your payment."})
     return methods

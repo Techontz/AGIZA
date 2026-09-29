@@ -269,4 +269,6 @@ def test_staff_payments_show_in_the_app(app, shop, home, client_for):
     assert res.status_code == 201, res.json()
     detail = app.get(f"{APP}/orders/{body['reference']}/").json()
     assert detail["payment"]["status"] == "fully_paid" and detail["payment"]["due"] == "0.00"
+    assert detail["can_cancel"] is False  # paid: a refund goes through staff
+    assert app.post(f"{APP}/orders/{body['reference']}/cancel/", {"reason": "x"}).status_code == 409
     assert next(s for s in detail["timeline"]["steps"] if s["key"] == "payment")["state"] == "completed"

@@ -151,7 +151,7 @@ cd backend && .venv/bin/python manage.py runserver 0.0.0.0:8000
 cd agiza_mobile && npm install && npm run android
 ```
 
-Customer registration sends an SMS code (Africa's Talking `SMS_AT_*`); with `DJANGO_DEBUG=true`
+Customer registration sends an SMS code through Beem Africa (`BEEM_*`, as the previous server did); with `DJANGO_DEBUG=true`
 and no SMS configured the code is written to the backend log. Mobile-money checkout appears when
 the `SELCOM_*` settings are present.
 
@@ -189,7 +189,7 @@ variables (bucket, endpoint, region, keys). Files stay private and are streamed 
 
 ## Messaging channels
 
-Email, SMS (Africa's Talking), WhatsApp Cloud API, Facebook Messenger and TikTok are wired but **disabled until
+Email, SMS (Beem Africa), WhatsApp Cloud API, Facebook Messenger and TikTok are wired but **disabled until
 their credentials are set** (see `.env.example`). Without credentials, chat replies are saved with the delivery
 status "stored (channel not connected)" and campaigns end as "Not sent — channel not configured"; nothing is
 faked. Webhooks (`/api/chat/webhooks/{whatsapp,facebook,tiktok}/`) verify signatures and return 503 until configured.

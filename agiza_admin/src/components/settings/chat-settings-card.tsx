@@ -20,7 +20,7 @@ const CHANNELS: { key: keyof ChannelStatus; label: string; env: string }[] = [
   { key: "whatsapp", label: "WhatsApp", env: "WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID" },
   { key: "facebook", label: "Facebook Messenger", env: "FACEBOOK_PAGE_TOKEN" },
   { key: "tiktok", label: "TikTok", env: "" },
-  { key: "sms", label: "SMS", env: "SMS_AT_USERNAME and SMS_AT_API_KEY" },
+  { key: "sms", label: "SMS (Beem)", env: "BEEM_API_KEY, BEEM_SECRET_KEY and BEEM_SENDER_ID" },
   { key: "email", label: "Email", env: "EMAIL_HOST and the SMTP credentials" },
 ];
 

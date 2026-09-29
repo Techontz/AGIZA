@@ -145,3 +145,33 @@ def test_campaign_email_is_sent_through_the_backend(ops, people):
     assert len(mail.outbox) == 1 and mail.outbox[0].to == ["maria@example.com"]
     assert mail.outbox[0].body == "Hello Maria"
     assert ops.post(f"{CAMP}/{res['id']}/send/").status_code == 409
+
+
+def test_sms_campaign_is_sent_through_beem(ops, people, monkeypatch):
+    import json
+
+    from apps.notifications import providers
+
+    sent_to = []
+
+    class Reply:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self):
+            return json.dumps({"successful": True, "request_id": 9, "valid": 1}).encode()
+
+    def urlopen(req, timeout):
+        sent_to.append(json.loads(req.data)["recipients"][0]["dest_addr"])
+        return Reply()
+
+    monkeypatch.setattr(providers.urllib.request, "urlopen", urlopen)
+    with override_settings(BEEM_API_KEY="k", BEEM_SECRET_KEY="s", BEEM_SENDER_ID="AGIZA"):
+        res = ops.post(f"{CAMP}/", {"name": "Flash sale", "channel": "sms", "message": "Hi {name}!", "min_orders": 1},
+                       format="json").json()
+        sent = ops.post(f"{CAMP}/{res['id']}/send/").json()
+    assert sent["status"] == "sent" and sent["sent_count"] == 2
+    assert all(n.isdigit() and n.startswith("255") for n in sent_to)

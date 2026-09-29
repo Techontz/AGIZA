@@ -7,7 +7,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
 import { router } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
 import { Check, CircleAlert, MapPin, Plus } from 'lucide-react-native';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
@@ -25,6 +24,7 @@ import { ApiError } from '@/lib/api/client';
 import { addressApi, checkoutApi, orderApi } from '@/lib/api/endpoints';
 import type { CheckoutQuote, PaymentMethod, ShippingOption } from '@/lib/api/types';
 import { isFree, money } from '@/lib/format';
+import { openPaymentPage } from '@/lib/payment-page';
 import { keys } from '@/lib/query';
 import { colors, radius, space } from '@/theme/tokens';
 
@@ -117,13 +117,15 @@ export default function CheckoutScreen() {
       queryClient.invalidateQueries({ queryKey: keys.cart });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.setQueryData(keys.order(reference), result.order);
+      let paymentPending: string | undefined;
       if (result.payment?.checkout_url) {
-        await WebBrowser.openBrowserAsync(result.payment.checkout_url);
-        await orderApi.checkPayment(reference).catch(() => undefined);
+        await openPaymentPage(result.payment.checkout_url);
+        const checked = await orderApi.checkPayment(reference).catch(() => null);
+        paymentPending = checked && checked.payment.status !== 'fully_paid' ? '1' : undefined;
         queryClient.invalidateQueries({ queryKey: keys.order(reference) });
       }
       const paymentFailed = result.payment?.status === 'failed' ? '1' : undefined;
-      router.replace({ pathname: '/order/[reference]', params: { reference, placed: '1', paymentFailed } });
+      router.replace({ pathname: '/order/[reference]', params: { reference, placed: '1', paymentFailed, paymentPending } });
     },
     onError: (e) => {
       if (e instanceof ApiError && e.code === 'price_changed' && e.details) {

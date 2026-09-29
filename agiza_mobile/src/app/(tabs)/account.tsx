@@ -14,6 +14,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { SignInPrompt } from '@/components/sign-in-prompt';
 import { Card } from '@/components/ui/card';
+import { Loading } from '@/components/ui/states';
 import { Text } from '@/components/ui/text';
 import { useAuth } from '@/lib/auth/session';
 import { colors, space } from '@/theme/tokens';
@@ -32,6 +33,7 @@ function Item({ icon: Icon, label, href, danger }: { icon: LucideIcon; label: st
 
 export default function AccountScreen() {
   const { status, customer, signOut } = useAuth();
+  if (status === 'signedIn' && !customer) return <Loading />;
   if (status !== 'signedIn' || !customer) {
     return <SignInPrompt icon={UserRound} title="Your AGIZA account" message="Sign in to manage orders, addresses and requests." />;
   }

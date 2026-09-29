@@ -32,14 +32,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSessionExpiredHandler(reset);
     (async () => {
       if (!(await tokenStore.getRefresh())) return setStatus('signedOut');
+      // Open the app straight away with the stored session; the profile loads in the background,
+      // so a slow network never keeps the customer on the splash screen.
+      setStatus('signedIn');
       try {
         setCustomer(await accountApi.me());
-        setStatus('signedIn');
         registerForPush();
       } catch (e) {
-        // Offline at start-up: keep the session; screens show their own connection errors.
-        if (e instanceof ApiError && e.isNetwork) setStatus('signedIn');
-        else reset();
+        // Offline: keep the session (screens show their own connection errors). Rejected: sign out.
+        if (!(e instanceof ApiError && e.isNetwork)) reset();
       }
     })();
   }, [reset]);

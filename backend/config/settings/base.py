@@ -303,9 +303,10 @@ EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Agiza <no-reply@agiza.co.tz>")
 
-SMS_AT_USERNAME = env("SMS_AT_USERNAME", default="")
-SMS_AT_API_KEY = env("SMS_AT_API_KEY", default="")
-SMS_SENDER_ID = env("SMS_SENDER_ID", default="")
+# Beem Africa SMS (campaigns and the customer app's verification codes)
+BEEM_API_KEY = env("BEEM_API_KEY", default="")
+BEEM_SECRET_KEY = env("BEEM_SECRET_KEY", default="")
+BEEM_SENDER_ID = env("BEEM_SENDER_ID", default="")
 
 WHATSAPP_TOKEN = env("WHATSAPP_TOKEN", default="")
 WHATSAPP_PHONE_NUMBER_ID = env("WHATSAPP_PHONE_NUMBER_ID", default="")

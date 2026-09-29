@@ -6,15 +6,18 @@ environment. Nothing is simulated: when a channel isn't configured, callers
 record the message as not sent with the reason.
 
   Email      Django's email backend (EMAIL_HOST / EMAIL_BACKEND)
-  SMS        Africa's Talking      SMS_AT_USERNAME, SMS_AT_API_KEY, SMS_SENDER_ID (optional)
+  SMS        Beem Africa           BEEM_API_KEY, BEEM_SECRET_KEY, BEEM_SENDER_ID
   WhatsApp   WhatsApp Cloud API    WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID
   Facebook   Messenger Send API    FACEBOOK_PAGE_TOKEN
   TikTok     not available for outbound messages (inbound webhook only)
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
+import re
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -62,26 +65,60 @@ class EmailProvider:
 
 
 class SmsProvider:
+    """
+    Beem Africa SMS (the provider AGIZA already used): POST /v1/send with HTTP Basic auth
+    (API key : secret key), the registered sender ID as `source_addr`, digits-only numbers.
+    Credentials never reach the logs; only Beem's own error message is kept.
+    """
+
     channel = "sms"
-    url = "https://api.africastalking.com/version1/messaging"
+    url = "https://apisms.beem.africa/v1/send"
 
     @staticmethod
     def configured() -> bool:
-        return bool(_env("SMS_AT_USERNAME") and _env("SMS_AT_API_KEY"))
+        return bool(_env("BEEM_API_KEY") and _env("BEEM_SECRET_KEY") and _env("BEEM_SENDER_ID"))
+
+    @staticmethod
+    def recipient(to: str) -> str:
+        """"+255 712-345 678" and "0712345678" both become "255712345678" (Beem wants digits with country code)."""
+        digits = re.sub(r"\D", "", to or "")
+        if len(digits) == 10 and digits.startswith("0"):
+            digits = "255" + digits[1:]
+        if not 10 <= len(digits) <= 15:
+            raise SendError("Not a valid phone number for SMS.")
+        return digits
 
     def send(self, to: str, body: str, subject: str = "") -> str:
         if not self.configured():
-            raise NotConfigured("SMS is not configured (set SMS_AT_USERNAME and SMS_AT_API_KEY).")
-        fields = {"username": _env("SMS_AT_USERNAME"), "to": to, "message": body}
-        if _env("SMS_SENDER_ID"):
-            fields["from"] = _env("SMS_SENDER_ID")
-        res = _post(self.url, data=urllib.parse.urlencode(fields).encode(),
-                    headers={"apiKey": _env("SMS_AT_API_KEY"), "Accept": "application/json",
-                             "Content-Type": "application/x-www-form-urlencoded"})
-        recipients = res.get("SMSMessageData", {}).get("Recipients", [])
-        if not recipients or recipients[0].get("status") not in ("Success", "Sent"):
-            raise SendError(json.dumps(res)[:250])
-        return recipients[0].get("messageId", "")
+            raise NotConfigured("SMS is not configured (set BEEM_API_KEY, BEEM_SECRET_KEY and BEEM_SENDER_ID).")
+        payload = {
+            "source_addr": _env("BEEM_SENDER_ID"),
+            "schedule_time": "",
+            "encoding": 0,
+            "message": body,
+            "recipients": [{"recipient_id": 1, "dest_addr": self.recipient(to)}],
+        }
+        token = base64.b64encode(f"{_env('BEEM_API_KEY')}:{_env('BEEM_SECRET_KEY')}".encode()).decode()
+        req = urllib.request.Request(self.url, data=json.dumps(payload).encode(), method="POST", headers={  # noqa: S310 - fixed https URL
+            "Authorization": f"Basic {token}", "Content-Type": "application/json", "Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as res:  # noqa: S310 - fixed https endpoint
+                data = json.loads(res.read().decode() or "{}")
+        except urllib.error.HTTPError as exc:
+            raise SendError(f"Beem HTTP {exc.code}: {_beem_error(exc)}") from exc
+        except Exception as exc:  # network errors, timeouts, invalid JSON
+            raise SendError(f"Beem unreachable: {str(exc)[:200]}") from exc
+        if not data.get("successful") or data.get("valid", 1) < 1:
+            raise SendError(f"Beem refused the message: {str(data.get('message') or data)[:200]}")
+        return str(data.get("request_id") or "")
+
+
+def _beem_error(exc) -> str:
+    try:
+        body = json.loads(exc.read().decode() or "{}")
+    except Exception:  # noqa: BLE001 - the status code is enough
+        return exc.reason or ""
+    return str(body.get("message") or body.get("error") or body)[:200]
 
 
 class WhatsAppProvider:

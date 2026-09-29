@@ -55,6 +55,12 @@ def _delivery(order) -> dict | None:
             "scheduled_at": d.scheduled_at, "delivered_at": d.delivered_at}
 
 
+def customer_can_cancel(order: Order, summary=None) -> bool:
+    """Only unpaid shop orders AGIZA hasn't started preparing; anything paid needs a refund through staff."""
+    summary = summary or payment_summary(order)
+    return order.order_type == OrderType.SHOP and order.status == ShopStatus.PENDING and summary.paid <= 0
+
+
 def order_detail_payload(order: Order, request) -> dict:
     card = OrderCardSerializer(order, context={"request": request}).data
     summary = payment_summary(order)
@@ -67,7 +73,7 @@ def order_detail_payload(order: Order, request) -> dict:
                       "kind": p.kind} for p in order.payments.all()],
         "timeline": timeline(order),
         "delivery": _delivery(order),
-        "can_cancel": order.order_type == OrderType.SHOP and order.status == ShopStatus.PENDING,
+        "can_cancel": customer_can_cancel(order, summary),
         "can_pay": (payments.available() and order.status != "cancelled" and bool(summary.due)
                     and summary.due > 0),
     }
@@ -127,7 +133,7 @@ class OrderCancelView(_OrderView):
         s.is_valid(raise_exception=True)
         if order.order_type != OrderType.SHOP or order.status != ShopStatus.PENDING:
             raise ConflictError("This order can no longer be cancelled in the app. Contact AGIZA support.")
-        if GatewayPayment.objects.filter(order=order, status=GatewayPayment.Status.COMPLETED).exists():
+        if not customer_can_cancel(order):
             raise ConflictError("This order is paid. Contact AGIZA support to cancel it and arrange a refund.")
         run(shop.cancel, order, user=None, reason=f"Cancelled by the customer in the app: {s.validated_data['reason']}",
             request=request)
