@@ -93,6 +93,22 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
                   {o.customer.phone && ` · ${o.customer.phone}`}
                   {email && ` · ${email}`}
                 </p>
+                {o.details.shipping_method && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    Delivery: <span className="font-medium text-gray-900">{o.details.shipping_method.name}</span>
+                    {o.details.estimated_delivery && ` · ${o.details.estimated_delivery}`}
+                  </p>
+                )}
+                {o.details.location && (
+                  <a
+                    className="inline-block text-sm text-blue-600 hover:underline mt-1"
+                    href={`https://www.google.com/maps?q=${o.details.location.latitude},${o.details.location.longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Open pinned location in Maps
+                  </a>
+                )}
               </div>
             </div>
           </div>
@@ -111,6 +127,9 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
                 </Row>
               )}
               <Row label="Channel:">{o.details.channel_display}</Row>
+              {o.details.payment_preference_display && (
+                <Row label="Customer pays:">{o.details.payment_preference_display}</Row>
+              )}
             </div>
           </div>
         </div>

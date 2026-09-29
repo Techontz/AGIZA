@@ -177,6 +177,8 @@ def test_place_order_creates_app_order_reserves_stock_and_clears_cart(app, shop,
     assert row["details"]["channel"] == "app"
     assert row["details"]["shipping_method"]["name"] == "Rider Delivery"
     assert row["details"]["payment_preference"] == "pay_later"
+    assert [r["reference"] for r in staff.get("/api/orders/shop/", {"channel": "app"}).json()["results"]] == [order.reference]
+    assert staff.get("/api/orders/shop/", {"channel": "manual"}).json()["results"] == []
 
 
 def test_client_supplied_prices_are_ignored(app, shop, home):

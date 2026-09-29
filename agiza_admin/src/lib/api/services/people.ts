@@ -17,7 +17,7 @@ export interface CustomerTagChip {
   created_at: string;
 }
 
-export type PreferredChannel = "" | "whatsapp" | "facebook" | "tiktok" | "web" | "phone" | "walk_in";
+export type PreferredChannel = "" | "whatsapp" | "facebook" | "tiktok" | "web" | "phone" | "walk_in" | "app";
 
 export interface Customer {
   id: number;
@@ -190,6 +190,7 @@ export const CHANNEL_OPTIONS: { value: Exclude<PreferredChannel, "">; label: str
   { value: "web", label: "Web" },
   { value: "phone", label: "Phone" },
   { value: "walk_in", label: "Walk-in" },
+  { value: "app", label: "Mobile app" },
 ];
 
 export const SHIPPER_SERVICES: ShipperService[] = ["air_cargo", "sea_cargo", "local_land_cargo"];

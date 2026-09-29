@@ -33,6 +33,12 @@ export interface ShopOrder extends Omit<OrderBase, "status"> {
     subtotal: string;
     fulfillment_warehouse: string | null;
     shipped_at: string | null;
+    /** Chosen by the customer at checkout (app / online store); empty for staff-entered orders. */
+    shipping_method: { id: number; name: string } | null;
+    estimated_delivery: string;
+    payment_preference: "" | "pay_later" | "mobile_money";
+    payment_preference_display: string;
+    location: { latitude: string; longitude: string } | null;
   };
   payment_status: "paid" | "pending";
   delivery: { id: number; reference: string; status: string; status_display: string } | null;

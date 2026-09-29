@@ -34,7 +34,7 @@ function compactTSh(value: string | undefined): string {
 export function EcommerceOrdersView() {
   const meta = pageMeta["/orders/ecommerce"];
   const { canEdit } = useOrderAccess();
-  const [f, setF] = useUrlFilters({ search: "", status: "all", payment: "all", page: "1", open: "" });
+  const [f, setF] = useUrlFilters({ search: "", status: "all", payment: "all", channel: "all", page: "1", open: "" });
   const [search, setSearch] = useState(f.search);
   const [creating, setCreating] = useState(false);
   const debounced = useDebouncedValue(search);
@@ -42,7 +42,7 @@ export function EcommerceOrdersView() {
     if (debounced !== f.search) setF({ search: debounced, open: "" });
   }, [debounced, f.search, setF]);
 
-  const query = { search: f.search, status: f.status, payment: f.payment, page: Number(f.page), page_size: 20 };
+  const query = { search: f.search, status: f.status, payment: f.payment, channel: f.channel, page: Number(f.page), page_size: 20 };
   const list = useQuery({
     queryKey: shopOrderKeys.list(query),
     queryFn: ({ signal }) => shopOrdersApi.list(query, signal),
@@ -52,7 +52,7 @@ export function EcommerceOrdersView() {
   const rows = list.data?.results ?? [];
   const expanded = f.open ? Number(f.open) : null;
   const s = stats.data;
-  const filtered = Boolean(f.search || f.status !== "all" || f.payment !== "all");
+  const filtered = Boolean(f.search || f.status !== "all" || f.payment !== "all" || f.channel !== "all");
 
   return (
     <PageContainer>
@@ -106,6 +106,14 @@ export function EcommerceOrdersView() {
               <option value="all">All Payments</option>
               <option value="paid">Paid</option>
               <option value="pending">Pending</option>
+            </Select>
+            <Select className="w-auto bg-white" aria-label="Filter by channel" value={f.channel} onChange={(e) => setF({ channel: e.target.value, open: "" })}>
+              <option value="all">All Channels</option>
+              <option value="app">Mobile app</option>
+              <option value="web">Online store</option>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="shop">Physical shop</option>
+              <option value="manual">Entered by staff</option>
             </Select>
           </div>
         </div>
@@ -165,7 +173,7 @@ export function EcommerceOrdersView() {
         onClose={() => setCreating(false)}
         onCreated={(o) => {
           setSearch("");
-          setF({ search: "", status: "all", payment: "all", open: String(o.id) });
+          setF({ search: "", status: "all", payment: "all", channel: "all", open: String(o.id) });
         }}
       />
     </PageContainer>

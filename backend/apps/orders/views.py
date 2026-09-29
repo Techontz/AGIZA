@@ -23,7 +23,7 @@ from apps.shipping_engine.calculator import RateCalculationError, RateCalculator
 from apps.shipping_engine.models import ShippingMethod
 
 from . import services, shop
-from .models import Order, OrderAttachment, OrderItem, OrderStatusHistory, PackageSize
+from .models import Order, OrderAttachment, OrderItem, OrderStatusHistory, PackageSize, ShopDetails
 from .serializers import (
     AssignSerializer,
     AttachmentSerializer,
@@ -478,13 +478,14 @@ class AttachmentFileView(APIView):
 # --------------------------------------------------------------------------- #
 class ShopFilter(OrderFilter):
     payment = django_filters.ChoiceFilter(choices=[("paid", "Paid"), ("pending", "Pending")], method="filter_payment")
+    channel = django_filters.ChoiceFilter(field_name="shop__channel", choices=ShopDetails.Channel.choices)
 
     def filter_payment(self, qs, name, value):
         paid = Q(paid_total__gte=F("total_amount")) & Q(total_amount__gt=0)
         return qs.filter(paid) if value == "paid" else qs.exclude(paid)
 
     class Meta(OrderFilter.Meta):
-        fields = [*OrderFilter.Meta.fields, "payment"]
+        fields = [*OrderFilter.Meta.fields, "payment", "channel"]
 
 
 @extend_schema(tags=["orders"])

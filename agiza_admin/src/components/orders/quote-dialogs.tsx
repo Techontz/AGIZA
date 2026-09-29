@@ -136,7 +136,7 @@ export function ApproveDialog({ quote, onClose }: { quote: Quote | null; onClose
         priority: "standard",
         package_size: "",
         order_class: "simple",
-        service_type: quote?.service_type === "equipment" ? "installation" : "full_service",
+        service_type: defaults.data.service_type ?? (quote?.service_type === "equipment" ? "installation" : "full_service"),
         equipment: "",
         classification: "simple",
         installment_plan: false,

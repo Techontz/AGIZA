@@ -235,7 +235,13 @@ export const quotesApi = {
   reply: (id: number, accepted: boolean, note = "") => api.post<Quote>(`quotes/${id}/reply`, { accepted, note }),
   approve: (id: number, data: Record<string, unknown>) => api.post<Quote>(`quotes/${id}/approve`, data),
   approvalDefaults: (id: number) =>
-    api.get<{ item_details: string; pickup_address: string; delivery_address: string; source_country: number | null }>(
+    api.get<{
+      item_details: string;
+      pickup_address: string;
+      delivery_address: string;
+      source_country: number | null;
+      service_type: string | null;
+    }>(
       `quotes/${id}/approval-defaults`,
     ),
   cancel: (id: number, note = "") => api.post<Quote>(`quotes/${id}/cancel`, { note }),
