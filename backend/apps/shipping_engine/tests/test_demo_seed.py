@@ -23,7 +23,7 @@ def test_seed_is_idempotent_and_removable_without_touching_real_data():
     real = Carrier.objects.create(name="Real Carrier Ltd", type="local_ground")
     assert "created" in run("--only", "shipping")
     rules = ShippingRule.objects.count()
-    assert rules == 19 and Carrier.objects.count() == 7
+    assert rules == 21 and Carrier.objects.count() == 7  # 19 design examples + 2 same-city shop rules
 
     assert "0 created" in run("--only", "shipping")  # second run adds nothing
     assert ShippingRule.objects.count() == rules

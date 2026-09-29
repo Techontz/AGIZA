@@ -83,9 +83,10 @@ def record_audit(
     changes: dict | None = None,
     object_repr: str | None = None,
 ):
-    from apps.accounts.models import AuditLog
+    from apps.accounts.models import AuditLog, User
 
-    if actor is None and request is not None and getattr(request, "user", None) and request.user.is_authenticated:
+    # Only staff users are actors; requests from the customer app are recorded without one.
+    if actor is None and request is not None and isinstance(getattr(request, "user", None), User):
         actor = request.user
 
     return AuditLog.objects.create(

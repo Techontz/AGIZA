@@ -18,6 +18,7 @@ class Customer(TimeStampedModel):
         WEB = "web", "Web"
         PHONE = "phone", "Phone"
         WALK_IN = "walk_in", "Walk-in"
+        APP = "app", "Mobile app"
 
     reference = models.CharField(max_length=20, unique=True, editable=False)
     full_name = models.CharField(max_length=150)

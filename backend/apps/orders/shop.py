@@ -22,7 +22,9 @@ from .workflows import OrderType, ShopStatus
 @transaction.atomic
 def create_shop_order(*, customer, items: list[dict], shipping_address: str, user, city=None, area: str = "",
                       customer_email: str = "", channel: str = ShopDetails.Channel.WEB,
-                      delivery_fee: Decimal = Decimal("0"), notes: str = "", request=None) -> Order:
+                      delivery_fee: Decimal = Decimal("0"), notes: str = "", request=None,
+                      delivery_address=None, shipping_method=None, estimated_delivery: str = "",
+                      payment_preference: str = "") -> Order:
     """items: [{"variant": ProductVariant, "quantity": int, "unit_price": Decimal | None}]"""
     if not items:
         raise WorkflowError("Add at least one item.", field="items")
@@ -50,7 +52,9 @@ def create_shop_order(*, customer, items: list[dict], shipping_address: str, use
         OrderType.SHOP, customer=customer, item_details=", ".join(f"{q}× {v.product.name}" for v, q, _, _ in lines)[:255],
         user=user, request=request, notes=notes, total_amount=subtotal + delivery_fee,
         details={"customer_email": customer_email or customer.email, "shipping_address": shipping_address,
-                 "city": city, "area": area, "channel": channel, "delivery_fee": delivery_fee},
+                 "city": city, "area": area, "channel": channel, "delivery_fee": delivery_fee,
+                 "delivery_address": delivery_address, "shipping_method": shipping_method,
+                 "estimated_delivery": estimated_delivery, "payment_preference": payment_preference},
     )
     for variant, qty, price, total in lines:
         stock = inventory.reserve(variant, qty, order=order, user=user, preferred=variant.product.location)

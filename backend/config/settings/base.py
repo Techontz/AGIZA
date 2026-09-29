@@ -49,6 +49,8 @@ INSTALLED_APPS = [
     "apps.crm",
     "apps.chat",
     "apps.notifications",
+    "apps.payments",
+    "apps.storefront",
 ]
 
 MIDDLEWARE = [
@@ -169,6 +171,11 @@ REST_FRAMEWORK = {
         "login": env("THROTTLE_LOGIN_RATE", default="10/min"),
         "anon": env("THROTTLE_ANON_RATE", default="60/min"),
         "user": env("THROTTLE_USER_RATE", default="1200/min"),
+        # Customer app
+        "customer": env("THROTTLE_CUSTOMER_RATE", default="600/min"),
+        "customer_login": env("THROTTLE_CUSTOMER_LOGIN_RATE", default="10/min"),
+        "otp": env("THROTTLE_OTP_RATE", default="5/min"),
+        "checkout": env("THROTTLE_CHECKOUT_RATE", default="20/min"),
     },
     # Number of trusted reverse proxies in front of Django (Next.js BFF, nginx...).
     # DRF uses it to pick the real client IP from X-Forwarded-For for throttling.
@@ -187,6 +194,10 @@ SIMPLE_JWT = {
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
 }
+
+# Customer app sessions (separate token types from staff; see apps.storefront.auth).
+CUSTOMER_JWT_ACCESS_MINUTES = env.int("CUSTOMER_JWT_ACCESS_MINUTES", default=30)
+CUSTOMER_JWT_REFRESH_DAYS = env.int("CUSTOMER_JWT_REFRESH_DAYS", default=60)
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "AGIZA Platform API",
@@ -252,8 +263,8 @@ SPECTACULAR_SETTINGS = {
     },
 }
 
-# Browsers never call Django directly (the Next.js server proxies requests),
-# so CORS stays closed.
+# Browsers never call Django directly (the Next.js server proxies requests and the
+# customer app is native), so CORS stays closed.
 
 # --------------------------------------------------------------------------- #
 # Logging
@@ -306,3 +317,19 @@ FACEBOOK_VERIFY_TOKEN = env("FACEBOOK_VERIFY_TOKEN", default="")
 FACEBOOK_APP_SECRET = env("FACEBOOK_APP_SECRET", default="")
 
 TIKTOK_CLIENT_SECRET = env("TIKTOK_CLIENT_SECRET", default="")
+
+
+# --------------------------------------------------------------------------- #
+# Customer app: online payments and push notifications (optional)
+# --------------------------------------------------------------------------- #
+# Selcom Checkout (mobile money / card). Mobile-money payment is offered only when all four are set.
+SELCOM_VENDOR_CODE = env("SELCOM_VENDOR_CODE", default="")
+SELCOM_API_KEY = env("SELCOM_API_KEY", default="")
+SELCOM_SECRET_KEY = env("SELCOM_SECRET_KEY", default="")
+SELCOM_BASE_PAYMENT_URL = env("SELCOM_BASE_PAYMENT_URL", default="")
+# Public base URL of this API, for Selcom's payment notifications (e.g. https://api.agiza.co.tz).
+SELCOM_CALLBACK_BASE_URL = env("SELCOM_CALLBACK_BASE_URL", default="")
+SELCOM_FALLBACK_BUYER_EMAIL = env("SELCOM_FALLBACK_BUYER_EMAIL", default="payments@agiza.co.tz")
+
+# Expo push notifications to the customer app.
+EXPO_PUSH_ENABLED = env.bool("EXPO_PUSH_ENABLED", default=True)

@@ -250,6 +250,11 @@ class EquipmentDetails(models.Model):
         return f"{self._meta.verbose_name} #{self.pk}"
 
 
+class PaymentPreference(models.TextChoices):
+    PAY_LATER = "pay_later", "Pay later (cash, bank or mobile money to AGIZA)"
+    MOBILE_MONEY = "mobile_money", "Mobile money (Selcom checkout)"
+
+
 class ShopDetails(models.Model):
     class Channel(models.TextChoices):
         WEB = "web", "Online store"
@@ -268,6 +273,13 @@ class ShopDetails(models.Model):
     fulfillment_warehouse = models.ForeignKey("locations.Warehouse", null=True, blank=True, on_delete=models.PROTECT,
                                               related_name="+")
     shipped_at = models.DateTimeField(null=True, blank=True)
+    # Chosen at checkout (customer app / online store); empty for orders entered by staff.
+    delivery_address = models.ForeignKey("parties.Address", null=True, blank=True, on_delete=models.SET_NULL,
+                                         related_name="+", help_text="Saved address the customer chose")
+    shipping_method = models.ForeignKey("shipping_engine.ShippingMethod", null=True, blank=True,
+                                        on_delete=models.SET_NULL, related_name="+")
+    estimated_delivery = models.CharField(max_length=60, blank=True, help_text='Quoted at checkout, e.g. "1–2 days"')
+    payment_preference = models.CharField(max_length=16, choices=PaymentPreference.choices, blank=True)
 
     def __str__(self) -> str:
         return f"{self._meta.verbose_name} #{self.pk}"

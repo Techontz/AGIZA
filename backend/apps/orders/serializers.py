@@ -402,6 +402,12 @@ class ShopOrderSerializer(OrderSerializer):
             "subtotal": _dec(sum((i.line_total for i in obj.items.all()), Decimal("0"))),
             "fulfillment_warehouse": d.fulfillment_warehouse.name if d.fulfillment_warehouse_id else None,
             "shipped_at": d.shipped_at,
+            "shipping_method": {"id": d.shipping_method_id, "name": d.shipping_method.name} if d.shipping_method_id else None,
+            "estimated_delivery": d.estimated_delivery,
+            "payment_preference": d.payment_preference,
+            "payment_preference_display": d.get_payment_preference_display() if d.payment_preference else "",
+            "location": ({"latitude": _dec(d.delivery_address.latitude, 6), "longitude": _dec(d.delivery_address.longitude, 6)}
+                         if d.delivery_address_id and d.delivery_address.latitude is not None else None),
         }
 
     def get_payment_status(self, obj) -> str:

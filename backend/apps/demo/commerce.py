@@ -230,7 +230,7 @@ def seed(stdout=None) -> Seeder:
 
     # ---- Products (through the product editor service) ---------------------
     air = ShippingMethod.objects.filter(code="AIR").first()
-    local = ShippingMethod.objects.filter(category="local").first()
+    local = list(ShippingMethod.objects.filter(code__in=["RIDER", "PICKUP", "BUS"]))
     for i, (sku, name, cat, sub, brand, price, cost, status, origin, profile, vendor, weight, desc, specs,
             label_names, colour, stock) in enumerate(PRODUCTS, start=1):
         if Product.objects.filter(sku=sku).exists():
@@ -244,7 +244,7 @@ def seed(stdout=None) -> Seeder:
             Country.objects.get(iso2=origin), "location": location, "bin_code": stock[0][1] if stock else "",
             "shipping_profile": ShippingProfile.objects.filter(name=profile).first() if profile else None,
             "weight_kg": D(weight), "length_cm": D("30"), "width_cm": D("20"), "height_cm": D("10"),
-            "shipping_methods": [m for m in (air, local) if m], "vendor": vendors[vendor], "description": desc,
+            "shipping_methods": [m for m in (air, *local) if m], "vendor": vendors[vendor], "description": desc,
             "specifications": [{"name": k, "value": v} for k, v in specs.items()],
             "labels": [labels[n] for n in label_names], "featured": "Best Seller" in label_names,
             "keywords": ", ".join(name.lower().split()[:4]),

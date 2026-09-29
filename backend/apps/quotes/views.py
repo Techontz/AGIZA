@@ -104,11 +104,16 @@ class QuoteViewSet(AuditedViewSetMixin, mixins.ListModelMixin, mixins.RetrieveMo
         """Sensible pre-fill for the approval form (from the quotation's text)."""
         quote = self.get_object()
         country = guess_country(quote.origin)
+        # Customer-app requests start with "[Buy for me] <item>" or "[Deliver for me] <item>".
+        first_line = quote.description.split("\n", 1)[0]
+        app_service = {"[Buy for me]": "full_service", "[Deliver for me]": "deliver_for_me"}
+        marker = next((m for m in app_service if first_line.startswith(m)), None)
         return Response({
-            "item_details": quote.description[:255],
+            "item_details": (first_line[len(marker):].strip() if marker else quote.description)[:255],
             "pickup_address": quote.origin,
             "delivery_address": quote.destination,
             "source_country": country.id if country else None,
+            "service_type": app_service[marker] if marker and quote.service_type == "international" else None,
         })
 
     @action(detail=True, methods=["post"])

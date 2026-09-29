@@ -86,6 +86,8 @@ ROUTES = [
     ("Dar es Salaam", "Zone D — Remote", ["BUS"], "zone"),
     ("Dar es Salaam", "Zone E — Islands", ["BUS"], "zone"),
     ("Mwanza", "Dar es Salaam", ["BUS", "RIDER"], "city"),
+    # Same-city delivery for the shop (checkout in the customer app)
+    ("Dar es Salaam", "Dar es Salaam", ["RIDER", "PICKUP"], "city"),
     ("CN", "TZ", ["AIR", "SEA"], "country"),
     ("AE", "TZ", ["AIR", "COURIER"], "country"),
     ("US", "TZ", ["AIR", "SEA"], "country"),
@@ -115,6 +117,9 @@ RULES = [
     (("Dar es Salaam", "Dodoma"), "COURIER", "general", None, "fixed", "15000", "TZS", None, (1, 1), "DHL", "active", {}),
     (("Dar es Salaam", "Dodoma"), "BUS", "general", None, "per_kg", "1000", "TZS", "5000", (1, 1), "Local Bus Partner", "active", {}),
     (("Mwanza", "Dar es Salaam"), "BUS", "general", None, "per_kg", "1200", "TZS", None, (1, 2), "Local Bus Partner", "active", {}),
+    # Same-city shop delivery: rider at the Zone A rider rate; in-store pickup is free
+    (("Dar es Salaam", "Dar es Salaam"), "RIDER", "general", None, "per_kg", "800", "TZS", "3000", (0, 1), "Agiza Riders", "active", {}),
+    (("Dar es Salaam", "Dar es Salaam"), "PICKUP", "general", None, "fixed", "0", "TZS", None, (0, 0), None, "active", {}),
 ]
 
 # route key, destination (city or region name or None), profile, model, rate, currency, reason, start, end, status

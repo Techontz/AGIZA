@@ -493,7 +493,7 @@ class ShopOrderViewSet(BaseOrderViewSet):
 
     order_type = OrderType.SHOP
     detail_relation = "shop"
-    detail_select = ("shop__city", "shop__fulfillment_warehouse")
+    detail_select = ("shop__city", "shop__fulfillment_warehouse", "shop__shipping_method", "shop__delivery_address")
     serializer_class = ShopOrderSerializer
     create_serializer = ShopCreateSerializer
     update_serializer = ShopNotesSerializer
