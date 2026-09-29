@@ -7,6 +7,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, useWindowDimensions, View 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ProductImage } from '@/components/product-tile';
+import { SellerRow } from '@/components/store';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, Divider } from '@/components/ui/card';
@@ -113,6 +114,12 @@ export default function ProductScreen() {
           <Text variant="smallMedium" color={available > 0 ? colors.success : colors.danger}>
             {available > 0 ? (available <= 3 ? `Only ${available} left` : 'In stock') : 'Out of stock'}
           </Text>
+
+          {p.vendor ? (
+            <Card style={styles.seller}>
+              <SellerRow seller={p.vendor} caption="Sold by" />
+            </Card>
+          ) : null}
 
           {p.variants.length > 1 ? (
             <View style={styles.block}>
@@ -224,6 +231,7 @@ const styles = StyleSheet.create({
   priceRow: { flexDirection: 'row', alignItems: 'baseline', gap: space.sm },
   strike: { textDecorationLine: 'line-through' },
   block: { gap: space.sm, marginTop: space.sm },
+  seller: { padding: space.md, marginTop: space.xs },
   variants: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   variant: {
     paddingHorizontal: space.md,

@@ -6,11 +6,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Logo } from '@/components/brand';
 import { ProductTile } from '@/components/product-tile';
+import { StoreTile } from '@/components/store';
 import { Section } from '@/components/ui/card';
 import { ErrorState, Loading } from '@/components/ui/states';
 import { Text } from '@/components/ui/text';
 import { shopApi } from '@/lib/api/endpoints';
-import type { ProductCard } from '@/lib/api/types';
+import type { ProductCard, Store } from '@/lib/api/types';
 import { useAuth } from '@/lib/auth/session';
 import { keys } from '@/lib/query';
 import { colors, radius, shadow, space } from '@/theme/tokens';
@@ -24,6 +25,26 @@ function ProductRow({ products, width }: { products: ProductCard[]; width: numbe
         <ProductTile key={p.id} product={p} width={width} />
       ))}
     </ScrollView>
+  );
+}
+
+function StoreRow({ stores, width }: { stores: Store[]; width: number }) {
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hscroll}>
+      {stores.map((s) => (
+        <StoreTile key={s.slug} store={s} width={width} />
+      ))}
+    </ScrollView>
+  );
+}
+
+function SeeAll({ onPress, label }: { onPress: () => void; label: string }) {
+  return (
+    <Pressable accessibilityRole="link" accessibilityLabel={label} onPress={onPress} hitSlop={8}>
+      <Text variant="smallMedium" color={colors.primary}>
+        See all
+      </Text>
+    </Pressable>
   );
 }
 
@@ -49,12 +70,13 @@ export default function HomeScreen() {
   const featured = useQuery({ queryKey: keys.products({ featured: true }), queryFn: () => shopApi.products({ featured: true }) });
   const deals = useQuery({ queryKey: keys.products({ deals: true }), queryFn: () => shopApi.products({ deals: true }) });
   const latest = useQuery({ queryKey: keys.products({}), queryFn: () => shopApi.products({}) });
+  const stores = useQuery({ queryKey: keys.stores({}), queryFn: () => shopApi.stores({}) });
   const tile = Math.min(180, (width - space.lg * 2 - GAP) / 2.2);
   const signedIn = status === 'signedIn';
   const needsSignIn = (href: Href) => () => router.push(signedIn ? href : '/login');
 
-  const refreshing = featured.isRefetching || deals.isRefetching || latest.isRefetching;
-  const refresh = () => Promise.all([featured.refetch(), deals.refetch(), latest.refetch()]);
+  const refreshing = featured.isRefetching || deals.isRefetching || latest.isRefetching || stores.isRefetching;
+  const refresh = () => Promise.all([featured.refetch(), deals.refetch(), latest.refetch(), stores.refetch()]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -101,15 +123,14 @@ export default function HomeScreen() {
                 <ProductRow products={featured.data.results} width={tile} />
               </Section>
             ) : null}
+            {stores.data?.results.length ? (
+              <Section title="Stores" action={<SeeAll label="See all stores" onPress={() => router.push('/stores')} />}>
+                <StoreRow stores={stores.data.results} width={Math.min(132, tile * 0.8)} />
+              </Section>
+            ) : null}
             <Section
               title="New arrivals"
-              action={
-                <Pressable accessibilityRole="link" onPress={() => router.push('/products')} hitSlop={8}>
-                  <Text variant="smallMedium" color={colors.primary}>
-                    See all
-                  </Text>
-                </Pressable>
-              }>
+              action={<SeeAll label="See all new arrivals" onPress={() => router.push('/products')} />}>
               {latest.data?.results.length ? (
                 <ProductRow products={latest.data.results} width={tile} />
               ) : (

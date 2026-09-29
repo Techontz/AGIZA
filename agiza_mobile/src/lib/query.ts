@@ -17,6 +17,8 @@ export const keys = {
   categories: ['categories'] as const,
   products: (query: object) => ['products', query] as const,
   product: (id: number) => ['product', id] as const,
+  stores: (query: object) => ['stores', query] as const,
+  store: (slug: string) => ['store', slug] as const,
   cities: ['cities'] as const,
   countries: ['sourcing-countries'] as const,
   cart: ['cart'] as const,

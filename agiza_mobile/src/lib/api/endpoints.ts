@@ -18,6 +18,7 @@ import type {
   ProductDetail,
   QuoteRequest,
   Session,
+  Store,
 } from './types';
 
 export const accountApi = {
@@ -38,12 +39,23 @@ export const accountApi = {
   registerDevice: (token: string, platform: string) => api.post<null>('devices/', { token, platform }),
 };
 
+/** Catalogue filters. `store` is a store slug ("agiza" = sold by AGIZA). */
+export type ProductQuery = {
+  search?: string;
+  category?: number;
+  store?: string;
+  featured?: boolean;
+  deals?: boolean;
+  ordering?: string;
+};
+
 export const shopApi = {
   config: () => api.get<AppConfig>('config/'),
   categories: () => api.get<Category[]>('categories/'),
-  products: (query: { search?: string; category?: number; featured?: boolean; deals?: boolean; ordering?: string; page?: number }) =>
-    api.get<Paginated<ProductCard>>('products/', query),
+  products: (query: ProductQuery & { page?: number }) => api.get<Paginated<ProductCard>>('products/', query),
   product: (id: number) => api.get<ProductDetail>(`products/${id}/`),
+  stores: (query: { search?: string; page?: number }) => api.get<Paginated<Store>>('stores/', query),
+  store: (slug: string) => api.get<Store>(`stores/${encodeURIComponent(slug)}/`),
   cities: () => api.get<City[]>('cities/'),
   sourcingCountries: () => api.get<{ iso2: string; name: string }[]>('sourcing-countries/'),
 };

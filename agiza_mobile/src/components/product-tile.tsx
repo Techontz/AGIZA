@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { Package } from 'lucide-react-native';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { VerifiedMark } from '@/components/store';
 import { Badge } from '@/components/ui/badge';
 import { Text } from '@/components/ui/text';
 import type { ProductCard } from '@/lib/api/types';
@@ -35,7 +36,7 @@ export function ProductTile({ product, width }: { product: ProductCard; width: n
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${product.name}, ${money(product.price)}`}
+      accessibilityLabel={`${product.name}, ${money(product.price)}${product.vendor ? `, sold by ${product.vendor.name}` : ''}`}
       onPress={() => router.push({ pathname: '/product/[id]', params: { id: product.id } })}
       style={({ pressed }) => [styles.tile, { width }, pressed && styles.pressed]}>
       <View style={[styles.imageWrap, { height: width }]}>
@@ -54,6 +55,13 @@ export function ProductTile({ product, width }: { product: ProductCard; width: n
         <Text variant="smallMedium" color={colors.ink} numberOfLines={2} style={styles.name}>
           {product.name}
         </Text>
+        {/* Always one line tall so tiles in a row keep the same height. */}
+        <View style={styles.seller}>
+          <Text variant="caption" color={colors.textMuted} numberOfLines={1} style={styles.sellerName}>
+            {product.vendor?.name ?? ' '}
+          </Text>
+          {product.vendor?.verified ? <VerifiedMark size={11} /> : null}
+        </View>
         <Text variant="subheading" color={colors.ink}>
           {hasRange ? `From ${money(product.price)}` : money(product.price)}
         </Text>
@@ -76,5 +84,7 @@ const styles = StyleSheet.create({
   flag: { position: 'absolute', top: space.sm, left: space.sm },
   body: { padding: space.md, gap: 4 },
   name: { minHeight: 36 },
+  seller: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 14 },
+  sellerName: { flexShrink: 1 },
   strike: { textDecorationLine: 'line-through' },
 });

@@ -1,16 +1,17 @@
 import { router } from 'expo-router';
-import { ShoppingCart, Trash2 } from 'lucide-react-native';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { ChevronRight, ShoppingCart, Trash2 } from 'lucide-react-native';
+import { Pressable, SectionList, StyleSheet, View } from 'react-native';
 
 import { ProductImage } from '@/components/product-tile';
 import { SignInPrompt } from '@/components/sign-in-prompt';
+import { StoreAvatar, StoreName, openStore } from '@/components/store';
 import { Button } from '@/components/ui/button';
 import { Card, Row } from '@/components/ui/card';
 import { QuantityStepper } from '@/components/ui/stepper';
 import { EmptyState, ErrorState, errorMessage, Loading, Notice } from '@/components/ui/states';
 import { Text } from '@/components/ui/text';
 import { useCart } from '@/hooks/use-cart';
-import type { CartLine } from '@/lib/api/types';
+import type { Cart, CartLine, Seller } from '@/lib/api/types';
 import { useAuth } from '@/lib/auth/session';
 import { money } from '@/lib/format';
 import { colors, space } from '@/theme/tokens';
@@ -69,6 +70,38 @@ function Line({ line, cart }: { line: CartLine; cart: ReturnType<typeof useCart>
   );
 }
 
+type StoreSection = { key: string; vendor: Seller | null; subtotal: string | null; data: CartLine[] };
+
+/** The cart's lines under their seller, in the server's group order (AGIZA first). */
+function bySeller(cart: Cart): StoreSection[] {
+  const groups = cart.groups ?? [];
+  const placed = new Set<number>();
+  const sections: StoreSection[] = groups.map((g) => {
+    const data = cart.items.filter((line) => g.variant_ids.includes(line.variant_id));
+    data.forEach((line) => placed.add(line.id));
+    return { key: g.vendor.slug, vendor: g.vendor, subtotal: g.subtotal, data };
+  });
+  const rest = cart.items.filter((line) => !placed.has(line.id));
+  if (rest.length) sections.push({ key: '_other', vendor: null, subtotal: null, data: rest });
+  return sections.filter((section) => section.data.length);
+}
+
+function StoreHeader({ vendor }: { vendor: Seller }) {
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={`Sold by ${vendor.name}. Open store`}
+      onPress={() => openStore(vendor.slug)}
+      style={styles.storeHeader}>
+      <StoreAvatar seller={vendor} size={28} />
+      <View style={styles.storeName}>
+        <StoreName seller={vendor} variant="subheading" />
+      </View>
+      <ChevronRight size={18} color={colors.textSubtle} />
+    </Pressable>
+  );
+}
+
 export default function CartScreen() {
   const { status } = useAuth();
   const cart = useCart();
@@ -80,6 +113,7 @@ export default function CartScreen() {
   if (cart.isError || !cart.data) return <ErrorState error={cart.error} onRetry={() => cart.refetch()} />;
   const data = cart.data;
   const mutationError = cart.setQuantity.error ?? cart.remove.error;
+  const sections = bySeller(data);
 
   if (!data.items.length) {
     return (
@@ -94,16 +128,30 @@ export default function CartScreen() {
 
   return (
     <View style={styles.screen}>
-      <FlatList
-        data={data.items}
+      <SectionList
+        sections={sections}
         keyExtractor={(l) => String(l.id)}
+        stickySectionHeadersEnabled={false}
         contentContainerStyle={styles.list}
         refreshing={cart.isRefetching}
         onRefresh={() => cart.refetch()}
         ListHeaderComponent={
           mutationError ? <Notice tone="danger">{errorMessage(mutationError)}</Notice> : null
         }
+        renderSectionHeader={({ section }) => (section.vendor ? <StoreHeader vendor={section.vendor} /> : null)}
         renderItem={({ item }) => <Line line={item} cart={cart} />}
+        renderSectionFooter={({ section }) =>
+          sections.length > 1 && section.subtotal !== null && section.vendor ? (
+            <View style={styles.storeSubtotal}>
+              <Text variant="small" color={colors.textMuted}>
+                {section.vendor.name} subtotal
+              </Text>
+              <Text variant="bodyMedium" color={colors.ink}>
+                {money(section.subtotal, data.currency)}
+              </Text>
+            </View>
+          ) : null
+        }
       />
       <View style={styles.footer}>
         {data.has_issues ? (
@@ -124,6 +172,9 @@ const styles = StyleSheet.create({
   list: { padding: space.lg, gap: space.md },
   line: { flexDirection: 'row', gap: space.md, alignItems: 'flex-start' },
   lineBody: { flex: 1, gap: 3 },
+  storeHeader: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.xs },
+  storeName: { flex: 1 },
+  storeSubtotal: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: space.xs },
   lineActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.sm },
   footer: {
     padding: space.lg,

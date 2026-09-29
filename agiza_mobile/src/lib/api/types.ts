@@ -24,6 +24,18 @@ export type AppConfig = {
 
 export type Category = { id: number; name: string; slug: string; description: string; children: { id: number; name: string; slug: string }[] };
 
+/** Who sells a product ("Sold by …"). AGIZA's own products have `is_agiza: true` and slug "agiza". */
+export type Seller = { slug: string; name: string; logo: string | null; verified: boolean; is_agiza: boolean; city: string | null };
+
+/** A store customers can browse (GET stores/, stores/<slug>/). `description` only on the detail. */
+export type Store = Seller & {
+  banner: string | null;
+  rating: string | null;
+  joined: string | null;
+  products_count: number | null;
+  description?: string;
+};
+
 export type ProductCard = {
   id: number;
   name: string;
@@ -38,6 +50,8 @@ export type ProductCard = {
   ofa_kali: boolean;
   in_stock: boolean;
   labels: { name: string; color: string }[];
+  vendor: Seller;
+  created_at: string;
 };
 
 export type Variant = {
@@ -66,6 +80,7 @@ export type ProductDetail = ProductCard & {
 
 export type CartLine = {
   id: number;
+  vendor: Seller;
   product_id: number;
   variant_id: number;
   name: string;
@@ -78,7 +93,17 @@ export type CartLine = {
   issue: string;
 };
 
-export type Cart = { items: CartLine[]; item_count: number; subtotal: string; currency: string; has_issues: boolean };
+/** The cart's lines per seller (AGIZA first). `variant_ids` link a group to its lines. */
+export type CartGroup = { vendor: Seller; subtotal: string; variant_ids: number[] };
+
+export type Cart = {
+  items: CartLine[];
+  groups: CartGroup[];
+  item_count: number;
+  subtotal: string;
+  currency: string;
+  has_issues: boolean;
+};
 
 export type City = { id: number; name: string; region: string; country: string };
 
@@ -108,6 +133,8 @@ export type ShippingOption = {
   estimated_delivery: string | null;
   carrier: string | null;
   message: string;
+  /** How the fee splits when goods ship from more than one place; `label` already names the origin. */
+  shipments: { label: string; origin: string; cost: string }[];
 };
 
 export type CheckoutQuote = {
@@ -144,7 +171,17 @@ export type OrderCard = {
 
 export type OrderDetail = OrderCard & {
   notes: string;
-  items: { name: string; variant_name: string; sku: string; quantity: number; unit_price: string; line_total: string; product_id: number; image: string | null }[];
+  items: {
+    name: string;
+    variant_name: string;
+    sku: string;
+    quantity: number;
+    unit_price: string;
+    line_total: string;
+    product_id: number;
+    image: string | null;
+    vendor?: Seller;
+  }[];
   payment: PaymentSummary;
   payments: { amount: string; method: string; paid_at: string; kind: string }[];
   timeline: { steps: TimelineStep[]; cancelled: boolean; cancelled_at: string | null; payment: PaymentSummary };
@@ -153,9 +190,20 @@ export type OrderDetail = OrderCard & {
   can_pay: boolean;
   shipping?: { address: string; city: string; area: string; method: string | null; estimated_delivery: string | null };
   amounts?: { subtotal: string; shipping_fee: string; total: string };
+  /** Shop orders: each seller's part of the one order. */
+  sellers?: OrderSeller[];
   payment_preference?: PaymentMethod['code'] | null;
   international?: { service: string; source_country: string; tracking_number: string; estimated_delivery: string | null };
   cargo?: { key: string; label: string; status: 'completed' | 'pending'; at: string | null; expected: string | null }[];
+};
+
+export type OrderSeller = {
+  vendor: Seller;
+  status: string;
+  status_display: string;
+  item_count: number;
+  subtotal: string;
+  shipping_fee: string;
 };
 
 export type PaymentStart = { status: string; message: string; checkout_url: string | null; reference?: string };

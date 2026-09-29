@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ProductImage } from '@/components/product-tile';
+import { StoreAvatar, StoreName, VerifiedMark, openStore } from '@/components/store';
 import { Timeline } from '@/components/timeline';
 import { Badge, PAYMENT_LABEL, paymentTone, statusTone } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { ErrorState, errorMessage, Loading, Notice } from '@/components/ui/states';
 import { Text } from '@/components/ui/text';
 import { orderApi } from '@/lib/api/endpoints';
-import type { OrderDetail } from '@/lib/api/types';
+import type { OrderDetail, OrderSeller } from '@/lib/api/types';
 import { date, dateTime, isFree, money } from '@/lib/format';
 import { openPaymentPage } from '@/lib/payment-page';
 import { keys } from '@/lib/query';
@@ -69,6 +70,42 @@ function PaymentResult({ result }: { result: Awaited<ReturnType<typeof orderApi.
   );
 }
 
+function sellerTone(status: string) {
+  if (status === 'cancelled') return 'danger' as const;
+  if (status === 'delivered') return 'success' as const;
+  if (status === 'pending') return 'warning' as const;
+  return 'info' as const;
+}
+
+/** Who is preparing which part of this one order. */
+function Sellers({ sellers }: { sellers: OrderSeller[] }) {
+  return (
+    <Section title="Sellers">
+      <Card>
+        {sellers.map((s, i) => (
+          <View key={`${s.vendor.slug}-${i}`}>
+            {i > 0 ? <Divider /> : null}
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={`${s.vendor.name}, ${s.status_display}, ${s.item_count} item${s.item_count === 1 ? '' : 's'}. Open store`}
+              onPress={() => openStore(s.vendor.slug)}
+              style={styles.seller}>
+              <StoreAvatar seller={s.vendor} size={36} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <StoreName seller={s.vendor} variant="bodyMedium" />
+                <Text variant="small" color={colors.textMuted}>
+                  {s.item_count} item{s.item_count === 1 ? '' : 's'}
+                </Text>
+              </View>
+              <Badge label={s.status_display} tone={sellerTone(s.status)} />
+            </Pressable>
+          </View>
+        ))}
+      </Card>
+    </Section>
+  );
+}
+
 export default function OrderScreen() {
   const { reference, placed, paymentFailed, paymentPending } = useLocalSearchParams<{
     reference: string;
@@ -110,6 +147,9 @@ export default function OrderScreen() {
   const o = order.data;
   const due = o.payment.due && Number(o.payment.due) > 0 ? o.payment.due : null;
   const actionError = pay.error ?? check.error;
+  // Name the seller per item once an order mixes sellers, or when it is not AGIZA's own.
+  const sellerSlugs = new Set(o.items.map((item) => item.vendor?.slug).filter(Boolean));
+  const showItemSellers = sellerSlugs.size > 1 || o.items.some((item) => item.vendor && !item.vendor.is_agiza);
 
   return (
     <ScrollView
@@ -173,6 +213,14 @@ export default function OrderScreen() {
                     <Text variant="small" color={colors.textMuted}>
                       {item.quantity} × {money(item.unit_price, o.currency)}
                     </Text>
+                    {item.vendor && showItemSellers ? (
+                      <View style={styles.itemSeller}>
+                        <Text variant="caption" color={colors.textMuted} numberOfLines={1} style={{ flexShrink: 1 }}>
+                          Sold by {item.vendor.name}
+                        </Text>
+                        {item.vendor.verified ? <VerifiedMark size={11} /> : null}
+                      </View>
+                    ) : null}
                   </View>
                   <Text variant="bodyMedium" color={colors.ink}>
                     {money(item.line_total, o.currency)}
@@ -183,6 +231,8 @@ export default function OrderScreen() {
           </Card>
         </Section>
       ) : null}
+
+      {o.sellers?.length ? <Sellers sellers={o.sellers} /> : null}
 
       {o.shipping ? (
         <Section title="Delivery">
@@ -287,6 +337,8 @@ const styles = StyleSheet.create({
   head: { gap: space.xs },
   headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   item: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.xs },
+  itemSeller: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 1 },
+  seller: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.xs },
   payBadge: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm, flexWrap: 'wrap' },
   actions: { gap: space.xs },
   cancelBox: { gap: space.md },

@@ -7,7 +7,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
 import { router } from 'expo-router';
-import { Check, CircleAlert, MapPin, Plus } from 'lucide-react-native';
+import { Check, CircleAlert, MapPin, Package, Plus } from 'lucide-react-native';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
@@ -73,6 +73,32 @@ function Choice({
 function shippingSubtitle(o: ShippingOption) {
   if (!o.available) return o.message;
   return [o.estimated_delivery, o.carrier].filter(Boolean).join(' · ') || o.description;
+}
+
+/** Why the fee is what it is when goods come from several places: one priced shipment per origin. */
+function ShipmentBreakdown({ option }: { option: ShippingOption }) {
+  const shipments = option.shipments ?? [];
+  if (shipments.length < 2) return null;
+  return (
+    <View style={styles.shipments} accessibilityLabel={`Delivered in ${shipments.length} shipments`}>
+      <View style={styles.inline}>
+        <Package size={16} color={colors.textMuted} />
+        <Text variant="smallMedium" color={colors.ink}>
+          Delivered in {shipments.length} shipments
+        </Text>
+      </View>
+      {shipments.map((sh, i) => (
+        <View key={`${sh.label}-${i}`} style={styles.shipment}>
+          <Text variant="small" color={colors.textMuted} style={{ flex: 1 }}>
+            {sh.label}
+          </Text>
+          <Text variant="smallMedium" color={colors.ink}>
+            {isFree(sh.cost) ? 'Free' : money(sh.cost, option.currency)}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
 }
 
 export default function CheckoutScreen() {
@@ -156,6 +182,7 @@ export default function CheckoutScreen() {
 
   const available = quote.shipping_options.filter((o) => o.available);
   const unavailable = quote.shipping_options.filter((o) => !o.available);
+  const selectedOption = available.find((o) => o.method_id === quote.selected_shipping_method);
   const refreshing = preview.isFetching;
   const canPlace = quote.can_place_order && !!payment && !refreshing && !place.isPending;
   const placeError = place.error instanceof ApiError && place.error.code !== 'price_changed' ? place.error : null;
@@ -270,6 +297,7 @@ export default function CheckoutScreen() {
                 trailing={isFree(o.cost) ? 'Free' : money(o.cost, o.currency)}
               />
             ))}
+            {selectedOption ? <ShipmentBreakdown option={selectedOption} /> : null}
           </View>
         ) : null}
         {unavailable.length ? (
@@ -349,6 +377,15 @@ const styles = StyleSheet.create({
   inline: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   items: { paddingVertical: space.sm },
   item: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.xs },
+  shipments: {
+    gap: space.xs,
+    padding: space.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  shipment: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md, paddingLeft: 20 },
   footer: {
     padding: space.lg,
     gap: space.sm,

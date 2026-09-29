@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { Search, X } from 'lucide-react-native';
+import { router } from 'expo-router';
+import { ChevronRight, Search, Store as StoreIcon, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
@@ -60,6 +61,25 @@ export default function ShopScreen() {
           </Pressable>
         ) : null}
       </View>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel="Browse stores"
+        accessibilityHint="Shop by seller"
+        onPress={() => router.push('/stores')}
+        style={({ pressed }) => [styles.stores, pressed && styles.pressed]}>
+        <View style={styles.storesIcon}>
+          <StoreIcon size={18} color={colors.brand} />
+        </View>
+        <View style={styles.storesText}>
+          <Text variant="bodyMedium" color={colors.ink}>
+            Browse stores
+          </Text>
+          <Text variant="small" color={colors.textMuted}>
+            Shop from AGIZA and marketplace sellers
+          </Text>
+        </View>
+        <ChevronRight size={18} color={colors.textSubtle} />
+      </Pressable>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
         <Chip label="All" active={!category} onPress={() => setCategory(undefined)} />
         {categories.data?.map((c) => (
@@ -92,6 +112,25 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontFamily: fonts.regular, fontSize: 16, color: colors.ink, paddingVertical: space.sm },
   chips: { gap: space.sm },
+  stores: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.primarySoft,
+  },
+  pressed: { opacity: 0.85 },
+  storesIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  storesText: { flex: 1 },
   chip: {
     paddingHorizontal: space.md,
     paddingVertical: 7,

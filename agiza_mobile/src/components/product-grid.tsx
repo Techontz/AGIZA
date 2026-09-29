@@ -5,13 +5,19 @@ import { PackageSearch } from 'lucide-react-native';
 
 import { ProductTile } from '@/components/product-tile';
 import { EmptyState, ErrorState, Loading } from '@/components/ui/states';
-import { shopApi } from '@/lib/api/endpoints';
+import { shopApi, type ProductQuery } from '@/lib/api/endpoints';
 import { colors, space } from '@/theme/tokens';
 
-type Query = { search?: string; category?: number; featured?: boolean; deals?: boolean; ordering?: string };
-
 /** Two-column, infinitely scrolling product list for any catalogue filter. */
-export function ProductGrid({ query, header }: { query: Query; header?: ReactElement }) {
+export function ProductGrid({
+  query,
+  header,
+  emptyMessage = 'Try another search or category.',
+}: {
+  query: ProductQuery;
+  header?: ReactElement;
+  emptyMessage?: string;
+}) {
   const { width } = useWindowDimensions();
   const tile = (width - space.lg * 2 - space.md) / 2;
   const list = useInfiniteQuery({
@@ -42,7 +48,7 @@ export function ProductGrid({ query, header }: { query: Query; header?: ReactEle
         ) : list.isError ? (
           <ErrorState error={list.error} onRetry={() => list.refetch()} />
         ) : (
-          <EmptyState icon={PackageSearch} title="No products found" message="Try another search or category." />
+          <EmptyState icon={PackageSearch} title="No products found" message={emptyMessage} />
         )
       }
       ListFooterComponent={

@@ -46,6 +46,8 @@ function RootStack() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="product/[id]" options={{ title: '' }} />
       <Stack.Screen name="products" options={{ title: 'Products' }} />
+      <Stack.Screen name="stores" options={{ title: 'Stores' }} />
+      <Stack.Screen name="store/[slug]" options={{ title: '' }} />
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="login" options={{ title: 'Sign in', presentation: 'modal' }} />
         <Stack.Screen name="register" options={{ title: 'Create account', presentation: 'modal' }} />
