@@ -1,15 +1,18 @@
 # AGIZA Platform
 
-AGIZA is the operations and commerce admin platform for a Tanzanian logistics
+AGIZA is the operations and commerce platform for a Tanzanian logistics
 business: international sourcing (China, Dubai, USA, UK, India), express
 local deliveries, equipment support jobs, an e-commerce shop, warehouses,
-finance, customers, campaigns and multi-channel customer chat.
+finance, customers, campaigns and multi-channel customer chat. Staff use the
+admin dashboard; customers use the mobile app. Both talk to the same backend.
 
 | Folder | What |
 |---|---|
-| `backend/` | Django 5.2 + Django REST Framework API on PostgreSQL — the system of record for all data and business rules |
+| `backend/` | Django 5.2 + Django REST Framework API on MySQL 8 (PostgreSQL also supported) — the system of record for all data and business rules. Staff API at `/api/…`, customer app API at `/api/app/…` |
 | `agiza_admin/` | Next.js 15 admin frontend (App Router, TypeScript, Tailwind v4, TanStack Query) |
+| `agiza_mobile/` | Customer app: React Native, Expo SDK 57, Expo Router — see `agiza_mobile/README.md` |
 | `docs/Delivery Management Dashboard/` | The Figma Make design source — the visual reference, never edited |
+| `docs/cargo-main/`, `docs/agiza-server-main/` | Local-only copies of the previous staff portal and server (git-ignored references; contain credentials and data dumps) |
 
 ## Architecture
 
@@ -51,12 +54,12 @@ order can't be moved into those stages by hand.
 
 ## Requirements
 
-- Python 3.11+, PostgreSQL 14+ (the DB role needs `CREATEDB` to run tests)
-- Node.js 20+ and pnpm 10
+- Python 3.11+, MySQL 8.0+ (or PostgreSQL 14+); the DB user needs rights on the `test_<name>` database to run tests
+- Node.js 20+ and pnpm 10; for the mobile app also JDK 17 and the Android SDK
 
 ## Database
 
-PostgreSQL is used for development and tests. MySQL 8.0+ is also supported (for example on DirectAdmin):
+MySQL 8.0+ is the production database, and the full test suite runs on it (PostgreSQL is also supported and tested):
 `pip install -r requirements/mysql.txt`, create the database as `utf8mb4` / `utf8mb4_0900_ai_ci`, and set
 `DATABASE_URL=mysql://user:password@host:3306/dbname`. Strict mode, utf8mb4 and READ COMMITTED are configured
 automatically; MySQL time-zone tables are not needed. MySQL's default collation compares text case- and
@@ -131,6 +134,26 @@ cd backend
 
 Sets build on each other (shipping → orders → operations → commerce → people); flushing a set also flushes
 the sets loaded after it. Demo staff (`@agiza.demo`) have unusable passwords.
+
+## Customer app (agiza_mobile)
+
+The app never prices anything itself: the backend computes item prices, stock, delivery options
+and fees (Shipping Engine), totals and payment state. Orders placed in the app appear in
+E-commerce Orders (filter Channel → Mobile app), customers in People, requests in Intake & Quotes
+and messages in Chat.
+
+```bash
+# Backend reachable from devices
+cd backend && .venv/bin/python manage.py runserver 0.0.0.0:8000
+# (add 10.0.2.2 and/or the Mac's LAN IP to DJANGO_ALLOWED_HOSTS in backend/.env)
+
+# App (Android emulator: agiza_mobile/.env → EXPO_PUBLIC_API_URL=http://10.0.2.2:8000/api)
+cd agiza_mobile && npm install && npm run android
+```
+
+Customer registration sends an SMS code (Africa's Talking `SMS_AT_*`); with `DJANGO_DEBUG=true`
+and no SMS configured the code is written to the backend log. Mobile-money checkout appears when
+the `SELCOM_*` settings are present.
 
 ## Tests
 
