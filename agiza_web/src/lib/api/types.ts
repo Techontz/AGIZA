@@ -230,7 +230,7 @@ export type OrderDetail = OrderCard & {
   sellers?: OrderSeller[];
   can_return?: boolean;
   returns?: { reference: string; status_display: string; refund_status: RefundStatus }[];
-  adjustments?: { amount: string; reason: string; at: string }[];
+  adjustments?: { amount: string; reason: string; at: string; kind?: "seller_part" | "return_refund" }[];
   international?: { service: string; source_country: string; tracking_number: string; estimated_delivery: string | null };
   cargo?: { key: string; label: string; status: "completed" | "pending"; at: string | null; expected: string | null }[];
 };

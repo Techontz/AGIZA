@@ -156,7 +156,7 @@ def test_a_refunded_return_is_never_shown_as_money_the_customer_owes(app, home, 
     summary = order_services.payment_summary(order)
     assert (summary.due, summary.status) == (D("0"), "fully_paid")
     body = app.get(f"{APP}/orders/{order.reference}/").json()
-    assert D(body["payment"]["due"]) == 0
+    assert D(body["payment"]["due"]) == 0 and body["adjustments"][0]["kind"] == "return_refund"
     shown = D(body["amounts"]["subtotal"]) + D(body["amounts"]["shipping_fee"]) + sum(
         D(a["amount"]) for a in body["adjustments"])
     assert shown == D(body["amounts"]["total"]) == order.total_amount

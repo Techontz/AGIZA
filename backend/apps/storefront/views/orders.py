@@ -102,7 +102,9 @@ def order_detail_payload(order: Order, request) -> dict:
             "area": details.area, "method": details.shipping_method.name if details.shipping_method_id else None,
             "estimated_delivery": details.estimated_delivery or None,
         }
-        adjustments = [{"amount": str(a.amount), "reason": a.reason, "at": a.created_at} for a in order.adjustments.all()]
+        adjustments = [{"amount": str(a.amount), "reason": a.reason, "at": a.created_at,
+                        "kind": "return_refund" if a.return_request_id else "seller_part"}
+                       for a in order.adjustments.all()]
         body["amounts"] = {"subtotal": str(subtotal), "shipping_fee": str(details.delivery_fee),
                            "total": str(order.total_amount)}
         body["adjustments"] = adjustments

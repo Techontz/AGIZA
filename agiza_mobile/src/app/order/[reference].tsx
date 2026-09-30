@@ -364,11 +364,11 @@ export default function OrderScreen() {
       ) : null}
 
       <Section title="Payment">
-        {adjustments.some((a) => Number(a.amount) < 0) ? (
+        {adjustments.some((a) => a.kind !== 'return_refund' && Number(a.amount) < 0) ? (
           <Notice tone="warning">
             A seller couldn&apos;t supply part of your order:{' '}
             {adjustments
-              .filter((a) => Number(a.amount) < 0)
+              .filter((a) => a.kind !== 'return_refund' && Number(a.amount) < 0)
               .map((a) => signedMoney(a.amount, o.currency))
               .join(', ')}
             . The total below is already updated.

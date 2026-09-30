@@ -207,7 +207,7 @@ export type OrderDetail = OrderCard & {
   sellers?: OrderSeller[];
   payment_preference?: PaymentMethod['code'] | null;
   /** Changes to the total after the order was placed (negative = lower). */
-  adjustments?: { amount: string; reason: string; at: string }[];
+  adjustments?: { amount: string; reason: string; at: string; kind?: 'seller_part' | 'return_refund' }[];
   can_return?: boolean;
   returns?: { reference: string; status_display: string; refund_status: RefundStatus }[];
   international?: { service: string; source_country: string; tracking_number: string; estimated_delivery: string | null };
