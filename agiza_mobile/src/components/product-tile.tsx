@@ -3,7 +3,9 @@ import { router } from 'expo-router';
 import { Package } from 'lucide-react-native';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { RatingInline } from '@/components/rating';
 import { VerifiedMark } from '@/components/store';
+import { WishlistButton } from '@/components/wishlist-button';
 import { Badge } from '@/components/ui/badge';
 import { Text } from '@/components/ui/text';
 import type { ProductCard } from '@/lib/api/types';
@@ -36,7 +38,9 @@ export function ProductTile({ product, width }: { product: ProductCard; width: n
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${product.name}, ${money(product.price)}${product.vendor ? `, sold by ${product.vendor.name}` : ''}`}
+      accessibilityLabel={`${product.name}, ${money(product.price)}${product.vendor ? `, sold by ${product.vendor.name}` : ''}${
+        product.rating_count ? `, rated ${product.rating} out of 5` : ''
+      }`}
       onPress={() => router.push({ pathname: '/product/[id]', params: { id: product.id } })}
       style={({ pressed }) => [styles.tile, { width }, pressed && styles.pressed]}>
       <View style={[styles.imageWrap, { height: width }]}>
@@ -50,6 +54,9 @@ export function ProductTile({ product, width }: { product: ProductCard; width: n
             <Badge label="Ofa kali" tone="brand" />
           </View>
         ) : null}
+        <View style={styles.heart}>
+          <WishlistButton productId={product.id} name={product.name} size={32} />
+        </View>
       </View>
       <View style={styles.body}>
         <Text variant="smallMedium" color={colors.ink} numberOfLines={2} style={styles.name}>
@@ -61,6 +68,10 @@ export function ProductTile({ product, width }: { product: ProductCard; width: n
             {product.vendor?.name ?? ' '}
           </Text>
           {product.vendor?.verified ? <VerifiedMark size={11} /> : null}
+        </View>
+        {/* Reserved even without reviews, for the same reason. */}
+        <View style={styles.rating}>
+          <RatingInline rating={product.rating} count={product.rating_count} />
         </View>
         <Text variant="subheading" color={colors.ink}>
           {hasRange ? `From ${money(product.price)}` : money(product.price)}
@@ -82,6 +93,8 @@ const styles = StyleSheet.create({
   fill: { width: '100%', height: '100%' },
   placeholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#F3F4F6', borderRadius: radius.md },
   flag: { position: 'absolute', top: space.sm, left: space.sm },
+  heart: { position: 'absolute', top: space.sm, right: space.sm },
+  rating: { height: 14, justifyContent: 'center' },
   body: { padding: space.md, gap: 4 },
   name: { minHeight: 36 },
   seller: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 14 },

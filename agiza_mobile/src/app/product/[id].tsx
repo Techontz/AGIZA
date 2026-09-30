@@ -2,11 +2,13 @@ import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Check, ShoppingCart, Truck } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ProductReviews } from '@/components/product-reviews';
 import { ProductImage } from '@/components/product-tile';
+import { RatingSummaryLine } from '@/components/rating';
 import { SellerRow } from '@/components/store';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,6 +16,7 @@ import { Card, Divider } from '@/components/ui/card';
 import { QuantityStepper } from '@/components/ui/stepper';
 import { ErrorState, errorMessage, Loading, Notice } from '@/components/ui/states';
 import { Text } from '@/components/ui/text';
+import { WishlistButton } from '@/components/wishlist-button';
 import { useCart } from '@/hooks/use-cart';
 import { shopApi } from '@/lib/api/endpoints';
 import { useAuth } from '@/lib/auth/session';
@@ -32,6 +35,9 @@ export default function ProductScreen() {
   const [quantity, setQuantity] = useState(1);
   const [imageIndex, setImageIndex] = useState(0);
   const [added, setAdded] = useState(false);
+  const scroll = useRef<ScrollView>(null);
+  const [bodyY, setBodyY] = useState(0);
+  const [reviewsY, setReviewsY] = useState(0);
 
   const variant = useMemo(() => {
     const variants = product.data?.variants ?? [];
@@ -64,7 +70,7 @@ export default function ProductScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <Stack.Screen options={{ title: '' }} />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView ref={scroll} contentContainerStyle={styles.content}>
         <View>
           {p.images.length ? (
             <FlatList
@@ -90,9 +96,12 @@ export default function ProductScreen() {
               ))}
             </View>
           ) : null}
+          <View style={styles.heart}>
+            <WishlistButton productId={p.id} name={p.name} size={44} />
+          </View>
         </View>
 
-        <View style={styles.body}>
+        <View style={styles.body} onLayout={(e) => setBodyY(e.nativeEvent.layout.y)}>
           <View style={styles.badges}>
             {p.brand ? <Badge label={p.brand} /> : null}
             <Badge label={p.condition_display} tone={p.condition === 'new' ? 'success' : 'warning'} />
@@ -101,6 +110,11 @@ export default function ProductScreen() {
           <Text variant="title" color={colors.ink}>
             {p.name}
           </Text>
+          <RatingSummaryLine
+            rating={p.rating}
+            count={p.rating_count}
+            onPress={() => scroll.current?.scrollTo({ y: bodyY + reviewsY, animated: true })}
+          />
           <View style={styles.priceRow}>
             <Text variant="title" color={colors.primary}>
               {money(variant?.price ?? p.price)}
@@ -186,6 +200,10 @@ export default function ProductScreen() {
               {p.shipping_methods.length ? ` (${p.shipping_methods.join(', ')})` : ''}.
             </Text>
           </View>
+
+          <View onLayout={(e) => setReviewsY(e.nativeEvent.layout.y)}>
+            <ProductReviews productId={p.id} name={p.name} />
+          </View>
         </View>
       </ScrollView>
 
@@ -226,6 +244,7 @@ const styles = StyleSheet.create({
   dots: { flexDirection: 'row', justifyContent: 'center', gap: 6, position: 'absolute', bottom: space.md, width: '100%' },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.6)' },
   dotActive: { backgroundColor: colors.brand, width: 18 },
+  heart: { position: 'absolute', top: space.md, right: space.md },
   body: { padding: space.lg, gap: space.md },
   badges: { flexDirection: 'row', gap: space.xs, flexWrap: 'wrap' },
   priceRow: { flexDirection: 'row', alignItems: 'baseline', gap: space.sm },

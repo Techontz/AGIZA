@@ -16,11 +16,22 @@ const SORTS = [
   { value: '-price', label: 'Price: high to low' },
 ];
 
-function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+function Chip({
+  label,
+  active,
+  onPress,
+  toggle,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  toggle?: boolean;
+}) {
   return (
     <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
+      accessibilityRole={toggle ? 'switch' : 'button'}
+      accessibilityState={toggle ? { checked: active } : { selected: active }}
+      hitSlop={{ top: 6, bottom: 6 }}
       onPress={onPress}
       style={[styles.chip, active && styles.chipActive]}>
       <Text variant="smallMedium" color={active ? '#FFFFFF' : colors.text}>
@@ -36,6 +47,7 @@ export default function ShopScreen() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<number | undefined>();
   const [ordering, setOrdering] = useState('newest');
+  const [inStock, setInStock] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(text.trim()), 350); // wait for typing to pause
@@ -56,7 +68,7 @@ export default function ShopScreen() {
           style={styles.searchInput}
         />
         {text ? (
-          <Pressable accessibilityLabel="Clear search" hitSlop={8} onPress={() => setText('')}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Clear search" hitSlop={13} onPress={() => setText('')}>
             <X size={18} color={colors.textMuted} />
           </Pressable>
         ) : null}
@@ -87,6 +99,7 @@ export default function ShopScreen() {
         ))}
       </ScrollView>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+        <Chip label="In stock only" active={inStock} onPress={() => setInStock((v) => !v)} toggle />
         {SORTS.map((s) => (
           <Chip key={s.value} label={s.label} active={ordering === s.value} onPress={() => setOrdering(s.value)} />
         ))}
@@ -94,7 +107,9 @@ export default function ShopScreen() {
     </View>
   );
 
-  return <ProductGrid query={{ search: search || undefined, category, ordering }} header={header} />;
+  return (
+    <ProductGrid query={{ search: search || undefined, category, ordering, in_stock: inStock || undefined }} header={header} />
+  );
 }
 
 const styles = StyleSheet.create({

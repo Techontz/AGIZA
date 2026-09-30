@@ -48,6 +48,7 @@ function RootStack() {
       <Stack.Screen name="products" options={{ title: 'Products' }} />
       <Stack.Screen name="stores" options={{ title: 'Stores' }} />
       <Stack.Screen name="store/[slug]" options={{ title: '' }} />
+      <Stack.Screen name="reviews/[productId]" options={{ title: 'Reviews' }} />
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="login" options={{ title: 'Sign in', presentation: 'modal' }} />
         <Stack.Screen name="register" options={{ title: 'Create account', presentation: 'modal' }} />
@@ -65,6 +66,13 @@ function RootStack() {
         <Stack.Screen name="profile" options={{ title: 'Profile' }} />
         <Stack.Screen name="change-password" options={{ title: 'Change password' }} />
         <Stack.Screen name="delete-account" options={{ title: 'Delete account' }} />
+        <Stack.Screen name="reviews/write" options={{ title: 'Write a review', presentation: 'modal' }} />
+        <Stack.Screen name="my-reviews" options={{ title: 'My reviews' }} />
+        <Stack.Screen name="saved" options={{ title: 'Saved products' }} />
+        <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
+        <Stack.Screen name="returns/index" options={{ title: 'My returns' }} />
+        <Stack.Screen name="returns/new" options={{ title: 'Return items' }} />
+        <Stack.Screen name="returns/[reference]" options={{ title: 'Return' }} />
       </Stack.Protected>
     </Stack>
   );

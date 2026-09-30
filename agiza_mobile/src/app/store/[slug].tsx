@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { ProductGrid } from '@/components/product-grid';
+import { RatingInline } from '@/components/rating';
 import { SearchField } from '@/components/search-field';
 import { StoreAvatar, StoreName } from '@/components/store';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +40,7 @@ function StoreHeader({ store, onSearch }: { store: Store; onSearch: (value: stri
         <StoreName seller={store} variant="title" />
         <View style={styles.meta}>
           {store.verified ? <Badge label={store.is_agiza ? 'Official store' : 'Verified seller'} tone="info" /> : null}
+          <RatingInline rating={store.rating} count={store.rating_count} size={14} />
           {store.city ? (
             <View style={styles.inline}>
               <MapPin size={14} color={colors.textMuted} />

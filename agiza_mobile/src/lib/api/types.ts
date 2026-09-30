@@ -30,7 +30,9 @@ export type Seller = { slug: string; name: string; logo: string | null; verified
 /** A store customers can browse (GET stores/, stores/<slug>/). `description` only on the detail. */
 export type Store = Seller & {
   banner: string | null;
+  /** Computed by the server from product reviews ("4.5"), null when unrated. */
   rating: string | null;
+  rating_count?: number;
   joined: string | null;
   products_count: number | null;
   description?: string;
@@ -52,6 +54,9 @@ export type ProductCard = {
   labels: { name: string; color: string }[];
   vendor: Seller;
   created_at: string;
+  /** Average from reviews, e.g. "4.5"; null when nobody has rated it. */
+  rating: string | null;
+  rating_count: number;
 };
 
 export type Variant = {
@@ -76,7 +81,11 @@ export type ProductDetail = ProductCard & {
   shipping_methods: string[];
   ready_to_ship_days: number;
   allow_chat: boolean;
+  rating_distribution?: RatingDistribution;
 };
+
+/** Number of reviews per star ("5" … "1"). */
+export type RatingDistribution = Record<string, number>;
 
 export type CartLine = {
   id: number;
@@ -181,6 +190,10 @@ export type OrderDetail = OrderCard & {
     product_id: number;
     image: string | null;
     vendor?: Seller;
+    /** Order item id (used for returns). */
+    item?: number;
+    /** The seller couldn't supply this item; it is no longer charged. */
+    cancelled?: boolean;
   }[];
   payment: PaymentSummary;
   payments: { amount: string; method: string; paid_at: string; kind: string }[];
@@ -193,6 +206,10 @@ export type OrderDetail = OrderCard & {
   /** Shop orders: each seller's part of the one order. */
   sellers?: OrderSeller[];
   payment_preference?: PaymentMethod['code'] | null;
+  /** Changes to the total after the order was placed (negative = lower). */
+  adjustments?: { amount: string; reason: string; at: string }[];
+  can_return?: boolean;
+  returns?: { reference: string; status_display: string; refund_status: RefundStatus }[];
   international?: { service: string; source_country: string; tracking_number: string; estimated_delivery: string | null };
   cargo?: { key: string; label: string; status: 'completed' | 'pending'; at: string | null; expected: string | null }[];
 };
@@ -231,3 +248,82 @@ export type QuoteRequest = {
 };
 
 export type ChatMessage = { id: number; from: 'me' | 'agiza' | 'system'; body: string; author: string | null; created_at: string };
+
+export type Review = {
+  id: number;
+  rating: number;
+  title: string;
+  body: string;
+  author: string;
+  verified_purchase: boolean;
+  created_at: string;
+  edited_at: string | null;
+  vendor_reply: string | null;
+  vendor_replied_at: string | null;
+};
+
+export type MyReview = Review & {
+  status: 'published' | 'pending' | 'flagged' | 'hidden';
+  product_id: number;
+  product_name?: string;
+};
+
+export type ProductReviews = Paginated<Review> & {
+  rating: string | null;
+  rating_count: number;
+  distribution: RatingDistribution;
+  mine: MyReview | null;
+  can_review: boolean;
+};
+
+export type MyReviews = {
+  reviews: MyReview[];
+  to_review: { product_id: number; name: string; order: string; image: string | null }[];
+};
+
+export type Wishlist = { product_ids: number[]; products: ProductCard[] };
+
+/** `data.screen` names what to open: order (data.order), return (data.return), quotation (data.quote), chat. */
+export type InboxNotification = {
+  id: number;
+  title: string;
+  body: string;
+  data: { type?: string; screen?: string; order?: string; return?: string; quote?: number; [key: string]: unknown } | null;
+  read: boolean;
+  created_at: string;
+};
+
+export type NotificationPage = Paginated<InboxNotification> & { unread: number };
+
+export type RefundStatus = 'not_decided' | 'pending' | 'refunded' | 'none';
+
+export type ReturnSummary = {
+  reference: string;
+  order: string;
+  status: string;
+  status_display: string;
+  refund_status: RefundStatus;
+  reason: string;
+  items: string;
+  value: string;
+  refund_amount: string | null;
+  message: string | null;
+  created_at: string;
+};
+
+export type ReturnDetail = ReturnSummary & {
+  explanation: string;
+  lines: { name: string; variant_name: string; quantity: number; amount: string; image: string | null }[];
+  evidence: string[];
+  history: { status: string; at: string }[];
+  can_add_evidence: boolean;
+};
+
+export type OrderReturnOptions = {
+  can_return: boolean;
+  window_open: boolean;
+  window_days: number;
+  items: { item: number; name: string; variant_name: string; quantity: number; returnable: number; unit_price: string }[];
+  reasons: { code: string; label: string }[];
+  returns: ReturnSummary[];
+};

@@ -28,4 +28,12 @@ export const keys = {
   requests: ['requests'] as const,
   request: (id: number) => ['request', id] as const,
   support: ['support'] as const,
+  reviews: (productId: number) => ['reviews', productId] as const,
+  myReviews: ['reviews', 'mine'] as const,
+  wishlist: ['wishlist'] as const,
+  notifications: ['notifications'] as const,
+  unread: ['notifications', 'unread'] as const,
+  returns: ['returns'] as const,
+  returnDetail: (reference: string) => ['returns', 'detail', reference] as const,
+  returnOptions: (order: string) => ['returns', 'options', order] as const,
 };

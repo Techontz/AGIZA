@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { BadgeCheck, ChevronRight, MapPin } from 'lucide-react-native';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { RatingInline } from '@/components/rating';
 import { Text } from '@/components/ui/text';
 import type { Seller, Store } from '@/lib/api/types';
 import { colors, fonts, radius, shadow, space } from '@/theme/tokens';
@@ -105,19 +106,24 @@ function productsLabel(count: number | null) {
   return `${count} product${count === 1 ? '' : 's'}`;
 }
 
+function ratedLabel(store: Store) {
+  return store.rating_count && store.rating ? `, rated ${store.rating} out of 5` : '';
+}
+
 /** Full-width store row for the stores list. */
 export function StoreListCard({ store }: { store: Store }) {
   const products = productsLabel(store.products_count);
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${store.name}${store.verified ? ', verified' : ''}${store.city ? `, ${store.city}` : ''}${products ? `, ${products}` : ''}`}
+      accessibilityLabel={`${store.name}${store.verified ? ', verified' : ''}${store.city ? `, ${store.city}` : ''}${products ? `, ${products}` : ''}${ratedLabel(store)}`}
       onPress={() => openStore(store.slug)}
       style={({ pressed }) => [styles.listCard, pressed && styles.pressed]}>
       <StoreAvatar seller={store} size={52} />
       <View style={[styles.flex, styles.listBody]}>
         <StoreName seller={store} />
         <View style={styles.metaRow}>
+          <RatingInline rating={store.rating} count={store.rating_count} />
           {store.city ? (
             <View style={styles.meta}>
               <MapPin size={13} color={colors.textMuted} />
@@ -145,16 +151,21 @@ export function StoreTile({ store, width }: { store: Store; width: number }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${store.name}${store.verified ? ', verified' : ''}${products ? `, ${products}` : ''}`}
+      accessibilityLabel={`${store.name}${store.verified ? ', verified' : ''}${products ? `, ${products}` : ''}${ratedLabel(store)}`}
       onPress={() => openStore(store.slug)}
       style={({ pressed }) => [styles.tile, { width }, pressed && styles.pressed]}>
       <StoreAvatar seller={store} size={52} />
       <View style={styles.tileName}>
         <StoreName seller={store} variant="smallMedium" />
       </View>
-      <Text variant="caption" color={colors.textMuted} numberOfLines={1}>
-        {store.city ?? products ?? ' '}
-      </Text>
+      {/* One caption line either way, so tiles in the row keep the same height. */}
+      {store.rating_count && store.rating ? (
+        <RatingInline rating={store.rating} count={store.rating_count} />
+      ) : (
+        <Text variant="caption" color={colors.textMuted} numberOfLines={1}>
+          {store.city ?? products ?? ' '}
+        </Text>
+      )}
     </Pressable>
   );
 }

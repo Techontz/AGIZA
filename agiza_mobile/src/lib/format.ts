@@ -12,6 +12,14 @@ export function money(value: string | number | null | undefined, currency = 'TZS
   return `${currency} ${text}`;
 }
 
+/** A signed change as the server sent it: "−TZS 5,000" / "+TZS 5,000". Formatting only. */
+export function signedMoney(value: string | null | undefined, currency = 'TZS'): string {
+  const amount = Number(value);
+  if (value === null || value === undefined || !Number.isFinite(amount)) return '—';
+  if (amount < 0) return `−${money(value.replace('-', ''), currency)}`;
+  return `+${money(value, currency)}`;
+}
+
 export function isFree(value: string | null | undefined) {
   return value !== null && value !== undefined && Number(value) === 0;
 }

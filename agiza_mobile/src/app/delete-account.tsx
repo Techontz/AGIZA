@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
+import { router } from 'expo-router';
 import { Alert } from 'react-native';
 
 import { FormScreen } from '@/components/form-screen';
@@ -20,13 +21,23 @@ export default function DeleteAccountScreen() {
     onSuccess: signOut,
   });
   const err = remove.error instanceof ApiError ? remove.error : null;
+  // 409: an order is still in progress; the server's message names it.
+  const blocked = err?.status === 409;
   return (
     <FormScreen>
       <Text variant="body" color={colors.text}>
-        Deleting your account removes your sign-in, saved devices and cart. Records of orders and payments are kept by AGIZA
-        as required for accounting and delivery.
+        Deleting your account removes your sign-in, saved devices, cart, saved products and notifications. Records of orders
+        and payments are kept by AGIZA as required for accounting and delivery. You can only delete your account once none
+        of your orders is still in progress.
       </Text>
-      {remove.isError && !err?.field('password') ? <Notice tone="danger">{errorMessage(remove.error)}</Notice> : null}
+      {blocked ? (
+        <>
+          <Notice tone="warning">{errorMessage(remove.error)}</Notice>
+          <Button title="View my orders" variant="secondary" onPress={() => router.push('/orders')} />
+        </>
+      ) : remove.isError && !err?.field('password') ? (
+        <Notice tone="danger">{errorMessage(remove.error)}</Notice>
+      ) : null}
       <Input label="Password" value={password} onChangeText={setPassword} secureTextEntry error={err?.field('password')} />
       <Button
         title="Delete my account"

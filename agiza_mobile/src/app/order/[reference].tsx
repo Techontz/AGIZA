@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { CircleCheck, Copy, MessageCircle } from 'lucide-react-native';
+import { ChevronRight, CircleCheck, Copy, MessageCircle, PackageX } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
@@ -16,12 +16,21 @@ import { ErrorState, errorMessage, Loading, Notice } from '@/components/ui/state
 import { Text } from '@/components/ui/text';
 import { orderApi } from '@/lib/api/endpoints';
 import type { OrderDetail, OrderSeller } from '@/lib/api/types';
-import { date, dateTime, isFree, money } from '@/lib/format';
+import { date, dateTime, isFree, money, signedMoney } from '@/lib/format';
 import { openPaymentPage } from '@/lib/payment-page';
 import { keys } from '@/lib/query';
+import { REFUND_LABEL, refundTone, returnTone } from '@/lib/returns';
 import { colors, space } from '@/theme/tokens';
 
-function Confirmation({ order, paymentFailed, paymentPending }: { order: OrderDetail; paymentFailed: boolean; paymentPending: boolean }) {
+function Confirmation({
+  order,
+  paymentFailed,
+  paymentPending,
+}: {
+  order: OrderDetail;
+  paymentFailed: boolean;
+  paymentPending: boolean;
+}) {
   const [copied, setCopied] = useState(false);
   return (
     <Card style={styles.confirm}>
@@ -46,10 +55,15 @@ function Confirmation({ order, paymentFailed, paymentPending }: { order: OrderDe
         {copied ? 'Order number copied.' : "We'll notify you as it moves. Keep this order number for support."}
       </Text>
       {paymentPending && !paymentFailed ? (
-        <Notice tone="info">We&apos;re waiting for Selcom to confirm your payment. Tap &quot;I&apos;ve paid, check status&quot; below if it doesn&apos;t update.</Notice>
+        <Notice tone="info">
+          We&apos;re waiting for Selcom to confirm your payment. Tap &quot;I&apos;ve paid, check status&quot; below if
+          it doesn&apos;t update.
+        </Notice>
       ) : null}
       {paymentFailed ? (
-        <Notice tone="warning">The mobile money payment couldn&apos;t start. Your order is saved; tap Pay now below to try again.</Notice>
+        <Notice tone="warning">
+          The mobile money payment couldn&apos;t start. Your order is saved; tap Pay now below to try again.
+        </Notice>
       ) : null}
     </Card>
   );
@@ -106,6 +120,62 @@ function Sellers({ sellers }: { sellers: OrderSeller[] }) {
   );
 }
 
+/** Return requests on this order, and the way to start one. */
+function Returns({ order }: { order: OrderDetail }) {
+  const returns = order.returns ?? [];
+  if (!returns.length && !order.can_return) return null;
+  return (
+    <Section title="Returns">
+      {returns.length ? (
+        <Card>
+          {returns.map((r, i) => (
+            <View key={r.reference}>
+              {i > 0 ? <Divider /> : null}
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel={`Return ${r.reference}, ${r.status_display}. Open`}
+                onPress={() =>
+                  router.push({
+                    pathname: '/returns/[reference]',
+                    params: { reference: r.reference },
+                  })
+                }
+                style={({ pressed }) => [styles.returnRow, pressed && { opacity: 0.7 }]}>
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text variant="bodyMedium" color={colors.ink}>
+                    {r.reference}
+                  </Text>
+                  <View style={styles.returnBadges}>
+                    <Badge label={r.status_display} tone={returnTone(r.status_display)} />
+                    {(r.refund_status === 'pending' || r.refund_status === 'refunded') &&
+                    REFUND_LABEL[r.refund_status] !== r.status_display ? (
+                      <Badge label={REFUND_LABEL[r.refund_status]} tone={refundTone(r.refund_status)} />
+                    ) : null}
+                  </View>
+                </View>
+                <ChevronRight size={18} color={colors.textSubtle} />
+              </Pressable>
+            </View>
+          ))}
+        </Card>
+      ) : null}
+      {order.can_return ? (
+        <Button
+          title="Return items"
+          variant="secondary"
+          icon={<PackageX size={18} color={colors.ink} />}
+          onPress={() =>
+            router.push({
+              pathname: '/returns/new',
+              params: { order: order.reference },
+            })
+          }
+        />
+      ) : null}
+    </Section>
+  );
+}
+
 export default function OrderScreen() {
   const { reference, placed, paymentFailed, paymentPending } = useLocalSearchParams<{
     reference: string;
@@ -114,7 +184,10 @@ export default function OrderScreen() {
     paymentPending?: string;
   }>();
   const queryClient = useQueryClient();
-  const order = useQuery({ queryKey: keys.order(reference), queryFn: () => orderApi.get(reference) });
+  const order = useQuery({
+    queryKey: keys.order(reference),
+    queryFn: () => orderApi.get(reference),
+  });
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState('');
 
@@ -130,7 +203,10 @@ export default function OrderScreen() {
     },
     onSettled: refreshAll,
   });
-  const check = useMutation({ mutationFn: () => orderApi.checkPayment(reference), onSettled: refreshAll });
+  const check = useMutation({
+    mutationFn: () => orderApi.checkPayment(reference),
+    onSettled: refreshAll,
+  });
   const checked = check.data ?? pay.data;
   const cancel = useMutation({
     mutationFn: () => orderApi.cancel(reference, reason.trim()),
@@ -150,13 +226,18 @@ export default function OrderScreen() {
   // Name the seller per item once an order mixes sellers, or when it is not AGIZA's own.
   const sellerSlugs = new Set(o.items.map((item) => item.vendor?.slug).filter(Boolean));
   const showItemSellers = sellerSlugs.size > 1 || o.items.some((item) => item.vendor && !item.vendor.is_agiza);
+  const adjustments = o.adjustments ?? [];
 
   return (
     <ScrollView
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={order.isRefetching} onRefresh={() => order.refetch()} tintColor={colors.brand} />}>
+      refreshControl={
+        <RefreshControl refreshing={order.isRefetching} onRefresh={() => order.refetch()} tintColor={colors.brand} />
+      }>
       <Stack.Screen options={{ title: o.reference }} />
-      {placed && o.status !== 'cancelled' ? <Confirmation order={o} paymentFailed={!!paymentFailed} paymentPending={!!paymentPending && !!due} /> : null}
+      {placed && o.status !== 'cancelled' ? (
+        <Confirmation order={o} paymentFailed={!!paymentFailed} paymentPending={!!paymentPending && !!due} />
+      ) : null}
 
       <Card style={styles.head}>
         <View style={styles.headRow}>
@@ -179,7 +260,10 @@ export default function OrderScreen() {
       <Section title="Tracking">
         <Card>
           {o.timeline.cancelled ? (
-            <Notice tone="danger">This order was cancelled{o.timeline.cancelled_at ? ` on ${date(o.timeline.cancelled_at)}` : ''}.</Notice>
+            <Notice tone="danger">
+              This order was cancelled
+              {o.timeline.cancelled_at ? ` on ${date(o.timeline.cancelled_at)}` : ''}.
+            </Notice>
           ) : null}
           <View style={{ marginTop: o.timeline.cancelled ? space.md : 0 }}>
             <Timeline steps={o.timeline.steps} cancelled={o.timeline.cancelled} />
@@ -191,7 +275,12 @@ export default function OrderScreen() {
         <Section title="Cargo shipment">
           <Card>
             <Timeline
-              steps={o.cargo.map((c) => ({ key: c.key, label: c.label, at: c.at, state: c.status === 'completed' ? 'completed' : 'pending' }))}
+              steps={o.cargo.map((c) => ({
+                key: c.key,
+                label: c.label,
+                at: c.at,
+                state: c.status === 'completed' ? 'completed' : 'pending',
+              }))}
             />
           </Card>
         </Section>
@@ -203,13 +292,18 @@ export default function OrderScreen() {
             {o.items.map((item, i) => (
               <View key={`${item.sku}-${i}`}>
                 {i > 0 ? <Divider /> : null}
-                <View style={styles.item}>
+                <View style={[styles.item, item.cancelled && styles.itemCancelled]}>
                   <ProductImage uri={item.image} size={48} />
                   <View style={{ flex: 1 }}>
                     <Text variant="bodyMedium" color={colors.ink} numberOfLines={2}>
                       {item.name}
                       {item.variant_name ? ` · ${item.variant_name}` : ''}
                     </Text>
+                    {item.cancelled ? (
+                      <View style={styles.cancelledBadge}>
+                        <Badge label="Cancelled: seller couldn't supply" tone="danger" />
+                      </View>
+                    ) : null}
                     <Text variant="small" color={colors.textMuted}>
                       {item.quantity} × {money(item.unit_price, o.currency)}
                     </Text>
@@ -222,7 +316,13 @@ export default function OrderScreen() {
                       </View>
                     ) : null}
                   </View>
-                  <Text variant="bodyMedium" color={colors.ink}>
+                  <Text
+                    variant="bodyMedium"
+                    color={item.cancelled ? colors.textSubtle : colors.ink}
+                    style={item.cancelled ? styles.strike : undefined}
+                    accessibilityLabel={
+                      item.cancelled ? `${money(item.line_total, o.currency)}, not charged` : undefined
+                    }>
                     {money(item.line_total, o.currency)}
                   </Text>
                 </View>
@@ -253,21 +353,54 @@ export default function OrderScreen() {
           <Card>
             <Row label="Service" value={o.international.service} />
             <Row label="From" value={o.international.source_country} />
-            {o.international.tracking_number ? <Row label="Tracking no." value={o.international.tracking_number} /> : null}
-            {o.international.estimated_delivery ? <Row label="Expected" value={date(o.international.estimated_delivery)} /> : null}
+            {o.international.tracking_number ? (
+              <Row label="Tracking no." value={o.international.tracking_number} />
+            ) : null}
+            {o.international.estimated_delivery ? (
+              <Row label="Expected" value={date(o.international.estimated_delivery)} />
+            ) : null}
           </Card>
         </Section>
       ) : null}
 
       <Section title="Payment">
+        {adjustments.some((a) => Number(a.amount) < 0) ? (
+          <Notice tone="warning">
+            A seller couldn&apos;t supply part of your order:{' '}
+            {adjustments
+              .filter((a) => Number(a.amount) < 0)
+              .map((a) => signedMoney(a.amount, o.currency))
+              .join(', ')}
+            . The total below is already updated.
+          </Notice>
+        ) : null}
         <Card>
           {o.amounts ? (
             <>
               <Row label="Subtotal" value={money(o.amounts.subtotal, o.currency)} />
-              <Row label="Delivery" value={isFree(o.amounts.shipping_fee) ? 'Free' : money(o.amounts.shipping_fee, o.currency)} />
+              <Row
+                label="Delivery"
+                value={isFree(o.amounts.shipping_fee) ? 'Free' : money(o.amounts.shipping_fee, o.currency)}
+              />
               <Divider />
             </>
           ) : null}
+          {adjustments.map((a, i) => (
+            <View key={`${a.at}-${i}`} style={styles.adjustment}>
+              <View style={{ flex: 1 }}>
+                <Text variant="body" color={colors.textMuted}>
+                  {a.reason}
+                </Text>
+                <Text variant="caption" color={colors.textSubtle}>
+                  {date(a.at)}
+                </Text>
+              </View>
+              <Text variant="bodyMedium" color={Number(a.amount) < 0 ? colors.success : colors.ink}>
+                {signedMoney(a.amount, o.currency)}
+              </Text>
+            </View>
+          ))}
+          {adjustments.length ? <Divider /> : null}
           <Row label="Total" value={money(o.total, o.currency)} strong />
           <Row label="Paid" value={money(o.payment.paid, o.currency)} />
           {due ? <Row label="Balance due" value={money(due, o.currency)} strong /> : null}
@@ -281,7 +414,8 @@ export default function OrderScreen() {
           </View>
           {o.payments.map((p, i) => (
             <Text key={i} variant="small" color={colors.textMuted}>
-              {money(p.amount, o.currency)} · {p.method} · {dateTime(p.paid_at)}
+              {p.kind === 'refund' ? `Refund −${money(p.amount, o.currency)}` : money(p.amount, o.currency)} ·{' '}
+              {p.method} · {dateTime(p.paid_at)}
             </Text>
           ))}
         </Card>
@@ -289,16 +423,32 @@ export default function OrderScreen() {
         {checked && !actionError ? <PaymentResult result={checked} /> : null}
         {o.can_pay && due ? (
           <View style={styles.actions}>
-            <Button title={`Pay ${money(due, o.currency)} with mobile money`} onPress={() => pay.mutate()} loading={pay.isPending} />
-            <Button title="I've paid, check status" variant="ghost" onPress={() => check.mutate()} loading={check.isPending} />
+            <Button
+              title={`Pay ${money(due, o.currency)} with mobile money`}
+              onPress={() => pay.mutate()}
+              loading={pay.isPending}
+            />
+            <Button
+              title="I've paid, check status"
+              variant="ghost"
+              onPress={() => check.mutate()}
+              loading={check.isPending}
+            />
           </View>
         ) : null}
       </Section>
 
+      <Returns order={o} />
+
       {o.can_cancel ? (
         cancelling ? (
           <Card style={styles.cancelBox}>
-            <Input label="Why are you cancelling?" value={reason} onChangeText={setReason} placeholder="e.g. Ordered by mistake" />
+            <Input
+              label="Why are you cancelling?"
+              value={reason}
+              onChangeText={setReason}
+              placeholder="e.g. Ordered by mistake"
+            />
             {cancel.isError ? <Notice tone="danger">{errorMessage(cancel.error)}</Notice> : null}
             <Button
               title="Cancel order"
@@ -308,7 +458,11 @@ export default function OrderScreen() {
               onPress={() =>
                 Alert.alert('Cancel this order?', 'This cannot be undone.', [
                   { text: 'Keep order', style: 'cancel' },
-                  { text: 'Cancel order', style: 'destructive', onPress: () => cancel.mutate() },
+                  {
+                    text: 'Cancel order',
+                    style: 'destructive',
+                    onPress: () => cancel.mutate(),
+                  },
                 ])
               }
             />
@@ -332,14 +486,61 @@ export default function OrderScreen() {
 const styles = StyleSheet.create({
   content: { padding: space.lg, gap: space.xl, paddingBottom: space.xxxl },
   confirm: { alignItems: 'center', gap: space.sm },
-  copy: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.xs },
+  copy: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    padding: space.xs,
+  },
   center: { textAlign: 'center' },
   head: { gap: space.xs },
-  headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  item: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.xs },
-  itemSeller: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 1 },
-  seller: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.xs },
-  payBadge: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm, flexWrap: 'wrap' },
+  headRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  item: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    paddingVertical: space.xs,
+  },
+  itemCancelled: { opacity: 0.75 },
+  cancelledBadge: { marginTop: 4 },
+  strike: { textDecorationLine: 'line-through' },
+  adjustment: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: space.md,
+    paddingVertical: 4,
+  },
+  returnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    minHeight: 48,
+    paddingVertical: space.xs,
+  },
+  returnBadges: { flexDirection: 'row', gap: space.xs, flexWrap: 'wrap' },
+  itemSeller: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 1,
+  },
+  seller: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    paddingVertical: space.xs,
+  },
+  payBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    marginTop: space.sm,
+    flexWrap: 'wrap',
+  },
   actions: { gap: space.xs },
   cancelBox: { gap: space.md },
 });

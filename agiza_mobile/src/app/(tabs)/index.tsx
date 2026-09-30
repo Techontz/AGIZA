@@ -5,6 +5,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions,
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Logo } from '@/components/brand';
+import { NotificationBell } from '@/components/notification-bell';
 import { ProductTile } from '@/components/product-tile';
 import { StoreTile } from '@/components/store';
 import { Section } from '@/components/ui/card';
@@ -85,9 +86,12 @@ export default function HomeScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.brand} />}>
         <View style={styles.header}>
           <Logo size={30} />
-          <Text variant="small" color={colors.textMuted}>
-            {customer ? `Karibu, ${customer.full_name.split(' ')[0]}` : 'Karibu AGIZA'}
-          </Text>
+          <View style={styles.headerRight}>
+            <Text variant="small" color={colors.textMuted} numberOfLines={1} style={styles.greeting}>
+              {customer ? `Karibu, ${customer.full_name.split(' ')[0]}` : 'Karibu AGIZA'}
+            </Text>
+            {signedIn ? <NotificationBell /> : null}
+          </View>
         </View>
 
         <Pressable accessibilityRole="search" onPress={() => router.push('/shop')} style={styles.search}>
@@ -164,7 +168,9 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { padding: space.lg, gap: space.xxl, paddingBottom: space.xxxl },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: space.md },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: space.xs, flexShrink: 1 },
+  greeting: { flexShrink: 1 },
   search: {
     flexDirection: 'row',
     alignItems: 'center',

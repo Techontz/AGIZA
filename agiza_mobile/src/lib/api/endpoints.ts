@@ -8,6 +8,10 @@ import type {
   CheckoutQuote,
   City,
   Customer,
+  MyReview,
+  MyReviews,
+  NotificationPage,
+  OrderReturnOptions,
   OrderCard,
   OrderDetail,
   Paginated,
@@ -16,9 +20,13 @@ import type {
   PlaceOrderResult,
   ProductCard,
   ProductDetail,
+  ProductReviews,
   QuoteRequest,
+  ReturnDetail,
+  ReturnSummary,
   Session,
   Store,
+  Wishlist,
 } from './types';
 
 export const accountApi = {
@@ -47,6 +55,8 @@ export type ProductQuery = {
   featured?: boolean;
   deals?: boolean;
   ordering?: string;
+  /** Only products that can be bought now. */
+  in_stock?: boolean;
 };
 
 export const shopApi = {
@@ -127,4 +137,35 @@ export const requestApi = {
 export const supportApi = {
   messages: () => api.get<{ messages: ChatMessage[] }>('support/messages/'),
   send: (body: string) => api.post<ChatMessage>('support/messages/', { body }),
+};
+
+export type ReviewInput = { rating: number; title: string; body: string };
+
+export const reviewApi = {
+  /** Public; with a token the server also says whether I can review and returns my review. */
+  forProduct: (productId: number, page = 1) => api.get<ProductReviews>(`products/${productId}/reviews/`, { page }),
+  submit: (productId: number, data: ReviewInput) => api.post<MyReview>(`products/${productId}/reviews/`, data),
+  mine: () => api.get<MyReviews>('me/reviews/'),
+  remove: (id: number) => api.delete<null>(`me/reviews/${id}/`),
+};
+
+export const wishlistApi = {
+  get: () => api.get<Wishlist>('wishlist/'),
+  add: (product: number) => api.post<Wishlist>('wishlist/', { product }),
+  remove: (product: number) => api.delete<Wishlist>(`wishlist/${product}/`),
+};
+
+export const notificationApi = {
+  list: (page = 1, page_size?: number) => api.get<NotificationPage>('notifications/', { page, page_size }),
+  /** No ids = mark everything read. */
+  markRead: (ids?: number[]) => api.post<{ unread: number }>('notifications/read/', ids ? { ids } : {}),
+};
+
+export type ReturnInput = { lines: { item: number; quantity: number }[]; reason_code: string; explanation: string };
+
+export const returnApi = {
+  options: (order: string) => api.get<OrderReturnOptions>(`orders/${order}/returns/`),
+  create: (order: string, data: ReturnInput) => api.post<ReturnDetail>(`orders/${order}/returns/`, data),
+  list: (page = 1) => api.get<Paginated<ReturnSummary>>('returns/', { page }),
+  get: (reference: string) => api.get<ReturnDetail>(`returns/${reference}/`),
 };
