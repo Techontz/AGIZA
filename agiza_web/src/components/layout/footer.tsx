@@ -46,7 +46,7 @@ const COLUMNS = [
 export function Footer({ categories = [] }: { categories?: Category[] }) {
   const departments = categories.filter((c) => c.children.length).slice(0, 6);
   return (
-    <footer className="mt-16 border-t border-line bg-surface pt-12 max-lg:pb-[60px] lg:pt-[70px]">
+    <footer className="mt-16 border-t border-line bg-surface pt-12 max-[1199px]:pb-[60px] lg:pt-[70px]">
       <Container>
         <div className="grid grid-cols-2 gap-x-6 gap-y-10 pb-9 lg:grid-cols-[1.6fr_1fr_1fr_0.8fr]">
           <div className="col-span-2 lg:col-span-1">

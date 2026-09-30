@@ -20,7 +20,7 @@ export function Breadcrumbs({ items, bar = true }: { items: Crumb[]; bar?: boole
         <ol
           className={
             bar
-              ? "mx-auto flex max-w-[1650px] flex-wrap items-center gap-x-2 gap-y-0.5 px-[15px] py-4 text-[14px] text-ink lg:px-[30px] lg:py-5"
+              ? "mx-auto flex max-w-[1680px] flex-wrap items-center gap-x-2 gap-y-0.5 px-[15px] py-4 text-[14px] text-ink lg:px-[30px] lg:py-5"
               : "flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[13px] text-muted"
           }
         >

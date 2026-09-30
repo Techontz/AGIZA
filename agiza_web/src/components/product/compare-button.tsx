@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3 } from "lucide-react";
+import { ChartColumnBig } from "lucide-react";
 
 import { useCompare } from "@/hooks/use-compare";
 import { cn } from "@/lib/cn";
@@ -26,7 +26,7 @@ export function CompareButton({ productId, name, className, size = "md", reveal 
         className,
       )}
     >
-      <BarChart3 className={cn(size === "lg" ? "size-5" : "size-[18px]", on ? "text-link" : "text-ink")} aria-hidden />
+      <ChartColumnBig className={cn(size === "lg" ? "size-5" : "size-[18px]", on ? "text-link" : "text-ink")} aria-hidden />
     </button>
   );
 }

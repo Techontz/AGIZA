@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import {
-  BarChart3,
+  ChartColumnBig,
   Bell,
   ChevronDown,
   ChevronRight,
@@ -31,7 +31,6 @@ import { cn } from "@/lib/cn";
 import { categoryHref, money, productHref } from "@/lib/format";
 
 import { ProductImage } from "../product/product-image";
-import { Container } from "../ui/container";
 import { Logo } from "./logo";
 
 /**
@@ -100,7 +99,7 @@ function SearchBox({ categories, compact, inputId }: { categories: Category[]; c
   return (
     <form
       role="search"
-      className="flex h-[42px] w-full"
+      className={cn("flex w-full", compact ? "h-10" : "h-[42px]")}
       onSubmit={(e) => {
         e.preventDefault();
         const term = q.trim();
@@ -109,12 +108,12 @@ function SearchBox({ categories, compact, inputId }: { categories: Category[]; c
       }}
     >
       {!compact ? (
-        <label className="relative hidden shrink-0 md:block">
+        <label className="relative shrink-0">
           <span className="sr-only">Search in</span>
           <select
             value={scope}
             onChange={(e) => setScope(e.target.value)}
-            className="h-full max-w-[150px] cursor-pointer appearance-none rounded-l-sm border-r border-line bg-surface pr-8 pl-4 text-[14px] text-ink focus:outline-none"
+            className="h-full w-[67px] cursor-pointer appearance-none truncate rounded-l-[4px] border-r border-line bg-surface pr-6 pl-[18px] text-[14px] text-ink focus:outline-none"
           >
             <option value="">All</option>
             {categories.map((c) => (
@@ -123,7 +122,7 @@ function SearchBox({ categories, compact, inputId }: { categories: Category[]; c
               </option>
             ))}
           </select>
-          <ChevronDown className="pointer-events-none absolute top-1/2 right-3 size-3.5 -translate-y-1/2 text-muted" aria-hidden />
+          <ChevronDown className="pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-ink" aria-hidden />
         </label>
       ) : null}
       <input
@@ -135,16 +134,20 @@ function SearchBox({ categories, compact, inputId }: { categories: Category[]; c
         aria-label="Search products"
         enterKeyHint="search"
         className={cn(
-          "h-full min-w-0 flex-1 bg-surface px-5 text-[14px] text-ink placeholder:text-muted focus:outline-none",
-          compact ? "rounded-l-sm" : "md:rounded-none max-md:rounded-l-sm",
+          "h-full min-w-0 flex-1 bg-surface px-5 text-ink placeholder:text-muted focus:outline-none",
+          compact ? "text-[16px]" : "text-[14px]",
+          compact ? "rounded-none" : "rounded-none",
         )}
       />
       <button
         type="submit"
         aria-label="Search"
-        className="flex h-full shrink-0 items-center justify-center rounded-r-sm bg-ink px-4 text-[14px] font-bold text-white hover:bg-[#333] md:px-6"
+        className={cn(
+          "flex h-full shrink-0 items-center justify-center bg-ink text-[14px] font-bold text-white hover:bg-[#333]",
+          compact ? "w-[37px]" : "w-[96px] rounded-r-[4px]",
+        )}
       >
-        {compact ? <Search className="size-[18px]" aria-hidden /> : "Search"}
+        {compact ? <Search className="size-4" aria-hidden /> : "Search"}
       </button>
     </form>
   );
@@ -152,19 +155,17 @@ function SearchBox({ categories, compact, inputId }: { categories: Category[]; c
 
 function Counter({ value }: { value: number }) {
   return (
-    <span className="absolute -right-1.5 -bottom-0.5 flex size-[18px] items-center justify-center rounded-full bg-ink text-[11px] leading-none font-medium text-white tabular-nums">
+    <span className="absolute top-[20px] left-[16px] flex size-5 items-center justify-center rounded-full bg-ink text-[12px] leading-none font-medium text-white tabular-nums">
       {value > 99 ? "99" : value}
     </span>
   );
 }
 
-function IconLink({ href, label, count, icon: Icon, className }: { href: string; label: string; count?: number; icon: typeof Heart; className?: string }) {
+function IconLink({ href, label, count, icon: Icon, className, thin }: { href: string; label: string; count?: number; icon: typeof Heart; className?: string; thin?: boolean }) {
   return (
-    <Link href={href} prefetch={false} aria-label={label} className={cn("relative flex size-10 items-center justify-center text-ink hover:opacity-75", className)}>
-      <span className="relative">
-        <Icon className="size-[30px] stroke-[1.4]" aria-hidden />
-        {count !== undefined ? <Counter value={count} /> : null}
-      </span>
+    <Link href={href} prefetch={false} aria-label={label} className={cn("relative flex h-[42px] w-[30px] shrink-0 items-center justify-center text-ink hover:opacity-75", className)}>
+      <Icon className={cn("size-[30px]", thin ? "stroke-[1.1]" : "stroke-[1.5]")} aria-hidden />
+      {count !== undefined ? <Counter value={count} /> : null}
     </Link>
   );
 }
@@ -177,12 +178,12 @@ function SavedLink({ className }: { className?: string }) {
 
 function CompareLink({ className }: { className?: string }) {
   const { count } = useCompare();
-  return <IconLink href="/compare" label={`Compare, ${count} product${count === 1 ? "" : "s"}`} count={count} icon={BarChart3} className={className} />;
+  return <IconLink href="/compare" label={`Compare, ${count} product${count === 1 ? "" : "s"}`} count={count} icon={ChartColumnBig} className={className} />;
 }
 
-function CartLink({ className }: { className?: string }) {
+function CartLink({ className, thin }: { className?: string; thin?: boolean }) {
   const { count } = useCart();
-  return <IconLink href="/cart" label={`Cart, ${count} item${count === 1 ? "" : "s"}`} count={count} icon={ShoppingBag} className={className} />;
+  return <IconLink href="/cart" label={`Cart, ${count} item${count === 1 ? "" : "s"}`} count={count} icon={ShoppingBag} className={className} thin={thin} />;
 }
 
 /** Desktop: the cart icon opens a mini cart on hover or focus (items, subtotal, View cart / Checkout). */
@@ -249,7 +250,7 @@ function MiniCart() {
   );
 }
 
-function NotificationBell() {
+function useUnread() {
   const { signedIn } = useSession();
   const inbox = useQuery({
     queryKey: ["notifications"],
@@ -258,20 +259,19 @@ function NotificationBell() {
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
-  if (!signedIn) return null;
-  const unread = inbox.data?.unread ?? 0;
-  return <IconLink href="/account/notifications" label={`Notifications${unread ? `, ${unread} unread` : ""}`} count={unread} icon={Bell} />;
+  return signedIn ? (inbox.data?.unread ?? 0) : 0;
 }
 
 function AccountBlock() {
   const { customer, ready } = useSession();
+  const unread = useUnread();
   const [open, setOpen] = useState(false);
   const ref = useOutside<HTMLDivElement>(open, () => setOpen(false));
-  if (!ready) return <span className="h-9 w-28" aria-hidden />;
+  if (!ready) return <span className="h-9 w-[97px]" aria-hidden />;
   if (!customer) {
     return (
-      <div className="flex items-center gap-2.5">
-        <User className="size-[30px] stroke-[1.4] text-ink" aria-hidden />
+      <div className="flex h-9 items-center gap-3">
+        <User className="size-[30px] stroke-[1.5] text-ink" aria-hidden />
         <span className="flex flex-col text-[14px] leading-[18px] font-semibold text-ink">
           <Link href="/login" className="hover:underline">
             Login
@@ -286,9 +286,19 @@ function AccountBlock() {
   const first = customer.full_name.split(" ")[0];
   return (
     <div ref={ref} className="relative">
-      <button type="button" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((v) => !v)} className="flex items-center gap-2.5 text-left text-ink">
-        <User className="size-[30px] stroke-[1.4]" aria-hidden />
-        <span className="flex flex-col text-[14px] leading-[18px] max-xl:sr-only">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label={`Account menu for ${first}${unread ? `, ${unread} unread notifications` : ""}`}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-9 items-center gap-3 text-left text-ink"
+      >
+        <span className="relative">
+          <User className="size-[30px] stroke-[1.5]" aria-hidden />
+          {unread ? <span className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full border-2 border-yellow bg-sale" aria-hidden /> : null}
+        </span>
+        <span className="flex flex-col text-[14px] leading-[18px]">
           <span className="max-w-32 truncate">Hi, {first}</span>
           <span className="flex items-center gap-0.5 font-semibold">
             My account <ChevronDown className="size-3.5" aria-hidden />
@@ -300,7 +310,7 @@ function AccountBlock() {
           <MenuLink href="/account" icon={User} label="My account" />
           <MenuLink href="/account/orders" icon={Package} label="My orders" />
           <MenuLink href="/account/saved" icon={Heart} label="Saved products" />
-          <MenuLink href="/account/notifications" icon={Bell} label="Notifications" />
+          <MenuLink href="/account/notifications" icon={Bell} label={unread ? `Notifications (${unread})` : "Notifications"} />
           <button
             type="button"
             role="menuitem"
@@ -326,10 +336,10 @@ function MenuLink({ href, icon: Icon, label }: { href: string; icon: typeof User
   );
 }
 
+/** Right-hand actions, as on agizastore.com: compare, wishlist, cart (30px icons 40px apart) and the account. */
 function DesktopActions() {
   return (
-    <div className="ml-auto flex shrink-0 items-center gap-3 xl:gap-5">
-      <NotificationBell />
+    <div className="flex items-center justify-end gap-10 pr-5">
       <CompareLink />
       <SavedLink />
       <MiniCart />
@@ -353,9 +363,9 @@ function DepartmentMenu({ categories }: { categories: Category[] }) {
         aria-expanded={open}
         aria-haspopup="true"
         onClick={() => setOpen((v) => !v)}
-        className="flex h-full w-full items-center gap-3 text-[16px] font-semibold text-ink"
+        className="flex h-full w-full items-center gap-[10px] text-[16px] font-semibold text-ink"
       >
-        <Menu className="size-5" aria-hidden /> Shop by Department
+        <Menu className="size-5 stroke-[1.8]" aria-hidden /> Shop by Department
       </button>
       {open ? (
         <div className="absolute top-full left-0 z-50 flex border border-line bg-surface shadow-raised">
@@ -407,11 +417,11 @@ function MobileMenu({ categories, onClose }: { categories: Category[]; onClose: 
     };
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-[60] lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
+    <div className="fixed inset-0 z-[60] min-[1200px]:hidden" role="dialog" aria-modal="true" aria-label="Menu">
       <button type="button" aria-label="Close menu" className="absolute inset-0 bg-black/50" onClick={onClose} />
       <nav className="absolute inset-y-0 left-0 flex w-[min(340px,88vw)] flex-col overflow-y-auto bg-surface" onClick={(e) => (e.target as HTMLElement).closest("a") && onClose()}>
         <div className="flex items-center justify-between bg-yellow px-4 py-3">
-          <Logo size={30} tone="ink" />
+          <Logo width={105} />
           <button type="button" onClick={onClose} aria-label="Close menu" className="flex size-10 items-center justify-center text-ink">
             <X className="size-6" />
           </button>
@@ -483,7 +493,7 @@ function BottomNav({ onMenu }: { onMenu: () => void }) {
   const { signedIn } = useSession();
   const item = "flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium";
   return (
-    <nav aria-label="Quick navigation" className="fixed inset-x-0 bottom-0 z-40 flex h-[60px] border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden">
+    <nav aria-label="Quick navigation" className="fixed inset-x-0 bottom-0 z-40 flex h-[60px] border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] min-[1200px]:hidden">
       <Link href="/" className={cn(item, pathname === "/" ? "text-ink" : "text-muted")}>
         <Home className="size-[22px]" aria-hidden /> Home
       </Link>
@@ -515,6 +525,14 @@ function BottomNav({ onMenu }: { onMenu: () => void }) {
   );
 }
 
+/** The header frame of agizastore.com: up to 1680px wide with 30px side padding (1620px of content). */
+function Frame({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <div className={cn("mx-auto w-full max-w-[1680px] px-[30px]", className)}>{children}</div>;
+}
+
+/** Top row on desktop: logo (300px column), search (fills), actions (370px column). */
+const TOP_GRID = "grid grid-cols-[300px_minmax(0,1fr)_370px] items-center";
+
 export function Header({ categories }: { categories: Category[] }) {
   const [menu, setMenu] = useState(false);
   const pathname = usePathname();
@@ -525,45 +543,50 @@ export function Header({ categories }: { categories: Category[] }) {
   if (minimal) {
     return (
       <header className="bg-yellow">
-        <Container className="flex h-[70px] items-center justify-between">
-          <Logo size={40} tone="ink" />
+        <Frame className="flex h-[70px] items-center justify-between">
+          <Logo width={140} />
           <p className="flex items-center gap-2 text-[14px] font-medium text-ink">
             <span className="size-2 rounded-full bg-success" aria-hidden /> Secure checkout
           </p>
-        </Container>
+        </Frame>
       </header>
     );
   }
 
+  const phoneRow = (
+    <Frame className="flex h-[62px] items-center">
+      <Logo width={105} />
+      <div className="ml-auto flex items-center gap-5">
+        <CartLink thin />
+        <Link href="/account" prefetch={false} aria-label="My account" className="flex h-[42px] items-center text-ink">
+          <User className="size-[28px] stroke-[1.1]" aria-hidden />
+        </Link>
+      </div>
+    </Frame>
+  );
+
   return (
     <>
       <header className="bg-yellow">
-        {/* Desktop */}
-        <div className="hidden border-b border-black/15 lg:block">
-          <Container className="flex items-center gap-6 py-[25px] xl:gap-8">
-            <div className="w-[200px] shrink-0 xl:w-[260px]">
-              <div className="xl:hidden">
-                <Logo size={60} tone="ink" />
-              </div>
-              <div className="max-xl:hidden">
-                <Logo size={72} tone="ink" />
-              </div>
+        {/* Desktop (1200px and wider, as on agizastore.com) */}
+        <div className="hidden border-b border-black/15 min-[1200px]:block">
+          <Frame className={cn(TOP_GRID, "py-[25px]")}>
+            <div className="flex h-20 items-center pl-0.5">
+              <Logo width={210} />
             </div>
-            <div className="max-w-[710px] flex-1">
-              <Suspense fallback={<div className="h-[42px] bg-surface" />}>
-                <SearchBox categories={categories} />
-              </Suspense>
-            </div>
+            <Suspense fallback={<div className="h-[42px] bg-surface" />}>
+              <SearchBox categories={categories} />
+            </Suspense>
             <DesktopActions />
-          </Container>
+          </Frame>
         </div>
-        <nav aria-label="Main" className="hidden lg:block">
-          <Container className="flex h-[50px] items-center">
+        <nav aria-label="Main" className="hidden min-[1200px]:block">
+          <Frame className="flex h-[50px] items-center">
             <DepartmentMenu categories={categories} />
-            <ul className="ml-4 flex h-full items-center gap-7">
+            <ul className="ml-[35px] flex h-full items-center">
               {NAV.map((n) => (
-                <li key={n.href} className="h-full">
-                  <Link href={n.href} className="flex h-full items-center text-[16px] text-ink hover:underline">
+                <li key={n.href} className="mr-[5px] h-full [&:first-child>a]:pl-0">
+                  <Link href={n.href} className="flex h-full items-center px-[15px] text-[16px] text-ink hover:underline">
                     {n.label}
                   </Link>
                 </li>
@@ -578,32 +601,35 @@ export function Header({ categories }: { categories: Category[] }) {
                 Track your order
               </Link>
             </div>
-          </Container>
+          </Frame>
         </nav>
 
-        {/* Phones and tablets */}
-        <div className="lg:hidden">
-          <Container className="flex h-[60px] items-center gap-2">
-            <button type="button" className="-ml-2 flex size-10 items-center justify-center text-ink" aria-label="Open menu" onClick={() => setMenu(true)}>
-              <Menu className="size-6" />
-            </button>
-            <Logo size={34} tone="ink" />
-            <div className="ml-auto flex items-center gap-1">
-              <SavedLink className="max-sm:hidden" />
-              <CartLink />
-              <Link href="/account" prefetch={false} aria-label="My account" className="flex size-10 items-center justify-center text-ink">
-                <User className="size-[26px] stroke-[1.5]" aria-hidden />
-              </Link>
-            </div>
-          </Container>
-          <Container className="pb-[10px]">
-            <Suspense fallback={<div className="h-[42px] bg-surface" />}>
+        {/* Tablets and phones: a grey strip on tablets, then logo + cart + account, then the search */}
+        <div className="min-[1200px]:hidden">
+          <div className="hidden bg-[#f3f4f3] md:block">
+            <Frame className="flex h-[53px] items-center justify-between text-[14px]">
+              <p className="text-muted">Welcome to AGIZA — Tanzania&apos;s online marketplace</p>
+              <div className="flex items-center text-ink">
+                <Link href="/sell" className="hover:underline">
+                  Sell on AGIZA
+                </Link>
+                <span className="mx-3 h-4 w-0.5 bg-ink" aria-hidden />
+                <Link href="/account/orders" prefetch={false} className="hover:underline">
+                  Track your order
+                </Link>
+              </div>
+            </Frame>
+          </div>
+          {phoneRow}
+          <div className="px-5 py-2.5">
+            <Suspense fallback={<div className="h-10 bg-surface" />}>
               <SearchBox categories={categories} compact inputId="mobile-search" />
             </Suspense>
-          </Container>
+          </div>
         </div>
       </header>
-      {/* After scrolling, a thin bar stays at the top (as on agizastore.com): departments, search and counters. */}
+
+      {/* After scrolling, a thin bar stays at the top (as on agizastore.com). */}
       <div
         className={cn(
           "fixed inset-x-0 top-0 z-50 bg-yellow shadow-[0_2px_10px_rgb(0_0_0/0.15)] transition-transform duration-200",
@@ -612,29 +638,16 @@ export function Header({ categories }: { categories: Category[] }) {
         inert={!scrolled}
         aria-hidden={!scrolled}
       >
-        <Container className="hidden h-[62px] items-center gap-6 lg:flex xl:gap-8">
-          <div className="h-full w-[200px] shrink-0 xl:w-[260px]">
+        <Frame className={cn(TOP_GRID, "hidden h-[62px] min-[1200px]:grid")}>
+          <div className="h-full w-[260px]">
             <DepartmentMenu categories={categories} />
           </div>
-          <div className="max-w-[710px] flex-1">
-            <Suspense fallback={<div className="h-[42px] bg-surface" />}>
-              <SearchBox categories={categories} />
-            </Suspense>
-          </div>
+          <Suspense fallback={<div className="h-[42px] bg-surface" />}>
+            <SearchBox categories={categories} />
+          </Suspense>
           <DesktopActions />
-        </Container>
-        <Container className="flex h-[56px] items-center gap-2 lg:hidden">
-          <button type="button" className="-ml-2 flex size-10 items-center justify-center text-ink" aria-label="Open menu" onClick={() => setMenu(true)}>
-            <Menu className="size-6" />
-          </button>
-          <Logo size={30} tone="ink" />
-          <div className="ml-auto flex items-center gap-1">
-            <CartLink />
-            <Link href="/account" prefetch={false} aria-label="My account" className="flex size-10 items-center justify-center text-ink">
-              <User className="size-[26px] stroke-[1.5]" aria-hidden />
-            </Link>
-          </div>
-        </Container>
+        </Frame>
+        <div className="min-[1200px]:hidden">{phoneRow}</div>
       </div>
       <BottomNav onMenu={() => setMenu(true)} />
       {menu ? <MobileMenu categories={categories} onClose={() => setMenu(false)} /> : null}

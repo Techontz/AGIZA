@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueries } from "@tanstack/react-query";
-import { BarChart3, X } from "lucide-react";
+import { ChartColumnBig, X } from "lucide-react";
 import Link from "next/link";
 
 import { Breadcrumbs } from "@/components/breadcrumbs";
@@ -32,7 +32,7 @@ export function CompareView() {
       {!compare.ids.length ? (
         <EmptyState
           className="mt-8"
-          icon={BarChart3}
+          icon={ChartColumnBig}
           title="Nothing to compare yet"
           text="Use the compare button on products to see up to four of them side by side."
           action={<ButtonLink href="/shop">Browse products</ButtonLink>}
