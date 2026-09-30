@@ -6,6 +6,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
 import { BuyBox } from "@/components/product/buy-box";
+import { CompareButton } from "@/components/product/compare-button";
 import { Gallery } from "@/components/product/gallery";
 import { ProductReviews } from "@/components/product/reviews";
 import { RatingCount } from "@/components/product/stars";
@@ -121,7 +122,10 @@ export default async function ProductPage({ params }: Props) {
                 </a>
               </p>
             </div>
-            <WishlistButton productId={product.id} name={product.name} size="lg" className="shrink-0 ring-1 ring-line" />
+            <div className="flex shrink-0 gap-2">
+              <WishlistButton productId={product.id} name={product.name} size="lg" className="ring-1 ring-line" />
+              <CompareButton productId={product.id} name={product.name} size="lg" className="ring-1 ring-line" />
+            </div>
           </div>
 
           <div className="py-5">

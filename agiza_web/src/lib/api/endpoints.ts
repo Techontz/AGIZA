@@ -38,6 +38,7 @@ export const sessionApi = {
 };
 
 export const shopApi = {
+  product: (id: number) => api.get<import("./types").ProductDetail>(`products/${id}/`),
   config: () => api.get<AppConfig>("config/"),
   categories: () => api.get<Category[]>("categories/"),
   products: (query: Record<string, string | number | boolean | undefined>) => api.get<Paginated<ProductCard>>("products/", query),

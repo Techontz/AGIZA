@@ -96,3 +96,28 @@ test("the rating link opens the reviews tab", async ({ page }) => {
   await page.locator('a[href="#tab-reviews"]').click();
   await expect(page.getByRole("tab", { name: /reviews/i })).toHaveAttribute("aria-selected", "true");
 });
+
+test("after scrolling, a thin header stays at the top with search and counters", async ({ page, isMobile }) => {
+  await page.goto("/");
+  const bar = page.locator("div.fixed.inset-x-0.top-0");
+  await expect(bar).toHaveAttribute("aria-hidden", "true");
+  await page.mouse.wheel(0, 1200);
+  await expect(bar).toHaveAttribute("aria-hidden", "false");
+  if (isMobile) {
+    await expect(bar.getByRole("link", { name: /^Cart/ })).toBeVisible();
+  } else {
+    await expect(bar.getByRole("searchbox", { name: "Search products" })).toBeVisible();
+    await expect(bar.getByRole("button", { name: "Shop by Department" })).toBeVisible();
+    await expect(bar.getByRole("link", { name: /^Compare/ })).toBeVisible();
+  }
+});
+
+test("compare: pick products and see them side by side", async ({ page }) => {
+  await page.goto("/shop?q=levis");
+  await page.getByRole("link", { name: /Levi's 501 Original Jeans/ }).first().click();
+  await page.getByRole("button", { name: /^Compare Levi's/ }).click();
+  await page.goto("/compare");
+  await expect(page.getByRole("heading", { name: "Compare products" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Levi's 501 Original Jeans" })).toBeVisible();
+  await expect(page.getByRole("rowheader", { name: "Sold by" })).toBeVisible();
+});

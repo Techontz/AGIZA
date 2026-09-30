@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import {
+  BarChart3,
   Bell,
   ChevronDown,
   ChevronRight,
@@ -21,13 +22,15 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 import { useCart } from "@/hooks/use-cart";
+import { useCompare } from "@/hooks/use-compare";
 import { useSession } from "@/hooks/use-session";
 import { useWishlist } from "@/hooks/use-wishlist";
 import { notificationApi, sessionApi } from "@/lib/api/endpoints";
 import type { Category } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
-import { categoryHref } from "@/lib/format";
+import { categoryHref, money, productHref } from "@/lib/format";
 
+import { ProductImage } from "../product/product-image";
 import { Container } from "../ui/container";
 import { Logo } from "./logo";
 
@@ -59,6 +62,29 @@ function useOutside<T extends HTMLElement>(open: boolean, close: () => void) {
     };
   }, [open, close]);
   return ref;
+}
+
+/** True once the page has scrolled past the full header (with a little hysteresis). */
+function useScrolled(on = 200, off = 120) {
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    let frame = 0;
+    const check = () => {
+      frame = 0;
+      const y = window.scrollY;
+      setScrolled((was) => (was ? y > off : y > on));
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(check);
+    };
+    check();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [on, off]);
+  return scrolled;
 }
 
 function SearchBox({ categories, compact, inputId }: { categories: Category[]; compact?: boolean; inputId?: string }) {
@@ -149,9 +175,78 @@ function SavedLink({ className }: { className?: string }) {
   return <IconLink href={signedIn ? "/account/saved" : "/login?next=/account/saved"} label={`Saved products, ${count}`} count={count} icon={Heart} className={className} />;
 }
 
+function CompareLink({ className }: { className?: string }) {
+  const { count } = useCompare();
+  return <IconLink href="/compare" label={`Compare, ${count} product${count === 1 ? "" : "s"}`} count={count} icon={BarChart3} className={className} />;
+}
+
 function CartLink({ className }: { className?: string }) {
   const { count } = useCart();
   return <IconLink href="/cart" label={`Cart, ${count} item${count === 1 ? "" : "s"}`} count={count} icon={ShoppingBag} className={className} />;
+}
+
+/** Desktop: the cart icon opens a mini cart on hover or focus (items, subtotal, View cart / Checkout). */
+function MiniCart() {
+  const cart = useCart();
+  const [open, setOpen] = useState(false);
+  const items = cart.data?.items ?? [];
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)}
+      onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setOpen(false)}
+    >
+      <CartLink />
+      {open ? (
+        <div className="absolute top-full right-0 z-50 w-[340px] pt-3">
+          <div className="border border-line bg-surface shadow-raised">
+            {items.length ? (
+              <>
+                <ul className="max-h-[320px] divide-y divide-line overflow-y-auto">
+                  {items.slice(0, 6).map((line) => (
+                    <li key={line.variant_id} className="flex gap-3 p-4">
+                      <Link href={productHref({ id: line.product_id, name: line.name })} className="relative size-14 shrink-0 border border-line" aria-label={line.name}>
+                        <ProductImage src={line.image} alt="" sizes="56px" className="object-contain" iconClass="size-5" />
+                      </Link>
+                      <span className="min-w-0 flex-1 text-[14px]">
+                        <Link href={productHref({ id: line.product_id, name: line.name })} className="line-clamp-2 text-link hover:underline">
+                          {line.name}
+                        </Link>
+                        <span className="text-[13px] text-muted">
+                          {line.quantity} × {money(line.unit_price)} · {line.vendor.name}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {items.length > 6 ? <p className="px-4 pb-2 text-[13px] text-muted">and {items.length - 6} more</p> : null}
+                <div className="border-t border-line bg-canvas p-4">
+                  <p className="flex justify-between text-[15px] text-ink">
+                    <span>Subtotal:</span> <strong className="font-semibold tabular-nums">{money(cart.data?.subtotal ?? "0")}</strong>
+                  </p>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <Link href="/cart" className="flex h-10 items-center justify-center rounded-sm bg-ink text-[14px] font-semibold text-white hover:bg-[#333]">
+                      View cart
+                    </Link>
+                    <Link
+                      href={cart.signedIn ? "/checkout" : "/login?next=/checkout"}
+                      className="flex h-10 items-center justify-center rounded-sm bg-yellow text-[14px] font-semibold text-ink hover:bg-yellow-pressed"
+                    >
+                      Checkout
+                    </Link>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="p-5 text-center text-[14px] text-muted">Your cart is empty.</p>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function NotificationBell() {
@@ -231,6 +326,18 @@ function MenuLink({ href, icon: Icon, label }: { href: string; icon: typeof User
   );
 }
 
+function DesktopActions() {
+  return (
+    <div className="ml-auto flex shrink-0 items-center gap-3 xl:gap-5">
+      <NotificationBell />
+      <CompareLink />
+      <SavedLink />
+      <MiniCart />
+      <AccountBlock />
+    </div>
+  );
+}
+
 /** "Shop by Department": the category list drops down under the bar; subcategories fly out to the right. */
 function DepartmentMenu({ categories }: { categories: Category[] }) {
   const [open, setOpen] = useState(false);
@@ -240,7 +347,7 @@ function DepartmentMenu({ categories }: { categories: Category[] }) {
   useEffect(() => setOpen(false), [pathname]);
   const current = categories.find((c) => c.id === active);
   return (
-    <div ref={ref} className="relative h-full w-[260px] shrink-0" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+    <div ref={ref} className="relative h-full w-[260px] max-w-full shrink-0" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
       <button
         type="button"
         aria-expanded={open}
@@ -413,6 +520,7 @@ export function Header({ categories }: { categories: Category[] }) {
   const pathname = usePathname();
   useEffect(() => setMenu(false), [pathname]);
   const minimal = pathname.startsWith("/checkout");
+  const scrolled = useScrolled();
 
   if (minimal) {
     return (
@@ -429,7 +537,7 @@ export function Header({ categories }: { categories: Category[] }) {
 
   return (
     <>
-      <header className="bg-yellow max-lg:sticky max-lg:top-0 max-lg:z-40">
+      <header className="bg-yellow">
         {/* Desktop */}
         <div className="hidden border-b border-black/15 lg:block">
           <Container className="flex items-center gap-6 py-[25px] xl:gap-8">
@@ -446,12 +554,7 @@ export function Header({ categories }: { categories: Category[] }) {
                 <SearchBox categories={categories} />
               </Suspense>
             </div>
-            <div className="ml-auto flex shrink-0 items-center gap-3 xl:gap-5">
-              <NotificationBell />
-              <SavedLink />
-              <CartLink />
-              <AccountBlock />
-            </div>
+            <DesktopActions />
           </Container>
         </div>
         <nav aria-label="Main" className="hidden lg:block">
@@ -500,6 +603,39 @@ export function Header({ categories }: { categories: Category[] }) {
           </Container>
         </div>
       </header>
+      {/* After scrolling, a thin bar stays at the top (as on agizastore.com): departments, search and counters. */}
+      <div
+        className={cn(
+          "fixed inset-x-0 top-0 z-50 bg-yellow shadow-[0_2px_10px_rgb(0_0_0/0.15)] transition-transform duration-200",
+          scrolled ? "translate-y-0" : "pointer-events-none -translate-y-full",
+        )}
+        inert={!scrolled}
+        aria-hidden={!scrolled}
+      >
+        <Container className="hidden h-[62px] items-center gap-6 lg:flex xl:gap-8">
+          <div className="h-full w-[200px] shrink-0 xl:w-[260px]">
+            <DepartmentMenu categories={categories} />
+          </div>
+          <div className="max-w-[710px] flex-1">
+            <Suspense fallback={<div className="h-[42px] bg-surface" />}>
+              <SearchBox categories={categories} />
+            </Suspense>
+          </div>
+          <DesktopActions />
+        </Container>
+        <Container className="flex h-[56px] items-center gap-2 lg:hidden">
+          <button type="button" className="-ml-2 flex size-10 items-center justify-center text-ink" aria-label="Open menu" onClick={() => setMenu(true)}>
+            <Menu className="size-6" />
+          </button>
+          <Logo size={30} tone="ink" />
+          <div className="ml-auto flex items-center gap-1">
+            <CartLink />
+            <Link href="/account" prefetch={false} aria-label="My account" className="flex size-10 items-center justify-center text-ink">
+              <User className="size-[26px] stroke-[1.5]" aria-hidden />
+            </Link>
+          </div>
+        </Container>
+      </div>
       <BottomNav onMenu={() => setMenu(true)} />
       {menu ? <MobileMenu categories={categories} onClose={() => setMenu(false)} /> : null}
     </>
