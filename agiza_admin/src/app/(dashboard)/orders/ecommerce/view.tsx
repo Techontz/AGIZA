@@ -4,6 +4,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp, Clock, Package2, Plus, ShoppingCart, TrendingUp, User } from "lucide-react";
 import React, { useEffect, useState } from "react";
 
+import { OpenProblemsNotice } from "@/components/ecommerce/fulfillment-issues";
 import { useOrderAccess } from "@/components/orders/shared";
 import { ShopPaymentBadge, ShopStatusBadge } from "@/components/orders/shop/badges";
 import { NewShopOrderDialog } from "@/components/orders/shop/new-order-dialog";
@@ -89,6 +90,8 @@ export function EcommerceOrdersView() {
           </button>
         </p>
       )}
+
+      <OpenProblemsNotice className="mb-6" />
 
       <Card className="p-6 mb-6">
         <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">

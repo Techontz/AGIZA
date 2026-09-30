@@ -107,6 +107,42 @@ export interface DeliveryTransitionInput {
   scheduled_at?: string | null;
 }
 
+/** Collection leg of a marketplace order: a rider picks the items up from a seller and brings them to the hub. */
+export type PickupStatus = "pending" | "ready" | "assigned" | "collected" | "at_hub" | "failed" | "cancelled";
+
+export interface PickupEvent {
+  from: string;
+  to: string;
+  note: string;
+  at: string;
+  by: string;
+}
+
+export interface PickupTask {
+  id: number;
+  reference: string;
+  status: PickupStatus;
+  status_display: string;
+  order: { id: number; reference: string };
+  vendor: { id: number; name: string } | null;
+  origin: { id: number; name: string; address: string; phone: string; city: string };
+  destination: { id: number; name: string; city: string };
+  driver: { id: number; name: string } | null;
+  scheduled_at: string | null;
+  collected_at: string | null;
+  arrived_at: string | null;
+  handed_over_by: string;
+  notes: string;
+  created_at: string;
+  events: PickupEvent[];
+}
+
+export interface PickupAdvanceInput {
+  status: "collected" | "at_hub" | "failed";
+  handed_over_by?: string;
+  note?: string;
+}
+
 /* ---------------------------------------------------------------- service */
 
 const base = "deliveries";
@@ -127,6 +163,14 @@ export const deliveriesApi = {
   /** Multipart: photos (repeated), signature_name? (when no proof exists yet), notes?. */
   addProof: (id: number, form: FormData) => api.post<Delivery>(`${base}/${id}/proof`, form),
   events: (id: number) => api.get<DeliveryEvent[]>(`${base}/${id}/events`),
+
+  pickups: {
+    list: (query: QueryParams, signal?: AbortSignal) => api.get<Paginated<PickupTask>>(`${base}/pickups`, query, signal),
+    get: (id: number) => api.get<PickupTask>(`${base}/pickups/${id}`),
+    assign: (id: number, data: { driver: number; scheduled_at?: string | null }) =>
+      api.post<PickupTask>(`${base}/pickups/${id}/assign`, data),
+    advance: (id: number, data: PickupAdvanceInput) => api.post<PickupTask>(`${base}/pickups/${id}/advance`, data),
+  },
 };
 
 export const deliveryKeys = {
@@ -135,4 +179,5 @@ export const deliveryKeys = {
   stats: ["deliveries", "stats"] as const,
   drivers: ["deliveries", "drivers"] as const,
   events: (id: number) => ["deliveries", "events", id] as const,
+  pickups: (query: object) => ["deliveries", "pickups", query] as const,
 };

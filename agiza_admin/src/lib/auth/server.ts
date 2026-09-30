@@ -15,7 +15,10 @@ export function djangoUrl(path: string): string {
   return `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }
 
-const secure = () => process.env.SESSION_COOKIE_SECURE === "true";
+/** Secure cookies in production unless explicitly disabled (e.g. testing a production build over http). */
+const secure = () =>
+  process.env.SESSION_COOKIE_SECURE === "true" ||
+  (process.env.NODE_ENV === "production" && process.env.SESSION_COOKIE_SECURE !== "false");
 
 /** Seconds until the JWT's `exp` claim (decoded without verification: Django verifies). */
 function secondsUntilExpiry(token: string, fallback: number): number {

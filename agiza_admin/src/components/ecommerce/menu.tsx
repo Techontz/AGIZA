@@ -4,10 +4,12 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ChevronRight,
   DollarSign,
+  Flag,
   Package,
   Percent,
   Settings,
   Ship,
+  Star,
   ShoppingCart,
   Store,
   Tag,
@@ -22,9 +24,11 @@ import Link from "next/link";
 import { PageHeader } from "@/components/ui/page";
 import { StatCard } from "@/components/ui/stat-card";
 import { catalogApi, catalogKeys } from "@/lib/api/services/catalog";
+import { marketplaceApi, marketplaceKeys } from "@/lib/api/services/marketplace";
 import { formatTSh } from "@/lib/format";
 import { pageMeta } from "@/lib/nav";
 
+import { OpenProblemsNotice } from "./fulfillment-issues";
 import { compactAmount } from "./shared";
 
 export type Section =
@@ -34,6 +38,7 @@ export type Section =
   | "vendors"
   | "marketplace"
   | "earnings"
+  | "reviews"
   | "options"
   | "labels"
   | "brands";
@@ -70,6 +75,8 @@ const MENU: MenuItem[] = [
     border: "hover:border-sky-500", tile: "bg-sky-100 group-hover:bg-sky-200", iconColor: "text-sky-600", chevron: "group-hover:text-sky-600" },
   { title: "Vendor Earnings & Payouts", description: "Sales by seller, AGIZA commission and vendor payouts", icon: Wallet, section: "earnings",
     border: "hover:border-emerald-500", tile: "bg-emerald-100 group-hover:bg-emerald-200", iconColor: "text-emerald-600", chevron: "group-hover:text-emerald-600" },
+  { title: "Reviews", description: "Moderate customer product reviews and sellers' flags", icon: Star, section: "reviews",
+    border: "hover:border-amber-500", tile: "bg-amber-100 group-hover:bg-amber-200", iconColor: "text-amber-600", chevron: "group-hover:text-amber-600" },
   { title: "Product Options", description: "Manage global option sets: sizes, colors, bundles and more", icon: ToggleLeft, section: "options",
     border: "hover:border-teal-500", tile: "bg-teal-100 group-hover:bg-teal-200", iconColor: "text-teal-600", chevron: "group-hover:text-teal-600" },
   { title: "Product Labels", description: "Create and manage labels like New Arrival, Sale, Best Seller", icon: Tag, section: "labels",
@@ -111,6 +118,9 @@ export function EcommerceMenu({ onOpen }: { onOpen: (section: Section) => void }
         </p>
       )}
 
+      <OpenProblemsNotice className="mb-6" />
+      <FlaggedReviewsNotice />
+
       <nav aria-label="E-commerce sections" className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         {MENU.map((item) => {
           const cls = `bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md ${item.border} transition-all text-left group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500`;
@@ -140,5 +150,29 @@ export function EcommerceMenu({ onOpen }: { onOpen: (section: Section) => void }
         })}
       </nav>
     </>
+  );
+}
+
+/** Reviews sellers flagged, waiting for AGIZA's decision. */
+function FlaggedReviewsNotice() {
+  const query = { status: "flagged", page_size: 1 };
+  const flagged = useQuery({
+    queryKey: marketplaceKeys.reviews(query),
+    queryFn: ({ signal }) => marketplaceApi.reviews.list(query, signal),
+    staleTime: 30_000,
+    retry: false,
+  });
+  const count = flagged.data?.count ?? 0;
+  if (!count) return null;
+  return (
+    <Link
+      href="/ecommerce?section=reviews&status=flagged"
+      className="mb-6 flex items-center justify-between gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-800 hover:bg-red-100"
+    >
+      <span className="flex items-center gap-2 font-semibold">
+        <Flag className="size-4" /> {count} review{count === 1 ? "" : "s"} flagged by sellers — waiting for moderation
+      </span>
+      <ChevronRight className="size-4" />
+    </Link>
   );
 }

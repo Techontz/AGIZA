@@ -11,19 +11,52 @@ export type ReturnType =
   | "customer_rejected"
   | "damaged_item"
   | "wrong_item"
-  | "cancellation_after_dispatch";
+  | "cancellation_after_dispatch"
+  | "customer_request"
+  | "seller_cannot_fulfill";
 export type ReasonCode =
   | "customer_unavailable"
   | "address_incorrect"
   | "damaged_in_transit"
   | "customer_changed_mind"
-  | "item_mismatch";
+  | "item_mismatch"
+  | "defective"
+  | "not_as_described"
+  | "seller_unavailable";
 export type FinancialImpact = "refund_required" | "replacement_required" | "no_refund";
 export type ReturnExceptionFlag = "dispute" | "high_value_item" | "customer_complaint";
 export type ItemCondition = "as_described" | "damaged" | "missing_parts" | "used";
 export type RefundMethod = "cash" | "mobile_money" | "bank_transfer" | "card" | "wallet" | "other";
 /** Workflow actions available for the return's current status. */
 export type ReturnAction = "transition" | "decide" | "inspect" | "close";
+/** The refund as the customer sees it. */
+export type RefundStatus = "not_decided" | "pending" | "refunded" | "none";
+
+export interface ReturnLine {
+  id: number;
+  /** Order item id. */
+  item: number;
+  name: string;
+  variant_name: string;
+  quantity: number;
+  amount: string | null;
+  /** Vendor name, or "AGIZA". */
+  seller: string;
+}
+
+export interface ReturnAttachment {
+  id: number;
+  /** API path for fileSrc(): returns/<id>/attachments/<aid>/file */
+  url: string;
+  content_type: string;
+  at: string;
+}
+
+export interface VendorResponse {
+  vendor: string;
+  message: string;
+  at: string;
+}
 
 export interface ReturnRequest {
   id: number;
@@ -61,6 +94,23 @@ export interface ReturnRequest {
   allowed_transitions: Transition[];
   created_at: string;
   updated_at: string;
+  /** Opened by the customer from their account (app / website). */
+  requested_by_customer: boolean;
+  /** The customer's explanation. */
+  customer_note: string;
+  /** The latest message AGIZA sent the customer about this return. */
+  customer_message: string;
+  /** Returned units were put back into sellable stock. */
+  restocked: boolean;
+  /** When vendor earnings were adjusted for the refund. */
+  reconciled_at: string | null;
+  lines: ReturnLine[];
+  attachments: ReturnAttachment[];
+  vendor_responses: VendorResponse[];
+  refund_status: RefundStatus;
+  /** Status in the customer's words ("Item on its way back", "Refund pending"...). */
+  customer_status_display: string;
+  sellers: string[];
 }
 
 export interface ReturnHistoryEntry {
@@ -117,7 +167,10 @@ export const returnsApi = {
     api.patch<ReturnRequest>(`${base}/${id}`, data),
   transition: (id: number, data: { status: ReturnStatus; note?: string }) =>
     api.post<ReturnRequest>(`${base}/${id}/transition`, data),
-  inspect: (id: number, data: { item_condition: ItemCondition; notes: string; financial_impact?: FinancialImpact }) =>
+  inspect: (
+    id: number,
+    data: { item_condition: ItemCondition; notes: string; financial_impact?: FinancialImpact; restock?: boolean },
+  ) =>
     api.post<ReturnRequest>(`${base}/${id}/inspect`, data),
   decide: (
     id: number,
@@ -128,6 +181,8 @@ export const returnsApi = {
   reassign: (id: number, data: { handler: number; note?: string }) =>
     api.post<ReturnRequest>(`${base}/${id}/reassign`, data),
   history: (id: number) => api.get<ReturnHistoryEntry[]>(`${base}/${id}/history`),
+  /** Tell the customer something (shown in their account and sent as a notification). */
+  message: (id: number, data: { message: string }) => api.post<ReturnRequest>(`${base}/${id}/message`, data),
 };
 
 export const returnKeys = {

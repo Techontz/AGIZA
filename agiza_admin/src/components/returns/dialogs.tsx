@@ -78,6 +78,8 @@ export function UpdateStatusDialog({ ret, open, onClose }: { ret: ReturnRequest;
   const [step, setStep] = useState<Step | "">("");
   const [notes, setNotes] = useState("");
   const [condition, setCondition] = useState<ItemCondition | "">("");
+  /** Put the returned units back in stock (defaults to "yes" when the item is resellable). */
+  const [restock, setRestock] = useState(false);
   const [impact, setImpact] = useState<FinancialImpact>(ret.financial_impact);
   const [refund, setRefund] = useState("");
   const [method, setMethod] = useState<RefundMethod | "">("");
@@ -90,6 +92,7 @@ export function UpdateStatusDialog({ ret, open, onClose }: { ret: ReturnRequest;
       setStep(steps[0] ?? "");
       setNotes("");
       setCondition("");
+      setRestock(false);
       setImpact(ret.financial_impact);
       setRefund(ret.refund_amount ?? ret.return_value ?? "");
       setMethod("");
@@ -109,6 +112,8 @@ export function UpdateStatusDialog({ ret, open, onClose }: { ret: ReturnRequest;
   }, [open, stepsKey]);
 
   const refundDue = ret.status === "approved" && ret.financial_impact === "refund_required";
+  // Restocking needs the returned order lines (customer requests, returns opened from an order's items).
+  const canRestock = ret.lines.length > 0 && !ret.restocked;
   const mutation = useApiMutation(
     (s: Step): Promise<ReturnRequest> => {
       switch (s) {
@@ -116,7 +121,12 @@ export function UpdateStatusDialog({ ret, open, onClose }: { ret: ReturnRequest;
         case "received":
           return returnsApi.transition(ret.id, { status: s, note: notes });
         case "inspect":
-          return returnsApi.inspect(ret.id, { item_condition: condition as ItemCondition, notes, financial_impact: impact });
+          return returnsApi.inspect(ret.id, {
+            item_condition: condition as ItemCondition,
+            notes,
+            financial_impact: impact,
+            ...(canRestock ? { restock } : {}),
+          });
         case "approve":
           return returnsApi.decide(ret.id, {
             approve: true,
@@ -225,7 +235,15 @@ export function UpdateStatusDialog({ ret, open, onClose }: { ret: ReturnRequest;
           {step === "inspect" && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="Item condition" required htmlFor="rs-cond" error={fe.item_condition}>
-                <Select id="rs-cond" value={condition} onChange={(e) => setCondition(e.target.value as ItemCondition | "")}>
+                <Select
+                  id="rs-cond"
+                  value={condition}
+                  onChange={(e) => {
+                    const c = e.target.value as ItemCondition | "";
+                    setCondition(c);
+                    setRestock(c === "as_described");
+                  }}
+                >
                   <option value="">Select condition</option>
                   {CONDITIONS.map(([v, l]) => (
                     <option key={v} value={v}>
@@ -235,6 +253,23 @@ export function UpdateStatusDialog({ ret, open, onClose }: { ret: ReturnRequest;
                 </Select>
               </Field>
               <ImpactSelect id="rs-impact" value={impact} onChange={setImpact} error={fe.financial_impact} />
+              {canRestock && (
+                <label className="sm:col-span-2 flex items-start gap-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="checkbox"
+                    checked={restock}
+                    onChange={(e) => setRestock(e.target.checked)}
+                    className="mt-0.5 size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-gray-900">Put items back in stock</span>
+                    <span className="block text-xs text-gray-500">
+                      {ret.lines.reduce((n, l) => n + l.quantity, 0)} returned unit(s) become sellable again at the warehouse they were sold from.
+                    </span>
+                  </span>
+                </label>
+              )}
+              {ret.restocked && <p className="sm:col-span-2 text-xs text-green-700">The returned items are already back in stock.</p>}
             </div>
           )}
 
@@ -316,6 +351,74 @@ function ImpactSelect({ id, value, onChange, error }: { id: string; value: Finan
         ))}
       </Select>
     </Field>
+  );
+}
+
+/* ----------------------------------------------------------- message customer */
+
+export function MessageCustomerDialog({ ret, open, onClose }: { ret: ReturnRequest; open: boolean; onClose: () => void }) {
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState<unknown>(null);
+  const [local, setLocal] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (open) {
+      setMessage("");
+      setError(null);
+      setLocal({});
+    }
+  }, [open]);
+  const send = useApiMutation(() => returnsApi.message(ret.id, { message: message.trim() }), {
+    invalidate: [returnKeys.all],
+    success: (r) => `Message sent to ${r.customer.full_name}`,
+    onSuccess: onClose,
+    onError: setError,
+  });
+  const submit = () => {
+    if (!message.trim()) return setLocal({ message: "Write the message." });
+    setLocal({});
+    send.mutate(undefined);
+  };
+  const fe = mergedErrors(error, local);
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Message Customer — ${ret.reference}`}
+      size="lg"
+      footer={
+        <>
+          <Button className="flex-1" onClick={submit} loading={send.isPending}>
+            Send Message
+          </Button>
+          <Button variant="muted" onClick={onClose} disabled={send.isPending}>
+            Cancel
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-gray-600">
+          {ret.customer.full_name} sees this on the return in their account and gets a notification. It replaces the previous message.
+        </p>
+        {ret.customer_message && (
+          <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+            <p className="text-xs text-gray-500 mb-1">Current message</p>
+            <p className="text-sm text-gray-800 whitespace-pre-line">{ret.customer_message}</p>
+          </div>
+        )}
+        <Field label="Message" required htmlFor="rm-message" error={fe.message}>
+          <Textarea
+            id="rm-message"
+            rows={4}
+            maxLength={2000}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="e.g. Our rider will collect the item on Friday between 10:00 and 14:00."
+          />
+        </Field>
+        <FormAlert error={error} shown={["message"]} />
+      </div>
+    </Modal>
   );
 }
 

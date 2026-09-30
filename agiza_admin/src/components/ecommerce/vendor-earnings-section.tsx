@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { DollarSign, Percent, ShoppingBag, Store, Truck, Wallet } from "lucide-react";
+import { CheckCircle, CreditCard, DollarSign, Layers, Percent, RotateCcw, ShoppingBag, Store, Truck, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -17,7 +17,7 @@ import { marketplaceApi, marketplaceKeys, type VendorEarningsRow } from "@/lib/a
 import { formatTSh } from "@/lib/format";
 
 import { SellerKindTag, payoutAccountText } from "./marketplace-ui";
-import { PayoutModal, PayoutsTable, useCanRecordPayout } from "./payouts";
+import { PayoutBatchModal, PayoutModal, PayoutsTable, useCanRecordPayout } from "./payouts";
 import { compactAmount } from "./shared";
 
 const money = (v: string) => <span title={formatTSh(v)}>TSh {compactAmount(v)}</span>;
@@ -29,6 +29,7 @@ export function VendorEarningsSection() {
   const [search, setSearch] = useState("");
   const [show, setShow] = useState("all");
   const [paying, setPaying] = useState<VendorEarningsRow | null>(null);
+  const [batching, setBatching] = useState(false);
   const m = earnings.data?.marketplace;
   const loading = earnings.isPending;
 
@@ -39,7 +40,19 @@ export function VendorEarningsSection() {
     );
   }, [earnings.data, search, show]);
 
-  const headers = ["Vendor", "Orders", "Gross Sales", "Commission", "Vendor Net", "Pending", "Payable", "Paid Out", ...(canPay ? ["Actions"] : [])];
+  const headers = [
+    "Vendor",
+    "Orders",
+    "Gross Sales",
+    "Commission",
+    "Vendor Net",
+    "Refunds",
+    "Pending",
+    "Payable",
+    "In Payout",
+    "Paid Out",
+    ...(canPay ? ["Actions"] : []),
+  ];
 
   return (
     <div className="space-y-6">
@@ -53,17 +66,27 @@ export function VendorEarningsSection() {
           <StatCard label="Platform Commission" value={m ? money(m.platform_commission) : "—"} icon={Percent} tone="purple" loading={loading} compactValue />
           <StatCard label="Vendor Earnings" value={m ? money(m.vendor_earnings) : "—"} icon={Wallet} tone="green" loading={loading} compactValue />
           <StatCard label="Delivery Fees" value={m ? money(m.shipping_fees) : "—"} icon={Truck} tone="orange" loading={loading} compactValue />
+          <StatCard label="Refunds to Customers" value={m ? money(m.refunds_to_customers) : "—"} icon={RotateCcw} tone="red" loading={loading} compactValue />
+          <StatCard label="Payable to Vendors" value={m ? money(m.payable_to_vendors) : "—"} icon={CreditCard} tone="yellow" loading={loading} compactValue />
+          <StatCard label="Paid to Vendors" value={m ? money(m.paid_to_vendors) : "—"} icon={CheckCircle} tone="gray" loading={loading} compactValue />
         </div>
       )}
 
       <Card className="overflow-hidden">
         <div className="p-6 border-b border-gray-200 space-y-4">
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900">Earnings by Vendor</h2>
-            <p className="text-sm text-gray-600 mt-1">
-              Orders not cancelled. Earnings are <span className="font-medium">pending</span> until the order is delivered and fully paid, then{" "}
-              <span className="font-medium">payable</span> until a payout is recorded.
-            </p>
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Earnings by Vendor</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Orders not cancelled. Earnings are <span className="font-medium">pending</span> until the order is delivered and fully paid, then{" "}
+                <span className="font-medium">payable</span> (less refunds, plus adjustments) until a payout is made.
+              </p>
+            </div>
+            {canPay && (
+              <Button className="flex-shrink-0" onClick={() => setBatching(true)} disabled={!earnings.data}>
+                <Layers className="size-4" /> Prepare Payout Batch
+              </Button>
+            )}
           </div>
           <div className="flex flex-col md:flex-row gap-3 md:items-center">
             <SearchInput placeholder="Search vendors..." value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search vendors" className="md:max-w-md" />
@@ -105,12 +128,16 @@ export function VendorEarningsSection() {
                     <Td className="text-sm font-semibold text-gray-900 whitespace-nowrap">{formatTSh(r.gross_sales)}</Td>
                     <Td className="text-sm text-gray-700 whitespace-nowrap">{formatTSh(r.commission)}</Td>
                     <Td className="text-sm font-semibold text-green-700 whitespace-nowrap">{formatTSh(r.vendor_net)}</Td>
+                    <Td className={`text-sm whitespace-nowrap ${Number(r.refunds) > 0 ? "text-red-700" : "text-gray-400"}`}>{formatTSh(r.refunds)}</Td>
                     <Td className="text-sm text-amber-700 whitespace-nowrap">{formatTSh(r.pending)}</Td>
                     <Td className="text-sm font-semibold text-blue-700 whitespace-nowrap">{formatTSh(r.payable)}</Td>
+                    <Td className={`text-sm whitespace-nowrap ${Number(r.in_payout) > 0 ? "text-amber-700 font-medium" : "text-gray-400"}`}>{formatTSh(r.in_payout)}</Td>
                     <Td className="text-sm text-gray-700 whitespace-nowrap">{formatTSh(r.paid_out)}</Td>
                     {canPay && (
                       <Td>
-                        {Number(r.payable) > 0 ? (
+                        {Number(r.in_payout) > 0 ? (
+                          <span className="text-xs text-amber-700 whitespace-nowrap">Payout processing</span>
+                        ) : Number(r.payable) > 0 ? (
                           <Button size="sm" onClick={() => setPaying(r)}>
                             <Wallet className="size-4" /> Record Payout
                           </Button>
@@ -130,12 +157,16 @@ export function VendorEarningsSection() {
       <Card className="overflow-hidden">
         <div className="p-6 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900">Payout History</h2>
-          <p className="text-sm text-gray-600 mt-1">Transfers to vendors recorded by Finance.</p>
+          <p className="text-sm text-gray-600 mt-1">
+            Transfers to vendors. A <span className="font-medium">processing</span> payout is marked paid with its transaction reference, or failed; a paid one can be
+            reversed if the money came back.
+          </p>
         </div>
-        <PayoutsTable pageSize={20} />
+        <PayoutsTable pageSize={20} showFilter />
       </Card>
 
       {paying && <PayoutForRow row={paying} onClose={() => setPaying(null)} />}
+      {batching && earnings.data && <PayoutBatchModal vendors={earnings.data.vendors} onClose={() => setBatching(false)} />}
     </div>
   );
 }

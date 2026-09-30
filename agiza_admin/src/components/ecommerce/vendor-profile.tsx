@@ -11,9 +11,11 @@ import {
   ExternalLink,
   History,
   Image as ImageIcon,
+  Loader,
   MapPin,
   Package,
   Percent,
+  RotateCcw,
   ShoppingCart,
   Store,
   Upload,
@@ -35,7 +37,7 @@ import { ApiError } from "@/lib/api/client";
 import { errorText } from "@/lib/api/errors";
 import { fileSrc } from "@/lib/api/files";
 import { catalogApi, catalogKeys, type Vendor } from "@/lib/api/services/catalog";
-import { marketplaceApi, marketplaceKeys } from "@/lib/api/services/marketplace";
+import { marketplaceApi, marketplaceKeys, type Fulfillment } from "@/lib/api/services/marketplace";
 import { productsApi, productKeys } from "@/lib/api/services/products";
 import { cn } from "@/lib/cn";
 import { formatDate, formatDateTime, formatTSh } from "@/lib/format";
@@ -53,18 +55,21 @@ import {
   VendorLogo,
   payoutAccountText,
 } from "./marketplace-ui";
+import { IssueCell, PickupTag, ResolveIssueModal, useCanResolveIssues } from "./fulfillment-issues";
 import { ProductModerationButtons } from "./products/product-moderation";
 import { PayoutModal, PayoutsTable, useCanRecordPayout } from "./payouts";
 import { SectionHeader, compactAmount, useCatalogAccess, useCatalogMutation } from "./shared";
+import { VendorDocuments, VendorLedger } from "./vendor-ledger";
 import { ProfitAgreementModal, VendorModal } from "./vendor-modals";
 import { VendorReviewActions } from "./vendor-review";
 
-type ProfileTab = "overview" | "products" | "orders" | "earnings" | "history";
+type ProfileTab = "overview" | "products" | "orders" | "earnings" | "documents" | "history";
 const TABS: { value: ProfileTab; label: string }[] = [
   { value: "overview", label: "Overview" },
   { value: "products", label: "Products" },
   { value: "orders", label: "Orders" },
   { value: "earnings", label: "Earnings & Payouts" },
+  { value: "documents", label: "Documents" },
   { value: "history", label: "History" },
 ];
 const isTab = (v: string): v is ProfileTab => TABS.some((t) => t.value === v);
@@ -167,6 +172,7 @@ export function VendorProfile({
           {tab === "products" && <VendorProducts vendor={v} canEdit={canEdit} />}
           {tab === "orders" && <VendorOrders vendorId={v.id} />}
           {tab === "earnings" && <VendorEarnings vendor={v} />}
+          {tab === "documents" && <VendorDocuments vendorId={v.id} />}
           {tab === "history" && <VendorHistory vendorId={v.id} />}
         </div>
       </Card>
@@ -529,9 +535,12 @@ export function orderHref(orderId: number, reference: string) {
 }
 
 function VendorOrders({ vendorId }: { vendorId: number }) {
+  const canResolve = useCanResolveIssues();
   const [settlement, setSettlement] = useState("all");
+  const [problemsOnly, setProblemsOnly] = useState(false);
+  const [resolving, setResolving] = useState<Fulfillment | null>(null);
   const [page, setPage] = useState(1);
-  const query = { vendor: vendorId, settlement_status: settlement, page, page_size: 10 };
+  const query = { vendor: vendorId, settlement_status: settlement, issue_open: problemsOnly || undefined, page, page_size: 10 };
   const list = useQuery({
     queryKey: marketplaceKeys.fulfillments(query),
     queryFn: ({ signal }) => marketplaceApi.fulfillments(query, signal),
@@ -542,26 +551,45 @@ function VendorOrders({ vendorId }: { vendorId: number }) {
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-4 border-b border-gray-200">
         <p className="text-sm text-gray-600">This vendor&apos;s part of each customer order, with AGIZA&apos;s commission and the vendor&apos;s net earnings.</p>
-        <Select
-          className="w-full sm:w-auto"
-          aria-label="Filter by settlement"
-          value={settlement}
-          onChange={(e) => {
-            setSettlement(e.target.value);
-            setPage(1);
-          }}
-        >
-          <option value="all">Any settlement</option>
-          <option value="pending">Pending</option>
-          <option value="payable">Payable</option>
-          <option value="settled">Paid out</option>
-          <option value="void">Void</option>
-        </Select>
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700 whitespace-nowrap">
+            <input
+              type="checkbox"
+              checked={problemsOnly}
+              onChange={(e) => {
+                setProblemsOnly(e.target.checked);
+                setPage(1);
+              }}
+              className="size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            Open problems only
+          </label>
+          <Select
+            className="w-full sm:w-auto"
+            aria-label="Filter by settlement"
+            value={settlement}
+            onChange={(e) => {
+              setSettlement(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="all">Any settlement</option>
+            <option value="pending">Pending</option>
+            <option value="payable">Payable</option>
+            <option value="settled">Paid out</option>
+            <option value="void">Void</option>
+          </Select>
+        </div>
       </div>
       {list.isError && !list.data ? (
         <ErrorState bare message={errorText(list.error)} onRetry={() => list.refetch()} />
       ) : !list.isPending && rows.length === 0 ? (
-        <EmptyState bare icon={ShoppingCart} title="No orders yet" description="Orders containing this vendor's products appear here." />
+        <EmptyState
+          bare
+          icon={ShoppingCart}
+          title={problemsOnly ? "No open problems" : "No orders yet"}
+          description={problemsOnly ? "This vendor has no unresolved fulfilment problems." : "Orders containing this vendor's products appear here."}
+        />
       ) : (
         <>
           <Table>
@@ -573,10 +601,12 @@ function VendorOrders({ vendorId }: { vendorId: number }) {
               <Th>Commission</Th>
               <Th>Net</Th>
               <Th>Settlement</Th>
+              <Th>Pickup</Th>
+              <Th>Problem</Th>
             </THead>
             <TBody>
               {list.isPending ? (
-                <TableSkeletonRows rows={4} columns={7} />
+                <TableSkeletonRows rows={4} columns={9} />
               ) : (
                 rows.map((r) => (
                   <Tr key={r.id}>
@@ -599,6 +629,12 @@ function VendorOrders({ vendorId }: { vendorId: number }) {
                       <SettlementBadge status={r.settlement_status} title={r.settlement_display} />
                       {r.payout && <div className="text-xs text-gray-500 font-mono mt-1">{r.payout}</div>}
                     </Td>
+                    <Td>
+                      <PickupTag pickup={r.pickup} />
+                    </Td>
+                    <Td>
+                      <IssueCell fulfillment={r} onResolve={canResolve ? () => setResolving(r) : undefined} />
+                    </Td>
                   </Tr>
                 ))
               )}
@@ -616,6 +652,7 @@ function VendorOrders({ vendorId }: { vendorId: number }) {
           )}
         </>
       )}
+      {resolving && <ResolveIssueModal fulfillment={resolving} onClose={() => setResolving(null)} />}
     </div>
   );
 }
@@ -636,10 +673,13 @@ function VendorEarnings({ vendor }: { vendor: Vendor }) {
     { label: "AGIZA Commission", value: row?.commission ?? zero, icon: Percent, tone: "purple" as const },
     { label: "Vendor Net", value: row?.vendor_net ?? zero, icon: Wallet, tone: "green" as const },
     { label: "Pending", value: row?.pending ?? zero, icon: Clock, tone: "yellow" as const },
+    { label: "Refunds", value: row?.refunds ?? zero, icon: RotateCcw, tone: "red" as const },
     { label: "Payable", value: row?.payable ?? zero, icon: CreditCard, tone: "orange" as const },
+    { label: "In Payout", value: row?.in_payout ?? zero, icon: Loader, tone: "indigo" as const },
     { label: "Paid Out", value: row?.paid_out ?? zero, icon: CheckCircle, tone: "gray" as const },
   ];
   const payable = Number(row?.payable ?? 0);
+  const processing = Number(row?.in_payout ?? 0) > 0;
 
   return (
     <div>
@@ -648,7 +688,7 @@ function VendorEarnings({ vendor }: { vendor: Vendor }) {
           <ErrorState bare message={errorText(earnings.error)} onRetry={() => earnings.refetch()} />
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {figures.map((f) => (
                 <StatCard
                   key={f.label}
@@ -671,7 +711,8 @@ function VendorEarnings({ vendor }: { vendor: Vendor }) {
                   </>
                 )}
               </p>
-              {canPay && payable > 0 && (
+              {canPay && processing && <span className="text-sm text-amber-700">A payout is processing — record its outcome in Payout history.</span>}
+              {canPay && payable > 0 && !processing && (
                 <Button onClick={() => setPaying(true)}>
                   <Wallet className="size-4" /> Record Payout
                 </Button>
@@ -680,8 +721,11 @@ function VendorEarnings({ vendor }: { vendor: Vendor }) {
           </>
         )}
       </div>
+      <div className="border-b border-gray-200">
+        <VendorLedger vendor={{ id: vendor.id, name: vendor.name }} />
+      </div>
       <h3 className={cn(cardTitle, "px-6 pt-5 pb-3")}>Payout history</h3>
-      <PayoutsTable vendorId={vendor.id} />
+      <PayoutsTable vendorId={vendor.id} showFilter />
       {paying && row && (
         <PayoutModal vendor={{ id: vendor.id, name: vendor.name }} payable={row.payable} payoutAccount={payoutAccountText(vendor)} onClose={() => setPaying(false)} />
       )}

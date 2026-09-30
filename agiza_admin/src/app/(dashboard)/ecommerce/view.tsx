@@ -9,6 +9,7 @@ import { MarketplaceSettingsSection } from "@/components/ecommerce/marketplace-s
 import { EcommerceMenu, type Section } from "@/components/ecommerce/menu";
 import { OptionsSection } from "@/components/ecommerce/options-section";
 import { ProductsSection } from "@/components/ecommerce/products/products-section";
+import { ReviewsSection } from "@/components/ecommerce/reviews-section";
 import { SettingsSection } from "@/components/ecommerce/settings-section";
 import { SectionHeader } from "@/components/ecommerce/shared";
 import { VendorEarningsSection } from "@/components/ecommerce/vendor-earnings-section";
@@ -23,6 +24,7 @@ const SECTIONS: Record<Section, { title: string; description: string }> = {
   vendors: { title: "Vendors", description: "Review vendor applications and manage stores and their profit settings" },
   marketplace: { title: "Marketplace Settings", description: "Commission rates, product review and vendor applications" },
   earnings: { title: "Vendor Earnings & Payouts", description: "Sales by seller, AGIZA's commission and payouts to vendors" },
+  reviews: { title: "Reviews", description: "Customer product reviews: publish, hide and handle sellers' flags" },
   options: { title: "Product Options", description: "Global option sets applied to product variations" },
   labels: { title: "Product Labels", description: "Create labels to highlight products in the store" },
   brands: { title: "Brands", description: "Manage product brands displayed on the store" },
@@ -42,12 +44,33 @@ export function EcommerceView() {
     seller: "",
     review: "",
     product: "",
+    // Reviews section filters (deep link: ?section=reviews&status=flagged).
+    status: "",
+    rating: "",
+    rq: "",
+    rpage: "",
   });
   const section = isSection(f.section) ? f.section : null;
   const open = useCallback((s: Section) => setF({ section: s }), [setF]);
   // Leaving a section drops its own filters (vendor search/page/profile, product seller/review).
   const back = useCallback(
-    () => setF({ section: "", vq: "", vpage: "", vstatus: "", vkind: "", vendor: "", vtab: "", seller: "", review: "", product: "" }),
+    () =>
+      setF({
+        section: "",
+        vq: "",
+        vpage: "",
+        vstatus: "",
+        vkind: "",
+        vendor: "",
+        vtab: "",
+        seller: "",
+        review: "",
+        product: "",
+        status: "",
+        rating: "",
+        rq: "",
+        rpage: "",
+      }),
     [setF],
   );
 
@@ -72,6 +95,7 @@ export function EcommerceView() {
           {section === "settings" && <SettingsSection />}
           {section === "marketplace" && <MarketplaceSettingsSection />}
           {section === "earnings" && <VendorEarningsSection />}
+          {section === "reviews" && <ReviewsSection f={f} setF={setF} />}
           {section === "options" && <OptionsSection />}
           {section === "labels" && <LabelsSection />}
           {section === "brands" && <BrandsSection />}

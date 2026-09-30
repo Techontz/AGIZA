@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { FormAlert, fromLocalInput, mergedErrors } from "@/components/deliveries/form-helpers";
+import { OrderPickups } from "@/components/deliveries/pickups";
 import { PaymentDialog, StatusHistoryList, useOrderAccess } from "@/components/orders/shared";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -143,6 +144,7 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
       </div>
 
       <OrderSellers orderId={o.id} />
+      <OrderPickups orderId={o.id} />
 
       {(canProcess || canShip || canCancel || canRecord || o.delivery) && (
         <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-gray-200">

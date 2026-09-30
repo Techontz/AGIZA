@@ -19,7 +19,7 @@ import {
   type ReturnType,
 } from "@/lib/api/services/returns";
 
-import { IMPACT, REASON, RETURN_EXCEPTION, RETURN_TYPE } from "./badges";
+import { IMPACT, REASON, RETURN_EXCEPTION, RETURN_TYPE, SYSTEM_RETURN_TYPES } from "./badges";
 
 type Values = {
   return_type: ReturnType | "";
@@ -131,7 +131,7 @@ export function NewReturnDialog({ open, onClose, onCreated }: { open: boolean; o
           <Field label="Return type" required htmlFor="nr-type" error={fe.return_type}>
             <Select id="nr-type" value={v.return_type} onChange={set("return_type")}>
               <option value="">Select type</option>
-              {Object.entries(RETURN_TYPE).map(([k, [, l]]) => (
+              {Object.entries(RETURN_TYPE).filter(([k]) => !SYSTEM_RETURN_TYPES.includes(k as ReturnType)).map(([k, [, l]]) => (
                 <option key={k} value={k}>
                   {l}
                 </option>

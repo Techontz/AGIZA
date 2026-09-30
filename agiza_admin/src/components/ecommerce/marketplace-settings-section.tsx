@@ -96,7 +96,14 @@ export function MarketplaceSettingsSection() {
   );
 }
 
-const SETTINGS_FIELDS = ["default_commission_percent", "require_product_review", "vendor_applications_open", "payout_schedule"] as const;
+const SETTINGS_FIELDS = [
+  "default_commission_percent",
+  "require_product_review",
+  "vendor_applications_open",
+  "payout_schedule",
+  "return_window_days",
+  "auto_publish_reviews",
+] as const;
 
 function SettingsForm({ data, canManage }: { data: MarketplaceSettings; canManage: boolean }) {
   const [form, setForm] = useState({
@@ -104,6 +111,8 @@ function SettingsForm({ data, canManage }: { data: MarketplaceSettings; canManag
     require_product_review: data.require_product_review,
     vendor_applications_open: data.vendor_applications_open,
     payout_schedule: data.payout_schedule,
+    return_window_days: String(data.return_window_days ?? 7),
+    auto_publish_reviews: data.auto_publish_reviews ?? true,
   });
   const [errors, setErrors] = useState<Errors>({});
   const save = useMarketplaceMutation((body: MarketplaceSettingsInput) => marketplaceApi.settings.update(body), {
@@ -116,8 +125,11 @@ function SettingsForm({ data, canManage }: { data: MarketplaceSettings; canManag
     e.preventDefault();
     const pe = percentError(form.default_commission_percent);
     if (pe) return setErrors({ default_commission_percent: pe });
+    const days = Number(form.return_window_days);
+    if (form.return_window_days.trim() === "" || !Number.isInteger(days) || days < 0 || days > 90)
+      return setErrors({ return_window_days: "Enter a whole number of days between 0 and 90." });
     setErrors({});
-    save.mutate({ ...form, payout_schedule: form.payout_schedule.trim() });
+    save.mutate({ ...form, payout_schedule: form.payout_schedule.trim(), return_window_days: days });
   };
 
   return (
@@ -150,6 +162,30 @@ function SettingsForm({ data, canManage }: { data: MarketplaceSettings; canManag
         <Textarea id="mp-schedule" rows={2} value={form.payout_schedule} disabled={ro} onChange={(e) => setForm({ ...form, payout_schedule: e.target.value })} />
       </Field>
 
+      <Field
+        label="Return window"
+        htmlFor="mp-return-window"
+        error={errors.return_window_days}
+        hint="Days after delivery during which customers can ask to return items from their account (0 turns customer returns off)."
+      >
+        <div className="relative max-w-xs">
+          <Input
+            id="mp-return-window"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={90}
+            step={1}
+            value={form.return_window_days}
+            disabled={ro}
+            onChange={(e) => setForm({ ...form, return_window_days: e.target.value })}
+            invalid={Boolean(errors.return_window_days)}
+            className="pr-14"
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm pointer-events-none">days</span>
+        </div>
+      </Field>
+
       <div>
         <div className="flex items-center justify-between gap-4 py-3 border-t border-gray-200">
           <div>
@@ -164,6 +200,13 @@ function SettingsForm({ data, canManage }: { data: MarketplaceSettings; canManag
             <p className="text-sm text-gray-600">Customers can apply to open a store from the app and the website</p>
           </div>
           <IconSwitch size="lg" checked={form.vendor_applications_open} onChange={(v) => setForm({ ...form, vendor_applications_open: v })} disabled={ro} label="Accept vendor applications" />
+        </div>
+        <div className="flex items-center justify-between gap-4 py-3 border-b border-gray-200">
+          <div>
+            <p className="font-semibold text-gray-900">Publish reviews immediately</p>
+            <p className="text-sm text-gray-600">Customer reviews go live at once (staff can still hide them). Off: reviews wait for approval under Reviews</p>
+          </div>
+          <IconSwitch size="lg" checked={form.auto_publish_reviews} onChange={(v) => setForm({ ...form, auto_publish_reviews: v })} disabled={ro} label="Publish reviews immediately" />
         </div>
       </div>
       {canManage && (

@@ -5,6 +5,7 @@ import { AlertTriangle, ChevronDown, ChevronUp, DollarSign, Package, Plus, Rotat
 import React, { useEffect, useState } from "react";
 
 import {
+  CustomerRequestTag,
   ImpactBadge,
   OwnerBadge,
   ReturnExceptionBadge,
@@ -230,6 +231,11 @@ function Row({ ret: r, open, toggle }: { ret: ReturnRequest; open: boolean; togg
       <tr className="hover:bg-gray-50 transition-colors">
         <td className="px-6 py-4">
           <div className="font-semibold text-gray-900 whitespace-nowrap">{r.reference}</div>
+          {r.requested_by_customer && (
+            <div className="mt-1">
+              <CustomerRequestTag />
+            </div>
+          )}
         </td>
         <td className="px-6 py-4">
           <div className="text-gray-900 whitespace-nowrap">{r.order.reference}</div>

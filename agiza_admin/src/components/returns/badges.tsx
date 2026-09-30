@@ -7,6 +7,7 @@ import { cn } from "@/lib/cn";
 import type {
   FinancialImpact,
   ReasonCode,
+  RefundStatus,
   ReturnExceptionFlag,
   ReturnOwner,
   ReturnStatus,
@@ -23,7 +24,12 @@ export const RETURN_TYPE: Record<ReturnType, [string, string]> = {
   damaged_item: ["bg-red-100 text-red-800", "Damaged Item"],
   wrong_item: ["bg-yellow-100 text-yellow-800", "Wrong Item"],
   cancellation_after_dispatch: ["bg-purple-100 text-purple-800", "Cancellation After Dispatch"],
+  customer_request: ["bg-indigo-100 text-indigo-800", "Customer Return Request"],
+  seller_cannot_fulfill: ["bg-orange-100 text-orange-800", "Seller Couldn't Fulfil"],
 };
+
+/** Types AGIZA creates itself (customer requests, a seller's cancelled part): not offered in "New Return". */
+export const SYSTEM_RETURN_TYPES: ReturnType[] = ["customer_request", "seller_cannot_fulfill"];
 
 export const RETURN_STATUS: Record<ReturnStatus, [string, string]> = {
   initiated: ["bg-blue-100 text-blue-800", "Initiated"],
@@ -48,6 +54,9 @@ export const REASON: Record<ReasonCode, string> = {
   damaged_in_transit: "Damaged in Transit",
   customer_changed_mind: "Customer Changed Mind",
   item_mismatch: "Item Mismatch",
+  defective: "Defective / Doesn't Work",
+  not_as_described: "Not as Described",
+  seller_unavailable: "Seller Couldn't Supply the Item",
 };
 
 export const IMPACT: Record<FinancialImpact, [string, string]> = {
@@ -71,6 +80,20 @@ export const ReturnTypeBadge = ({ type, label }: { type: ReturnType; label: stri
 export const ReturnStatusBadge = ({ status, label }: { status: ReturnStatus; label: string }) => <Pill map={RETURN_STATUS} value={status} fallback={label} />;
 export const OwnerBadge = ({ owner, label }: { owner: ReturnOwner; label: string }) => <Pill map={OWNER} value={owner} fallback={label} />;
 export const ImpactBadge = ({ impact, label }: { impact: FinancialImpact; label: string }) => <Pill map={IMPACT} value={impact} fallback={label} />;
+
+/** Opened by the customer from their account. */
+export function CustomerRequestTag() {
+  return <span className={cn(pill, "bg-indigo-100 text-indigo-800")}>Customer request</span>;
+}
+
+const REFUND: Record<RefundStatus, [string, string]> = {
+  not_decided: ["bg-gray-100 text-gray-700", "Refund not decided"],
+  pending: ["bg-orange-100 text-orange-800", "Refund pending"],
+  refunded: ["bg-green-100 text-green-800", "Refunded"],
+  none: ["bg-gray-100 text-gray-500", "No refund"],
+};
+
+export const RefundStatusBadge = ({ status }: { status: RefundStatus }) => <Pill map={REFUND} value={status} fallback={status} />;
 
 export function ReturnExceptionBadge({ flag }: { flag: ReturnExceptionFlag | "" }) {
   if (!flag) return null;

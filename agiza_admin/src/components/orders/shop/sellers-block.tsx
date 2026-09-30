@@ -2,10 +2,12 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useState } from "react";
 
+import { IssueCell, PickupTag, ResolveIssueModal, useCanResolveIssues } from "@/components/ecommerce/fulfillment-issues";
 import { FulfillmentBadge, SellerKindTag, SettlementBadge } from "@/components/ecommerce/marketplace-ui";
 import { errorText } from "@/lib/api/errors";
-import { marketplaceApi, marketplaceKeys } from "@/lib/api/services/marketplace";
+import { marketplaceApi, marketplaceKeys, type Fulfillment } from "@/lib/api/services/marketplace";
 import { formatDateTime, formatTSh } from "@/lib/format";
 
 const th = "px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap";
@@ -16,12 +18,17 @@ const td = "px-4 py-3 text-sm whitespace-nowrap";
  * fulfilment status, AGIZA's commission, the vendor's net and settlement.
  */
 export function OrderSellers({ orderId }: { orderId: number }) {
+  const canResolve = useCanResolveIssues();
+  const [resolving, setResolving] = useState<Fulfillment | null>(null);
   const query = { order: orderId, page_size: 50 };
   const parts = useQuery({
     queryKey: marketplaceKeys.fulfillments(query),
     queryFn: ({ signal }) => marketplaceApi.fulfillments(query, signal),
   });
   const rows = parts.data?.results ?? [];
+  const problems = rows.filter((r) => r.issue?.open);
+  const showIssues = rows.some((r) => r.issue);
+  const showPickups = rows.some((r) => r.pickup);
   const waiting = rows.filter((r) => r.vendor.self_service && r.status !== "ready" && r.status !== "shipped" && r.status !== "delivered" && r.status !== "cancelled");
 
   if (parts.isPending) return <div className="h-16 rounded bg-gray-100 animate-pulse" aria-hidden />;
@@ -44,7 +51,11 @@ export function OrderSellers({ orderId }: { orderId: number }) {
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
         <h4 className="font-semibold text-gray-900">Sellers</h4>
-        {waiting.length > 0 && (
+        {problems.length > 0 ? (
+          <p className="text-xs font-medium text-amber-800">
+            {problems.map((p) => p.vendor.name).join(", ")} reported a problem — resolve it before the order can go ahead.
+          </p>
+        ) : waiting.length > 0 && (
           <p className="text-xs text-amber-700">
             Waiting for {waiting.map((w) => w.vendor.name).join(", ")} to mark their items ready for pickup before the order can ship.
           </p>
@@ -62,6 +73,8 @@ export function OrderSellers({ orderId }: { orderId: number }) {
               <th className={th}>Vendor Net</th>
               <th className={th}>Delivery Share</th>
               <th className={th}>Settlement</th>
+              {showPickups && <th className={th}>Pickup</th>}
+              {showIssues && <th className={th}>Problem</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -93,11 +106,22 @@ export function OrderSellers({ orderId }: { orderId: number }) {
                   {r.vendor.id ? <SettlementBadge status={r.settlement_status} title={r.settlement_display} /> : <span className="text-xs text-gray-400">—</span>}
                   {r.payout && <div className="text-xs text-gray-500 font-mono mt-1">{r.payout}</div>}
                 </td>
+                {showPickups && (
+                  <td className={td}>
+                    <PickupTag pickup={r.pickup} />
+                  </td>
+                )}
+                {showIssues && (
+                  <td className={td}>
+                    <IssueCell fulfillment={r} onResolve={canResolve ? () => setResolving(r) : undefined} />
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {resolving && <ResolveIssueModal fulfillment={resolving} onClose={() => setResolving(null)} />}
     </div>
   );
 }
