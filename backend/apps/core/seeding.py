@@ -73,11 +73,15 @@ def _remove_derived(model, rows):
     adjustments) are demo data too. Real ledger rows are never deleted: this runs only for rows
     registered as demo data, from `seed_demo_data --flush`.
     """
+    from apps.orders.models import OrderAdjustment
+
+    if model._meta.label == "returns.ReturnRequest":
+        OrderAdjustment.objects.filter(return_request__in=rows).delete()  # a demo return's refund adjustment
+        return
     if model._meta.label != "orders.Order":
         return
     from apps.deliveries.models import PickupTask
     from apps.marketplace.models import VendorLedgerEntry
-    from apps.orders.models import OrderAdjustment
 
     VendorLedgerEntry.objects.filter(fulfillment__order__in=rows).delete()  # queryset delete: demo only
     PickupTask.objects.filter(order__in=rows).delete()

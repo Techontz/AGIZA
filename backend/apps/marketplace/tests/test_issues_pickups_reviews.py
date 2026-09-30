@@ -53,8 +53,11 @@ def test_vendor_reports_a_problem_and_agiza_cancels_only_that_part(app, home, sh
     adj = OrderAdjustment.objects.get(order=order)
     assert (adj.total_before, adj.total_after, adj.amount) == (D("389000"), D("66000"), D("-323000"))
     body = app.get(f"{APP}/orders/{order.reference}/").json()
-    assert body["amounts"]["subtotal"] == "60000" or body["amounts"]["subtotal"] == "60000.00"
+    assert D(body["amounts"]["subtotal"]) == D("380000")  # as ordered; the adjustment takes A's part off
     assert body["adjustments"][0]["amount"] == "-323000.00"
+    shown = D(body["amounts"]["subtotal"]) + D(body["amounts"]["shipping_fee"]) + sum(
+        D(a["amount"]) for a in body["adjustments"])
+    assert shown == D(body["amounts"]["total"]) == order.total_amount  # the lines add up to the total
     assert [s["status"] for s in body["sellers"] if s["vendor"]["name"] == "Vendor A Electronics"] == ["cancelled"]
     # The rest can still be fulfilled and shipped (no pickup is owed for A anymore).
     part_b = VendorFulfillment.objects.get(order=order, vendor=vendor_b.vendor)

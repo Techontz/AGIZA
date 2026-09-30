@@ -93,8 +93,9 @@ def order_detail_payload(order: Order, request) -> dict:
     }
     if order.order_type == OrderType.SHOP:
         details = order.shop
-        subtotal = sum((i.line_total for i in order.items.all()
-                        if not (i.fulfillment_id and i.fulfillment.status == "cancelled")), 0)
+        # As ordered: a seller's cancelled part is taken off by its adjustment line, so
+        # subtotal + delivery + adjustments always adds up to the total.
+        subtotal = sum((i.line_total for i in order.items.all()), 0)
         city = details.city.name if details.city_id else ""
         body["shipping"] = {
             "address": ", ".join(p for p in (details.shipping_address, details.area, city) if p), "city": city,

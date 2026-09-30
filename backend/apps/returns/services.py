@@ -226,11 +226,32 @@ def close(ret: ReturnRequest, *, user, notes: str = "", refund_method: str | Non
             finance.refund_to_wallet(order, payment, user)
         ret.refund_payment = payment
         fields.append("refund_payment")
+        lower_total_for_refund(ret, order, user=user)
         reconcile(ret, user=user)
     ret.closed_at = timezone.now()
     ret.resolution_notes = notes.strip()
     _set_status(ret, R.CLOSED, user, notes or "Return closed", request, fields)
     return ret
+
+
+def lower_total_for_refund(ret: ReturnRequest, order, *, user):
+    """Refunded goods are no longer charged: lower the order total by the refund, with an explicit
+    adjustment, so the refund never shows up as a balance the customer owes. A seller that couldn't
+    supply its part already took that part off the total when it was cancelled."""
+    from apps.orders.models import OrderAdjustment
+
+    if ret.return_type == ReturnType.SELLER_CANNOT_FULFILL or not ret.refund_amount:
+        return None
+    if order.total_amount is None or OrderAdjustment.objects.filter(return_request=ret).exists():
+        return None
+    before = order.total_amount
+    after = max(before - ret.refund_amount, Decimal("0"))
+    adjustment = OrderAdjustment.objects.create(
+        order=order, amount=after - before, total_before=before, total_after=after, return_request=ret,
+        reason=f"Return {ret.reference} refunded"[:255], created_by=user)
+    order.total_amount = after
+    order.save(update_fields=["total_amount", "updated_at"])
+    return adjustment
 
 
 @transaction.atomic

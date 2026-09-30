@@ -318,8 +318,8 @@ class OrderItem(models.Model):
 
 class OrderAdjustment(models.Model):
     """
-    An explicit change to what an order costs after it was placed (e.g. a seller couldn't supply its
-    items). The order total is updated, and this row keeps the before/after and why — nothing is
+    An explicit change to what an order costs after it was placed (a seller couldn't supply its
+    items, or returned items were refunded). The order total is updated, and this row keeps the before/after and why — nothing is
     rewritten silently. Rows are never edited.
     """
 
@@ -330,6 +330,8 @@ class OrderAdjustment(models.Model):
     reason = models.CharField(max_length=255)
     fulfillment = models.ForeignKey("marketplace.VendorFulfillment", null=True, blank=True, on_delete=models.PROTECT,
                                     related_name="order_adjustments")
+    return_request = models.ForeignKey("returns.ReturnRequest", null=True, blank=True, on_delete=models.PROTECT,
+                                       related_name="order_adjustments", help_text="The refunded return, if any")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                    related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)

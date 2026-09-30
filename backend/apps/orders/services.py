@@ -232,6 +232,8 @@ def payment_summary(order: Order, paid: Decimal | None = None) -> PaymentSummary
     due = max(total - paid, Decimal("0")) if total is not None else None
     if total is not None and total > 0 and paid >= total:
         status = "fully_paid"
+    elif total == 0 and paid == 0 and order.adjustments.exists():
+        status = "fully_paid"  # everything was refunded / taken off: nothing is owed
     elif order.installment_plan:
         status = "installment"
     elif paid > 0:

@@ -142,6 +142,29 @@ def test_partial_refund_is_shared_by_value_and_extra_is_agizas(app, home, shop, 
     assert not VendorLedgerEntry.objects.filter(kind="refund", vendor=vendor_a.vendor).exists()
 
 
+def test_a_refunded_return_is_never_shown_as_money_the_customer_owes(app, home, shop, staff, vendor_a, vendor_b):
+    order = delivered_paid_order(app, home, shop, staff, [(vendor_a.variant, 1), (vendor_b.variant, 1)],
+                                 key="rt-owed-0001", vendors=[vendor_a, vendor_b])
+    total = order.total_amount
+    item = order.items.get(variant=vendor_b.variant)
+    ret = ReturnRequest.objects.get(reference=ask_return(app, order, item).json()["reference"])
+    refund(staff, ret, amount="30000")
+    order.refresh_from_db()
+    assert order.total_amount == total - D("30000")  # an explicit, immutable adjustment lowers the total
+    adj = order.adjustments.get()
+    assert (adj.return_request_id, adj.amount, adj.total_before) == (ret.pk, D("-30000"), total)
+    summary = order_services.payment_summary(order)
+    assert (summary.due, summary.status) == (D("0"), "fully_paid")
+    body = app.get(f"{APP}/orders/{order.reference}/").json()
+    assert D(body["payment"]["due"]) == 0
+    shown = D(body["amounts"]["subtotal"]) + D(body["amounts"]["shipping_fee"]) + sum(
+        D(a["amount"]) for a in body["adjustments"])
+    assert shown == D(body["amounts"]["total"]) == order.total_amount
+    # Nothing more can be charged for the refunded goods.
+    with pytest.raises(Exception, match="outstanding balance"):
+        order_services.record_payment(order, amount=D("30000"), method="cash", user=staff.user)
+
+
 def test_resellable_returns_go_back_to_the_sellers_stock(app, home, shop, staff, vendor_a):
     order = delivered_paid_order(app, home, shop, staff, [(vendor_a.variant, 2)], vendors=[vendor_a])
     assert StockItem.objects.get(variant=vendor_a.variant).quantity == 8

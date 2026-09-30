@@ -53,7 +53,10 @@ def test_refund_workflow_owners_history_and_payment(ops, paid):
     refund = Payment.objects.get(order=paid, kind="refund")
     assert refund.amount == 2000000 and refund.reference == "MP-1"
     summary = ops.get(f"/api/orders/international/{paid.id}/").json()["payment"]
-    assert summary["paid"] == "500000.00" and summary["status"] == "partial"
+    # The refunded goods are taken off the order (explicit adjustment): nothing is owed for them.
+    assert summary["paid"] == "500000.00" and summary["total"] == "500000.00" and summary["due"] == "0.00"
+    assert summary["status"] == "fully_paid"
+    assert paid.adjustments.get().return_request_id == rid
     history = ops.get(f"{RET}/{rid}/history/").json()
     assert [h["to_status"] for h in history] == ["initiated", "in_transit", "received", "inspected", "approved",
                                                  "closed"]
