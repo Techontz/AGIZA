@@ -16,7 +16,7 @@ export default function ReturnsPage() {
   const list = useQuery({ queryKey: ["returns"], queryFn: returnApi.list });
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-ink">Returns & refunds</h1>
+      <h1 className="text-[24px] font-medium text-ink">Returns & refunds</h1>
       {list.isLoading ? (
         <Skeleton className="h-40" />
       ) : list.isError ? (

@@ -40,7 +40,7 @@ export default function ReturnRequestPage() {
       <Link href={`/account/orders/${reference}`} className="inline-flex items-center gap-1 text-[14px] font-medium text-muted hover:text-ink">
         <ArrowLeft className="size-4" aria-hidden /> Order {reference}
       </Link>
-      <h1 className="text-2xl font-bold text-ink">Return items</h1>
+      <h1 className="text-[24px] font-medium text-ink">Return items</h1>
       {!d.can_return ? (
         <Notice tone="warning">
           {d.window_open ? "Everything from this order is already being returned." : `Items can be returned within ${d.window_days} days of delivery. This order can't be returned now — contact AGIZA support if something is wrong.`}

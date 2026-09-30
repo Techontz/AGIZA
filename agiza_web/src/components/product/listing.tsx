@@ -3,7 +3,7 @@ import Link from "next/link";
 
 import type { Category, Paginated, ProductCard } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
-import { categoryHref, plural } from "@/lib/format";
+import { categoryHref } from "@/lib/format";
 import { publicGet } from "@/lib/server/django";
 
 import { ButtonLink } from "../ui/button";
@@ -87,30 +87,30 @@ export async function Listing({
   const active = [params.q && `“${params.q}”`, params.deals && "Ofa kali", params.featured && "Featured", params.stock && "In stock", (params.min || params.max) && "Price"].filter(Boolean);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[232px_1fr]">
+    <div className="grid gap-[30px] lg:grid-cols-[290px_minmax(0,1fr)]">
       <aside className="hidden lg:block" aria-label="Filters">
-        <div className="sticky top-32 space-y-6">{filters}</div>
+        <div className="space-y-5 [&>*]:bg-canvas [&>*]:p-5">{filters}</div>
       </aside>
       <div className="min-w-0">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-[14px] text-muted" aria-live="polite">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 bg-canvas px-4 py-2.5">
+          <p className="text-[14px] text-ink" aria-live="polite">
             {title ? <span className="sr-only">{title}: </span> : null}
-            {plural(data.count, "product")}
-            {active.length ? <> for {active.join(", ")}</> : null}
+            <strong className="font-semibold">{data.count}</strong> {data.count === 1 ? "Product" : "Products"} found
+            {active.length ? <span className="text-muted"> for {active.join(", ")}</span> : null}
           </p>
           <div className="flex items-center gap-2">
             <details className="group relative lg:hidden">
-              <summary className="flex h-10 cursor-pointer list-none items-center gap-2 rounded-md border border-line bg-surface px-3 text-[14px] font-medium text-ink [&::-webkit-details-marker]:hidden">
+              <summary className="flex h-10 cursor-pointer list-none items-center gap-2 rounded-sm border border-line-strong bg-surface px-3 text-[14px] font-medium text-ink [&::-webkit-details-marker]:hidden">
                 <SlidersHorizontal className="size-4" aria-hidden /> Filters
               </summary>
-              <div className="absolute right-0 z-20 mt-2 w-[min(320px,88vw)] space-y-6 rounded-lg border border-line bg-surface p-4 shadow-raised">{filters}</div>
+              <div className="absolute right-0 z-20 mt-2 w-[min(320px,88vw)] space-y-6 border border-line bg-surface p-4 shadow-raised">{filters}</div>
             </details>
             <SortSelect value={params.sort || "newest"} options={SORTS} />
           </div>
         </div>
         {data.results.length ? (
           <>
-            <ProductGrid products={data.results} priorityCount={4} className="xl:grid-cols-4" />
+            <ProductGrid products={data.results} priorityCount={4} className="xl:grid-cols-4 2xl:grid-cols-5" />
             <Pagination path={path} params={params} page={data.page} total={data.total_pages} />
           </>
         ) : (
@@ -135,7 +135,7 @@ function Filters({ path, params, categories, activeCategory }: { path: string; p
     <>
       {categories?.length ? (
         <nav aria-label="Categories">
-          <h2 className="mb-2 text-[13px] font-semibold tracking-wide text-ink uppercase">Categories</h2>
+          <h2 className="mb-4 border-b border-line-strong/60 pb-3 text-[16px] font-medium tracking-wide text-ink uppercase">Categories</h2>
           <ul className="space-y-0.5">
             <li>
               <Link href={hrefWith("/shop", params, { page: "" })} className={catClass(!activeCategory && path === "/shop")}>
@@ -164,7 +164,7 @@ function Filters({ path, params, categories, activeCategory }: { path: string; p
         </nav>
       ) : null}
       <form action={path} method="get" className="space-y-2">
-        <h2 className="text-[13px] font-semibold tracking-wide text-ink uppercase">Price (TZS)</h2>
+        <h2 className="mb-2 border-b border-line-strong/60 pb-3 text-[16px] font-medium tracking-wide text-ink uppercase">Price (TZS)</h2>
         {params.q ? <input type="hidden" name="q" value={params.q} /> : null}
         {params.sort ? <input type="hidden" name="sort" value={params.sort} /> : null}
         <div className="flex items-center gap-2">
@@ -172,12 +172,12 @@ function Filters({ path, params, categories, activeCategory }: { path: string; p
           <span className="text-muted">–</span>
           <input name="max" inputMode="numeric" defaultValue={params.max} placeholder="Max" aria-label="Maximum price" className="h-10 w-full rounded-md border border-line bg-surface px-3 text-[14px] focus:border-brand focus:outline-none" />
         </div>
-        <button type="submit" className="h-9 w-full rounded-md border border-line-strong bg-surface text-[14px] font-semibold text-ink hover:bg-canvas">
+        <button type="submit" className="h-9 w-full rounded-sm bg-ink text-[14px] font-semibold text-white hover:bg-[#333]">
           Apply
         </button>
       </form>
       <div className="space-y-1.5">
-        <h2 className="text-[13px] font-semibold tracking-wide text-ink uppercase">Show</h2>
+        <h2 className="mb-2 border-b border-line-strong/60 pb-3 text-[16px] font-medium tracking-wide text-ink uppercase">Show</h2>
         <Toggle href={hrefWith(path, params, { deals: params.deals ? "" : "1", page: "" })} on={Boolean(params.deals)} label="Ofa kali deals" />
         <Toggle href={hrefWith(path, params, { featured: params.featured ? "" : "1", page: "" })} on={Boolean(params.featured)} label="Featured" />
         <Toggle href={hrefWith(path, params, { stock: params.stock ? "" : "1", page: "" })} on={Boolean(params.stock)} label="In stock only" />
@@ -194,8 +194,8 @@ function Filters({ path, params, categories, activeCategory }: { path: string; p
 function Toggle({ href, on, label }: { href: string; on: boolean; label: string }) {
   return (
     <Link href={href} className="flex items-center gap-2 text-[14px] text-ink" role="checkbox" aria-checked={on}>
-      <span className={cn("flex size-4 items-center justify-center rounded-[4px] border", on ? "border-primary bg-primary" : "border-line-strong bg-surface")}>
-        {on ? <span className="size-1.5 rounded-full bg-white" /> : null}
+      <span className={cn("flex size-4 items-center justify-center rounded-[2px] border", on ? "border-ink bg-ink" : "border-line-strong bg-surface")}>
+        {on ? <span className="size-1.5 bg-white" /> : null}
       </span>
       {label}
     </Link>
@@ -204,9 +204,9 @@ function Toggle({ href, on, label }: { href: string; on: boolean; label: string 
 
 const catClass = (active: boolean, sub = false) =>
   cn(
-    "block rounded-sm px-2 py-1.5 hover:bg-surface hover:text-primary",
+    "block py-1.5 hover:text-primary",
     sub ? "text-[13px]" : "text-[14px]",
-    active ? "bg-surface font-semibold text-primary shadow-card" : "text-text",
+    active ? "font-semibold text-ink" : "text-text",
   );
 
 function Pagination({ path, params, page, total }: { path: string; params: ListingParams; page: number; total: number }) {
@@ -223,7 +223,7 @@ function Pagination({ path, params, page, total }: { path: string; params: Listi
           <Link
             href={hrefWith(path, params, { page: String(p) })}
             aria-current={p === page ? "page" : undefined}
-            className={cn("flex size-10 items-center justify-center rounded-md text-[14px] font-semibold", p === page ? "bg-primary text-white" : "bg-surface text-ink shadow-card hover:text-primary")}
+            className={cn("flex size-10 items-center justify-center rounded-sm text-[14px] font-semibold", p === page ? "bg-yellow text-ink" : "bg-canvas text-ink hover:bg-yellow")}
           >
             {p}
           </Link>
@@ -237,7 +237,7 @@ function Pagination({ path, params, page, total }: { path: string; params: Listi
 }
 
 function PageLink({ href, label, children }: { href: string | null; label: string; children: React.ReactNode }) {
-  const cls = "flex size-10 items-center justify-center rounded-md bg-surface shadow-card";
+  const cls = "flex size-10 items-center justify-center rounded-sm bg-canvas";
   return href ? (
     <Link href={href} aria-label={label} className={cn(cls, "text-ink hover:text-primary")}>
       {children}

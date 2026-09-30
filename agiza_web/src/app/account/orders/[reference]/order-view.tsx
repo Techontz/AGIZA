@@ -76,7 +76,7 @@ export function OrderView({ reference }: { reference: string }) {
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-ink">Order {o.reference}</h1>
+          <h1 className="text-[24px] font-medium text-ink">Order {o.reference}</h1>
           <p className="text-[14px] text-muted">
             {o.type_display} · placed {dateTime(o.created_at)}
           </p>
@@ -104,12 +104,12 @@ export function OrderView({ reference }: { reference: string }) {
                 {o.timeline.steps.map((s, i) => (
                   <li key={s.key} className="relative flex gap-3">
                     {i < o.timeline.steps.length - 1 ? (
-                      <span aria-hidden className={cn("absolute top-6 left-[11px] h-[calc(100%-8px)] w-0.5", s.state === "completed" ? "bg-brand" : "bg-line")} />
+                      <span aria-hidden className={cn("absolute top-6 left-[11px] h-[calc(100%-8px)] w-0.5", s.state === "completed" ? "bg-yellow" : "bg-line")} />
                     ) : null}
                     <span
                       className={cn(
                         "relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full border-2",
-                        s.state === "completed" ? "border-brand bg-brand text-white" : s.state === "current" ? "border-brand bg-surface" : "border-line-strong bg-surface",
+                        s.state === "completed" ? "border-yellow bg-yellow text-ink" : s.state === "current" ? "border-brand bg-surface" : "border-line-strong bg-surface",
                       )}
                     >
                       {s.state === "completed" ? <Check className="size-3.5" aria-hidden /> : s.state === "current" ? <span className="size-2 rounded-full bg-brand" /> : null}

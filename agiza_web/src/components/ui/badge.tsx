@@ -4,7 +4,7 @@ export type Tone = "neutral" | "brand" | "success" | "warning" | "danger" | "inf
 
 const tones: Record<Tone, string> = {
   neutral: "bg-tile text-text",
-  brand: "bg-primary-soft text-primary",
+  brand: "bg-yellow text-ink",
   success: "bg-success-soft text-success",
   warning: "bg-warning-soft text-warning",
   danger: "bg-danger-soft text-danger",
@@ -13,7 +13,7 @@ const tones: Record<Tone, string> = {
 
 export function Badge({ children, tone = "neutral", className }: { children: React.ReactNode; tone?: Tone; className?: string }) {
   return (
-    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] leading-[14px] font-medium", tones[tone], className)}>
+    <span className={cn("inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-[12px] leading-4 font-semibold", tones[tone], className)}>
       {children}
     </span>
   );

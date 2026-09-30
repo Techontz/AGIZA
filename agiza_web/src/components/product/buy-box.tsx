@@ -51,14 +51,9 @@ export function BuyBox({ product }: { product: ProductDetail }) {
 
   return (
     <div className="space-y-5">
-      <div>
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <span className="text-[28px] leading-tight font-bold text-primary tabular-nums">{money(variant?.price ?? product.price)}</span>
-          {compare ? <span className="text-[16px] text-subtle line-through tabular-nums">{money(compare)}</span> : null}
-        </div>
-        <p className={cn("mt-1 text-[14px] font-medium", available > 0 ? "text-success" : "text-danger")}>
-          {available > 0 ? (available <= 3 ? `Only ${available} left` : "In stock") : "Out of stock"}
-        </p>
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <span className={cn("text-[24px] leading-tight tabular-nums", compare ? "text-sale" : "text-ink")}>{money(variant?.price ?? product.price)}</span>
+        {compare ? <span className="text-[18px] font-semibold text-muted line-through tabular-nums">{money(compare)}</span> : null}
       </div>
 
       {product.variants.length > 1 ? (
@@ -79,8 +74,8 @@ export function BuyBox({ product }: { product: ProductDetail }) {
                     setAdded(false);
                   }}
                   className={cn(
-                    "rounded-md border px-3.5 py-2 text-[14px] font-medium transition-colors",
-                    active ? "border-primary bg-primary-soft text-primary" : "border-line-strong bg-surface text-text hover:border-ink",
+                    "rounded-sm border px-3.5 py-2 text-[14px] transition-colors",
+                    active ? "border-ink bg-ink text-white" : "border-line-strong bg-surface text-text hover:border-ink",
                     v.available === 0 && "opacity-50",
                   )}
                 >
@@ -92,23 +87,36 @@ export function BuyBox({ product }: { product: ProductDetail }) {
         </fieldset>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-3">
-        {maxAdd > 0 ? <QuantityStepper value={quantity} max={maxAdd} onChange={setQuantity} /> : null}
-        <Button
-          size="lg"
-          className="min-w-44 flex-1"
-          icon={<ShoppingBag className="size-5" />}
-          onClick={() => add(false)}
-          loading={cart.add.isPending}
-          disabled={maxAdd === 0 || (!cart.isFetched && cart.signedIn)}
-        >
-          {available === 0 ? "Out of stock" : maxAdd === 0 ? "All stock in your cart" : "Add to cart"}
-        </Button>
-        {maxAdd > 0 ? (
-          <Button size="lg" variant="dark" className="flex-1 sm:flex-none" icon={<Zap className="size-5" />} onClick={() => add(true)} disabled={cart.add.isPending}>
-            Buy now
+      <p className={cn("text-[14px]", available > 0 ? "text-success" : "text-danger")}>
+        ({available > 0 ? (available <= 3 ? `Only ${available} left` : "Available") : "Out of stock"})
+      </p>
+      <div>
+        {maxAdd > 0 ? <p className="mb-1.5 text-[14px] text-ink">Quantity</p> : null}
+        <div className="flex flex-wrap items-center gap-2.5 max-sm:flex-col max-sm:items-stretch max-sm:[&>div]:w-full max-sm:[&>div]:justify-between">
+          {maxAdd > 0 ? <QuantityStepper value={quantity} max={maxAdd} onChange={setQuantity} /> : null}
+          <Button
+            size="lg"
+            className="min-w-40 max-sm:w-full"
+            icon={<ShoppingBag className="size-5" />}
+            onClick={() => add(false)}
+            loading={cart.add.isPending}
+            disabled={maxAdd === 0 || (!cart.isFetched && cart.signedIn)}
+          >
+            {available === 0 ? "Out of stock" : maxAdd === 0 ? "All stock in your cart" : "Add to cart"}
           </Button>
-        ) : null}
+          {maxAdd > 0 ? (
+            <Button
+              size="lg"
+              variant="yellow"
+              className="max-sm:w-full"
+              icon={<Zap className="size-5" />}
+              onClick={() => add(true)}
+              disabled={cart.add.isPending}
+            >
+              Buy now
+            </Button>
+          ) : null}
+        </div>
       </div>
       {added ? (
         <p className="flex items-center gap-1.5 text-[14px] font-medium text-success">

@@ -21,7 +21,7 @@ export function ServicePage({
       <Breadcrumbs items={[{ label: title }]} />
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-12">
         <div>
-          <h1 className="text-[28px] leading-tight font-bold text-ink sm:text-[34px]">{title}</h1>
+          <h1 className="text-[26px] leading-tight font-medium text-ink sm:text-[32px]">{title}</h1>
           <p className="mt-3 max-w-xl text-[16px] text-muted">{lead}</p>
           <ol className="mt-8 space-y-5">
             {steps.map((s, i) => (
@@ -49,7 +49,7 @@ export function ProsePage({ title, updated, draft, children }: { title: string; 
   return (
     <Container className="max-w-3xl py-8 sm:py-10">
       <Breadcrumbs items={[{ label: title }]} />
-      <h1 className="text-[28px] font-bold text-ink sm:text-[34px]">{title}</h1>
+      <h1 className="text-[26px] font-medium text-ink sm:text-[32px]">{title}</h1>
       {updated ? <p className="mt-1 text-[13px] text-muted">Last updated {updated}</p> : null}
       {draft ? (
         <p role="note" className="mt-4 rounded-md border border-warning/40 bg-warning-soft p-3 text-[14px] text-warning">

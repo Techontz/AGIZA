@@ -29,7 +29,7 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname),
   images: {
     // Product and store images come from Django through our own /img routes.
-    localPatterns: [{ pathname: "/img/**" }, { pathname: "/mark.png" }, { pathname: "/icon.png" }],
+    localPatterns: [{ pathname: "/img/**" }, { pathname: "/mark.png" }, { pathname: "/mark-ink.png" }, { pathname: "/icon.png" }],
     formats: ["image/avif", "image/webp"],
     deviceSizes: [360, 480, 640, 768, 1024, 1280, 1600],
     imageSizes: [48, 64, 96, 128, 160, 200, 256, 320],

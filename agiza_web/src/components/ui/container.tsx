@@ -1,6 +1,6 @@
 import { cn } from "@/lib/cn";
 
-/** Page width: 16px gutters on phones, comfortable margins on desktop, never wider than 1280px. */
+/** Page width as on agizastore.com: fluid with 15px gutters on phones and 30px on desktop, up to 1650px. */
 export function Container({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn("mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8", className)}>{children}</div>;
+  return <div className={cn("mx-auto w-full max-w-[1650px] px-[15px] lg:px-[30px]", className)}>{children}</div>;
 }

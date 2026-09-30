@@ -26,7 +26,7 @@ export default function RequestsPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-ink">Buy for me / Deliver for me</h1>
+        <h1 className="text-[24px] font-medium text-ink">Buy for me / Deliver for me</h1>
         <div className="flex gap-2">
           <ButtonLink href="/buy-for-me" size="sm">
             New Buy for me

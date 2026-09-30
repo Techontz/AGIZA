@@ -32,7 +32,7 @@ export function AccountNav() {
           <p className="text-[13px] text-muted">{customer.phone}</p>
         </div>
       ) : null}
-      <ul className="no-scrollbar -mx-4 flex gap-1 overflow-x-auto px-4 lg:mx-0 lg:flex-col lg:rounded-lg lg:bg-surface lg:p-2 lg:shadow-card">
+      <ul className="no-scrollbar -mx-[15px] flex gap-1 overflow-x-auto px-[15px] lg:mx-0 lg:flex-col lg:rounded-lg lg:bg-surface lg:p-2 lg:shadow-card">
         {links.map(({ href, label, icon: Icon, ...rest }) => {
           const active = "exact" in rest ? pathname === href : pathname.startsWith(href);
           return (

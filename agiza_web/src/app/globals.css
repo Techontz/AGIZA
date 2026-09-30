@@ -1,42 +1,51 @@
 @import "tailwindcss";
 
 /*
- * AGIZA design tokens — the same values as the customer app (agiza_mobile/src/theme/tokens.ts):
- * ink wordmark, amber → orange flame, `primary` is the flame orange darkened for AA contrast
- * with white text. Type is Outfit. Cards are white on a soft grey canvas with 16px radius.
+ * AGIZA design tokens, in the visual language of agizastore.com: Work Sans, the AGIZA yellow
+ * (#fcb800) header band, black primary actions, blue product links, flat 4px corners, hairline
+ * borders instead of shadows and light grey section bars. Colour roles:
+ *   yellow  — the brand band and "Buy now"-style actions (always with black text)
+ *   primary — links and active states (blue, AA on white)
+ *   brand   — decorative accents (deep amber)
  */
 @theme {
-  --font-sans: var(--font-outfit), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: var(--font-work-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 
-  --color-ink: #181818;
-  --color-text: #1f2937;
-  --color-muted: #6b7280;
-  --color-subtle: #9ca3af;
-  --color-primary: #c24a04;
-  --color-primary-pressed: #a63f03;
-  --color-brand: #e25805;
-  --color-amber: #fbbd15;
-  --color-primary-soft: #fff4ec;
-  --color-canvas: #f6f7f9;
+  --color-ink: #000000;
+  --color-text: #222222;
+  --color-muted: #666666;
+  --color-subtle: #999999;
+  --color-yellow: #fcb800;
+  --color-yellow-pressed: #e5a700;
+  --color-primary: #0066cc;
+  --color-primary-pressed: #004c99;
+  --color-link: #0066cc;
+  --color-brand: #d99a00;
+  --color-amber: #fcb800;
+  --color-sale: #ec0101;
+  --color-primary-soft: #fff6d6;
+  --color-canvas: #f4f4f4;
+  --color-bar: #f1f1f1;
   --color-surface: #ffffff;
-  --color-tile: #f3f4f6;
-  --color-line: #e5e7eb;
-  --color-line-strong: #d1d5db;
-  --color-success: #15803d;
-  --color-success-soft: #ecfdf3;
-  --color-warning: #b45309;
-  --color-warning-soft: #fffbeb;
-  --color-danger: #b91c1c;
-  --color-danger-soft: #fef2f2;
-  --color-info: #1d4ed8;
-  --color-info-soft: #eff6ff;
+  --color-tile: #ffffff;
+  --color-line: #e5e5e5;
+  --color-line-strong: #bfbfbf;
+  --color-success: #0c8a2f;
+  --color-success-soft: #ecf9ef;
+  --color-warning: #a15c00;
+  --color-warning-soft: #fff7e6;
+  --color-danger: #c80000;
+  --color-danger-soft: #fdeeee;
+  --color-info: #0066cc;
+  --color-info-soft: #eef5fc;
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
+  --radius-sm: 4px;
+  --radius-md: 4px;
+  --radius-lg: 4px;
 
-  --shadow-card: 0 2px 8px rgb(17 24 39 / 0.06);
-  --shadow-raised: 0 8px 24px rgb(17 24 39 / 0.08);
+  /* Flat, bordered surfaces as on agizastore.com: a hairline instead of a drop shadow. */
+  --shadow-card: 0 0 0 1px #e5e5e5;
+  --shadow-raised: 0 2px 12px rgb(0 0 0 / 0.1);
 
   --text-caption: 11px;
   --text-caption--line-height: 14px;
@@ -52,23 +61,23 @@ html {
 }
 
 body {
-  background: var(--color-canvas);
+  background: var(--color-surface);
   color: var(--color-text);
   font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.4;
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
 }
 
 ::selection {
-  background: var(--color-primary-soft);
-  color: var(--color-primary-pressed);
+  background: var(--color-yellow);
+  color: #000;
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-brand);
+  outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
 

@@ -46,7 +46,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
           { label: category.name },
         ]}
       />
-      <h1 className="text-2xl font-bold text-ink sm:text-[28px]">{category.name}</h1>
+      <h1 className="text-[24px] font-medium text-ink sm:text-[28px]">{category.name}</h1>
       {category.description ? <p className="mt-1 max-w-2xl text-muted">{category.description}</p> : null}
       <div className="mt-5">
         <Listing path={categoryHref(category)} params={listing} scope={{ category: category.id }} categories={categories} activeCategory={category.id} title={category.name} />

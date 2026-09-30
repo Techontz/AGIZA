@@ -5,11 +5,11 @@ import { expect, test } from "@playwright/test";
 test("anyone can browse without an account", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  await expect(page.getByRole("link", { name: /sign in/i }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: /^(login|my account)$/i }).filter({ visible: true }).first()).toBeVisible();
   await page.goto("/shop");
-  await expect(page.getByText(/\d+ products?/).first()).toBeVisible();
+  await expect(page.getByText(/\d+ products? found/i).first()).toBeVisible();
   await page.goto("/stores");
-  await expect(page.getByRole("heading", { name: "Stores on AGIZA" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Our Stores" })).toBeVisible();
 });
 
 test("search ignores punctuation: levis finds Levi's", async ({ page }) => {
@@ -22,7 +22,7 @@ test("product pages are indexable, show the seller and link to the store", async
   await page.getByRole("link", { name: /Levi's 501 Original Jeans/ }).first().click();
   await expect(page).toHaveURL(/\/product\/\d+\/levis-501-original-jeans$/);
   await page.goto(page.url()); // as a crawler sees it: a fresh server-rendered load
-  await expect(page.getByText("Sold by")).toBeVisible();
+  await expect(page.getByText("Sold by").first()).toBeVisible();
   const canonical = await page.locator('link[rel="canonical"]').getAttribute("href");
   expect(canonical).toMatch(/\/product\/\d+\/levis-501-original-jeans$/);
   const ld = await page.locator('script[type="application/ld+json"]').allTextContents();
@@ -40,7 +40,7 @@ test("a visitor's cart is priced by the server and checkout asks to sign in", as
   await expect(page.getByText("Added to your cart").first()).toBeVisible();
   await page.goto("/cart");
   await expect(page.getByText("Fashion Forward").first()).toBeVisible();
-  await expect(page.getByText("Order summary")).toBeVisible();
+  await expect(page.getByText("Cart totals")).toBeVisible();
   await page.getByRole("link", { name: /sign in to check out/i }).click();
   await expect(page).toHaveURL(/\/login\?next=%2Fcheckout|\/login\?next=\/checkout/);
 });

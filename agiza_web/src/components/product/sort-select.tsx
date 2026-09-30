@@ -18,7 +18,7 @@ export function SortSelect({ value, options }: { value: string; options: { value
           next.delete("page");
           router.push(`${pathname}?${next.toString()}`);
         }}
-        className="h-10 rounded-md border border-line bg-surface px-3 text-[14px] font-medium text-ink focus:border-brand focus:outline-none"
+        className="h-10 min-w-40 rounded-sm border border-line-strong bg-surface px-3 text-[14px] text-ink focus:border-ink focus:outline-none"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>

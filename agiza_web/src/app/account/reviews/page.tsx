@@ -32,14 +32,14 @@ export default function MyReviewsPage() {
   const { reviews, to_review } = data.data;
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-ink">Reviews</h1>
+      <h1 className="text-[24px] font-medium text-ink">Reviews</h1>
       {to_review.length ? (
         <Card>
           <h2 className="mb-3 text-lg font-semibold text-ink">Waiting for your review</h2>
           <ul className="grid gap-3 sm:grid-cols-2">
             {to_review.map((p) => (
               <li key={p.product_id}>
-                <Link href={`${productHref({ id: p.product_id, name: p.name })}#reviews-title`} className="flex items-center gap-3 rounded-md border border-line p-3 hover:border-brand">
+                <Link href={`${productHref({ id: p.product_id, name: p.name })}#tab-reviews`} className="flex items-center gap-3 rounded-md border border-line p-3 hover:border-brand">
                   <span className="relative size-12 shrink-0 overflow-hidden rounded-sm bg-tile">
                     <ProductImage src={p.image} alt="" sizes="48px" iconClass="size-5" />
                   </span>

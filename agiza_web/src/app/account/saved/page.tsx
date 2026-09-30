@@ -12,7 +12,7 @@ export default function SavedPage() {
   const { server } = useWishlist();
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-ink">Saved products</h1>
+      <h1 className="text-[24px] font-medium text-ink">Saved products</h1>
       {server.isLoading ? (
         <Skeleton className="h-64" />
       ) : server.isError ? (

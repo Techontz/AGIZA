@@ -24,11 +24,11 @@ const STEPS = [
 export default function SellPage() {
   return (
     <>
-      <section className="border-b border-line bg-surface">
-        <Container className="grid items-center gap-8 py-10 sm:py-14 lg:grid-cols-[1.2fr_1fr]">
+      <Container className="py-6 sm:py-8">
+        <Breadcrumbs items={[{ label: "Sell on AGIZA" }]} />
+        <section className="grid items-center gap-8 lg:grid-cols-[1.2fr_1fr]">
           <div>
-            <Breadcrumbs items={[{ label: "Sell on AGIZA" }]} />
-            <h1 className="text-[30px] leading-tight font-bold text-ink sm:text-[40px]">Sell to customers across Tanzania</h1>
+            <h1 className="text-[28px] leading-tight font-semibold text-ink sm:text-[36px]">Sell to customers across Tanzania</h1>
             <p className="mt-3 max-w-xl text-[17px] text-muted">
               Open your store on AGIZA. Your products appear on the AGIZA website and app; customers pay AGIZA, and AGIZA collects
               from you and delivers.
@@ -41,8 +41,8 @@ export default function SellPage() {
               { icon: Truck, title: "No delivery hassle", text: "AGIZA picks up from your shop and handles delivery and tracking." },
               { icon: BadgeCheck, title: "A verified store page", text: "Your own store page with your logo, products and a verified badge." },
             ].map((b) => (
-              <li key={b.title} className="flex gap-3 rounded-lg bg-canvas p-4">
-                <b.icon className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden />
+              <li key={b.title} className="flex gap-3 bg-canvas p-5">
+                <b.icon className="mt-0.5 size-6 shrink-0 text-ink" aria-hidden />
                 <span>
                   <span className="block font-semibold text-ink">{b.title}</span>
                   <span className="text-[14px] text-muted">{b.text}</span>
@@ -50,16 +50,16 @@ export default function SellPage() {
               </li>
             ))}
           </ul>
-        </Container>
-      </section>
-      <Container className="py-10 sm:py-12">
-        <h2 id="how" className="mb-5 scroll-mt-32 text-xl font-semibold text-ink sm:text-2xl">
+        </section>
+      </Container>
+      <Container className="pb-4">
+        <h2 id="how" className="mb-5 scroll-mt-32 border-b border-line pb-3 text-[20px] font-semibold text-ink">
           How it works
         </h2>
         <ol className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {STEPS.map((s, i) => (
-            <li key={s.title} className="rounded-lg bg-surface p-5 shadow-card">
-              <span className="flex size-10 items-center justify-center rounded-full bg-primary-soft text-brand">
+            <li key={s.title} className="border border-line bg-surface p-5">
+              <span className="flex size-10 items-center justify-center rounded-full bg-yellow text-ink">
                 <s.icon className="size-5" aria-hidden />
               </span>
               <p className="mt-3 text-[13px] font-semibold text-muted">Step {i + 1}</p>
@@ -84,11 +84,11 @@ function SellerAppCta() {
     SELLER_IOS_APP_URL ? { href: SELLER_IOS_APP_URL, label: "Download AGIZA Seller on the App Store" } : null,
   ].filter((l): l is { href: string; label: string } => l !== null);
   return (
-    <div className="mt-6 max-w-xl rounded-lg bg-primary-soft p-5">
+    <div className="mt-6 max-w-xl bg-yellow p-5">
       <p className="flex items-center gap-2 font-semibold text-ink">
-        <Smartphone className="size-5 text-brand" aria-hidden /> Sell with the AGIZA Seller app
+        <Smartphone className="size-5 text-ink" aria-hidden /> Sell with the AGIZA Seller app
       </p>
-      <p className="mt-1 text-[14px] text-muted">
+      <p className="mt-1 text-[14px] text-ink/80">
         Apply, add products, handle orders and returns, and follow your earnings from your phone. Use the same phone number
         and password as your AGIZA account.
       </p>
@@ -103,7 +103,7 @@ function SellerAppCta() {
       ) : (
         <p className="mt-3 text-[14px] text-ink">
           The app is coming soon to Google Play and the App Store. To start selling now, email{" "}
-          <a href={`mailto:${SUPPORT_EMAIL}?subject=Selling%20on%20AGIZA`} className="font-semibold text-primary hover:underline">
+          <a href={`mailto:${SUPPORT_EMAIL}?subject=Selling%20on%20AGIZA`} className="font-semibold text-ink underline">
             {SUPPORT_EMAIL}
           </a>
           .

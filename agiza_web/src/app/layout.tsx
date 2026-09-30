@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Outfit } from "next/font/google";
+import { Work_Sans } from "next/font/google";
 
 import { Footer } from "@/components/layout/footer";
 import { Header } from "@/components/layout/header";
@@ -10,7 +10,7 @@ import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL } from "@/lib/site"
 import "./globals.css";
 import { Providers } from "./providers";
 
-const outfit = Outfit({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-outfit", display: "swap" });
+const workSans = Work_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-work-sans", display: "swap" });
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
 };
 
-export const viewport: Viewport = { themeColor: "#E25805", width: "device-width", initialScale: 1 };
+export const viewport: Viewport = { themeColor: "#FCB800", width: "device-width", initialScale: 1 };
 
 async function loadCategories(): Promise<Category[]> {
   try {
@@ -44,7 +44,7 @@ async function loadCategories(): Promise<Category[]> {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const categories = await loadCategories();
   return (
-    <html lang="en" className={outfit.variable}>
+    <html lang="en" className={workSans.variable}>
       <body className="flex min-h-dvh flex-col">
         <a href="#main" className="sr-only z-50 rounded-sm bg-ink px-3 py-2 text-white focus:not-sr-only focus:fixed focus:top-2 focus:left-2">
           Skip to content
@@ -54,7 +54,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <main id="main" className="flex-1">
             {children}
           </main>
-          <Footer />
+          <Footer categories={categories} />
         </Providers>
       </body>
     </html>

@@ -1,4 +1,4 @@
-import { ChevronRight, MapPin, RotateCcw, ShieldCheck, Truck } from "lucide-react";
+import { ChevronRight, MapPin, PackageSearch, RotateCcw, ShieldCheck, Truck } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
@@ -8,13 +8,13 @@ import { JsonLd } from "@/components/json-ld";
 import { BuyBox } from "@/components/product/buy-box";
 import { Gallery } from "@/components/product/gallery";
 import { ProductReviews } from "@/components/product/reviews";
-import { RatingInline } from "@/components/product/stars";
+import { RatingCount } from "@/components/product/stars";
+import { ProductTabs } from "@/components/product/tabs";
 import { WishlistButton } from "@/components/product/wishlist-button";
 import { ProductRow } from "@/components/product/product-card";
 import { StoreAvatar, Verified } from "@/components/store/store-avatar";
-import { Badge } from "@/components/ui/badge";
 import { Container } from "@/components/ui/container";
-import { SectionTitle } from "@/components/ui/states";
+import { BlockTitle } from "@/components/ui/states";
 import type { Paginated, ProductCard, ProductDetail } from "@/lib/api/types";
 import { productHref, slugify, storeHref } from "@/lib/format";
 import { publicGet } from "@/lib/server/django";
@@ -102,127 +102,161 @@ export default async function ProductPage({ params }: Props) {
         ]}
       />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-10">
+      {/* agizastore.com: photos | details and buying | the service box */}
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_290px]">
         <Gallery images={product.images} name={product.name} />
 
-        <div className="space-y-6">
-          <div className="space-y-3">
-            <div className="flex flex-wrap gap-1.5">
-              {product.brand ? <Badge>{product.brand}</Badge> : null}
-              <Badge tone={product.condition === "new" ? "success" : "warning"}>{product.condition_display}</Badge>
-              {product.ofa_kali ? <Badge tone="brand">Ofa kali</Badge> : null}
-              {product.labels.map((l) => (
-                <Badge key={l.name} tone="info">
-                  {l.name}
-                </Badge>
-              ))}
+        <div>
+          <div className="flex items-start justify-between gap-3 border-b border-line pb-4">
+            <div className="min-w-0">
+              <h1 className="text-[22px] leading-[1.2] font-normal text-ink sm:text-[24px]">{product.name}</h1>
+              <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[14px] text-muted">
+                {product.brand ? (
+                  <span>
+                    Brand: <span className="text-link">{product.brand}</span>
+                  </span>
+                ) : null}
+                <a href="#tab-reviews" className="hover:text-ink">
+                  <RatingCount rating={product.rating} count={product.rating_count} className="text-[13px]" />
+                </a>
+              </p>
             </div>
-            <div className="flex items-start justify-between gap-3">
-              <h1 className="text-[24px] leading-tight font-bold text-ink sm:text-[28px]">{product.name}</h1>
-              <WishlistButton productId={product.id} name={product.name} size="lg" className="shrink-0 ring-1 ring-line" />
-            </div>
-            <RatingInline rating={product.rating} count={product.rating_count} className="text-[13px]" />
+            <WishlistButton productId={product.id} name={product.name} size="lg" className="shrink-0 ring-1 ring-line" />
           </div>
 
-          <Link
-            href={storeHref(seller)}
-            className="group flex items-center gap-3 rounded-lg bg-surface p-3.5 shadow-card ring-1 ring-line transition-shadow hover:shadow-raised"
-          >
-            <StoreAvatar seller={seller} size={44} />
-            <span className="min-w-0 flex-1">
-              <span className="block text-[12px] text-muted">Sold by</span>
-              <span className="flex items-center gap-1.5 text-[15px] font-semibold text-ink group-hover:text-primary">
-                <span className="truncate">{seller.name}</span>
-                {seller.verified ? <Verified label={seller.is_agiza ? "Official AGIZA store" : "Verified seller"} /> : null}
-              </span>
-              {seller.city ? (
-                <span className="flex items-center gap-1 text-[12px] text-muted">
-                  <MapPin className="size-3" aria-hidden /> {seller.city}
-                </span>
-              ) : seller.is_agiza ? (
-                <span className="text-[12px] text-muted">Official AGIZA store</span>
-              ) : null}
-            </span>
-            <span className="flex items-center gap-0.5 text-[13px] font-semibold text-primary">
-              Visit store <ChevronRight className="size-4" aria-hidden />
-            </span>
-          </Link>
+          <div className="py-5">
+            <BuyBox product={product} />
+          </div>
 
-          <BuyBox product={product} />
+          <table className="w-full border-t border-line text-[14px]">
+            <tbody>
+              <Spec label="Condition" value={product.condition_display} />
+              {product.brand ? <Spec label="Brand" value={product.brand} /> : null}
+              <Spec label="Category" value={product.category} />
+              <Spec
+                label="Sold by"
+                value={
+                  <Link href={storeHref(seller)} className="inline-flex items-center gap-1 text-link hover:underline">
+                    {seller.name}
+                    {seller.verified ? <Verified label={seller.is_agiza ? "Official AGIZA store" : "Verified seller"} /> : null}
+                  </Link>
+                }
+              />
+              {product.variants[0]?.sku ? <Spec label="SKU" value={product.variants[0].sku} /> : null}
+              {product.labels.length ? <Spec label="Tags" value={product.labels.map((l) => l.name).join(", ")} /> : null}
+            </tbody>
+          </table>
+        </div>
 
-          <ul className="space-y-3 rounded-lg bg-surface p-4 text-[14px] shadow-card">
-            <li className="flex gap-3">
-              <Truck className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden />
+        <aside className="self-start bg-bar p-5 lg:col-span-2 xl:col-span-1" aria-label="Delivery and services">
+          <ul className="space-y-5 text-[14px] text-ink">
+            <li className="flex gap-4">
+              <Truck className="size-7 shrink-0 stroke-[1.4]" aria-hidden />
               <span>
-                <span className="font-semibold text-ink">Delivery by AGIZA.</span>{" "}
-                <span className="text-muted">
-                  Options and the exact fee for your address are calculated at checkout
-                  {product.shipping_methods.length ? ` (${product.shipping_methods.join(", ")})` : ""}.
-                  {product.ready_to_ship_days > 0 ? ` Ready to ship in ${product.ready_to_ship_days} day${product.ready_to_ship_days === 1 ? "" : "s"}.` : ""}
-                </span>
+                Delivered by AGIZA across Tanzania. The fee for your address is calculated at checkout
+                {product.shipping_methods.length ? ` (${product.shipping_methods.join(", ")})` : ""}.
+                {product.ready_to_ship_days > 0 ? ` Ready to ship in ${product.ready_to_ship_days} day${product.ready_to_ship_days === 1 ? "" : "s"}.` : ""}
               </span>
             </li>
-            <li className="flex gap-3">
-              <ShieldCheck className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden />
-              <span className="text-muted">
-                <span className="font-semibold text-ink">Pay securely:</span> mobile money or card at checkout, or pay AGIZA on delivery.
-              </span>
+            <li className="flex gap-4">
+              <ShieldCheck className="size-7 shrink-0 stroke-[1.4]" aria-hidden />
+              <span>Pay securely with mobile money or card, or pay AGIZA on delivery.</span>
             </li>
-            <li className="flex gap-3">
-              <RotateCcw className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden />
-              <span className="text-muted">
-                <span className="font-semibold text-ink">Problem with an order?</span> Ask for a return from your account; AGIZA handles it with the seller.{" "}
-                <Link href="/returns-policy" className="font-medium text-primary hover:underline">
+            <li className="flex gap-4">
+              <RotateCcw className="size-7 shrink-0 stroke-[1.4]" aria-hidden />
+              <span>
+                Problem with an order? Ask for a return from your account.{" "}
+                <Link href="/returns-policy" className="text-link hover:underline">
                   Return policy
                 </Link>
               </span>
             </li>
+            <li className="flex gap-4">
+              <PackageSearch className="size-7 shrink-0 stroke-[1.4]" aria-hidden />
+              <span>Track every order from payment to delivery.</span>
+            </li>
           </ul>
-        </div>
+          <Link href={storeHref(seller)} className="mt-6 flex items-center gap-3 border-t border-line-strong/50 pt-5">
+            <StoreAvatar seller={seller} size={40} />
+            <span className="min-w-0 flex-1">
+              <span className="block text-[12px] text-muted">Sold by</span>
+              <span className="block truncate text-[15px] font-semibold text-ink">{seller.name}</span>
+              {seller.city ? (
+                <span className="flex items-center gap-1 text-[12px] text-muted">
+                  <MapPin className="size-3" aria-hidden /> {seller.city}
+                </span>
+              ) : null}
+            </span>
+            <ChevronRight className="size-4 text-muted" aria-hidden />
+          </Link>
+        </aside>
       </div>
 
-      <div className="mt-10 grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-10">
-        {product.description ? (
-          <section className="rounded-lg bg-surface p-5 shadow-card sm:p-6">
-            <h2 className="mb-3 text-lg font-semibold text-ink">Description</h2>
-            <div className="text-[15px] leading-relaxed whitespace-pre-line text-text">{product.description}</div>
-            {product.condition_description ? <p className="mt-4 text-[14px] text-muted">Condition: {product.condition_description}</p> : null}
-          </section>
-        ) : (
-          <div />
-        )}
-        {product.specifications.length ? (
-          <section className="rounded-lg bg-surface p-5 shadow-card sm:p-6">
-            <h2 className="mb-3 text-lg font-semibold text-ink">Specifications</h2>
-            <dl className="divide-y divide-line">
-              {product.specifications.map((s) => (
-                <div key={s.name} className="flex justify-between gap-4 py-2.5 text-[14px]">
-                  <dt className="text-muted">{s.name}</dt>
-                  <dd className="text-right font-medium text-ink">{s.value}</dd>
+      <div className="mt-12 xl:max-w-[calc(100%-320px)]">
+        <ProductTabs
+          tabs={[
+            {
+              id: "description",
+              label: "Description",
+              content: product.description ? (
+                <div className="text-[14px] leading-[1.7] whitespace-pre-line text-text">
+                  {product.description}
+                  {product.condition_description ? <p className="mt-4 text-muted">Condition: {product.condition_description}</p> : null}
                 </div>
-              ))}
-            </dl>
-          </section>
-        ) : null}
-      </div>
-
-      <div className="mt-6">
-        <ProductReviews productId={product.id} productName={product.name} />
+              ) : (
+                <p className="text-[14px] text-muted">The seller hasn&apos;t added a description yet.</p>
+              ),
+            },
+            ...(product.specifications.length
+              ? [
+                  {
+                    id: "specifications",
+                    label: "Specifications",
+                    content: (
+                      <table className="w-full max-w-2xl text-[14px]">
+                        <tbody>
+                          {product.specifications.map((s) => (
+                            <Spec key={s.name} label={s.name} value={s.value} />
+                          ))}
+                        </tbody>
+                      </table>
+                    ),
+                  },
+                ]
+              : []),
+            {
+              id: "reviews",
+              label: `Reviews (${product.rating_count})`,
+              content: <ProductReviews productId={product.id} productName={product.name} />,
+            },
+          ]}
+        />
       </div>
 
       {more.length ? (
-        <section className="mt-12">
-          <SectionTitle
+        <section className="mt-14">
+          <BlockTitle
             title={`More from ${seller.name}`}
             action={
-              <Link href={storeHref(seller)} className="text-[14px] font-semibold text-primary hover:underline">
-                Visit store →
+              <Link href={storeHref(seller)} className="text-[14px] text-muted hover:text-ink">
+                Visit store
               </Link>
             }
           />
-          <ProductRow products={more.slice(0, 10)} />
+          <ProductRow products={more.slice(0, 6)} />
         </section>
       ) : null}
     </Container>
+  );
+}
+
+function Spec({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <tr className="border-b border-line">
+      <th scope="row" className="w-[40%] py-2 pr-4 text-left align-top font-semibold text-ink">
+        {label}
+      </th>
+      <td className="py-2 text-ink">{value}</td>
+    </tr>
   );
 }

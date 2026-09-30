@@ -25,7 +25,7 @@ export function StoreAvatar({ seller, size = 40, className }: { seller: Pick<Sel
   return (
     <span
       style={{ ...box, fontSize: Math.max(11, size * 0.36) }}
-      className={cn("flex shrink-0 items-center justify-center rounded-full bg-primary-soft font-bold text-primary", className)}
+      className={cn("flex shrink-0 items-center justify-center rounded-full bg-yellow font-bold text-ink", className)}
       aria-hidden
     >
       {initials(seller.name)}

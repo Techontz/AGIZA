@@ -30,24 +30,22 @@ export default async function StoresPage({ searchParams }: Props) {
   return (
     <Container className="py-6 sm:py-8">
       <Breadcrumbs items={[{ label: "Stores" }]} />
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ink sm:text-[28px]">Stores on AGIZA</h1>
-          <p className="mt-1 max-w-xl text-muted">AGIZA&apos;s own store and verified Tanzanian sellers — one cart, one checkout, delivered by AGIZA.</p>
-        </div>
-        <form action="/stores" className="relative w-full sm:w-80" role="search">
+      <div className="mb-10 text-center">
+        <h1 className="text-[30px] font-semibold text-ink sm:text-[40px]">Our Stores</h1>
+        <p className="mx-auto mt-2 max-w-xl text-[15px] text-muted">AGIZA&apos;s own store and verified Tanzanian sellers — one cart, one checkout, delivered by AGIZA.</p>
+        <form action="/stores" className="relative mx-auto mt-6 w-full max-w-md" role="search">
           <Search className="pointer-events-none absolute top-1/2 left-3.5 size-[18px] -translate-y-1/2 text-muted" aria-hidden />
           <input
             name="q"
             defaultValue={q}
-            placeholder="Search stores"
+            placeholder="Search vendor..."
             aria-label="Search stores"
-            className="h-11 w-full rounded-md border border-line bg-surface pr-3 pl-10 text-[15px] focus:border-brand focus:ring-3 focus:ring-primary-soft focus:outline-none"
+            className="h-11 w-full rounded-sm border border-line-strong bg-surface pr-3 pl-10 text-[14px] focus:border-ink focus:outline-none"
           />
         </form>
       </div>
       {data.results.length ? (
-        <ul className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {data.results.map((s) => (
             <li key={s.slug}>
               <StoreCard store={s} />
@@ -64,7 +62,7 @@ export default async function StoresPage({ searchParams }: Props) {
               key={p}
               href={`/stores?${new URLSearchParams({ ...(q ? { q } : {}), page: String(p) })}`}
               aria-current={p === data.page ? "page" : undefined}
-              className={`flex size-10 items-center justify-center rounded-md text-[14px] font-semibold ${p === data.page ? "bg-primary text-white" : "bg-surface text-ink shadow-card"}`}
+              className={`flex size-10 items-center justify-center rounded-sm text-[14px] font-semibold ${p === data.page ? "bg-yellow text-ink" : "bg-canvas text-ink hover:bg-yellow"}`}
             >
               {p}
             </Link>

@@ -181,7 +181,7 @@ export function CheckoutView() {
   if (!addresses.data?.length) {
     return (
       <Container className="max-w-2xl py-10">
-        <h1 className="mb-2 text-2xl font-bold text-ink">Where should we deliver?</h1>
+        <h1 className="mb-2 text-[24px] font-medium text-ink">Where should we deliver?</h1>
         <p className="mb-6 text-muted">Add a delivery address to see delivery options and costs for your order.</p>
         <div className="rounded-lg bg-surface p-5 shadow-card">
           <AddressForm onDone={(a) => setAddressId(a.id)} />
@@ -216,7 +216,7 @@ export function CheckoutView() {
 
   return (
     <Container className="py-6 sm:py-8">
-      <h1 className="text-2xl font-bold text-ink sm:text-[28px]">Checkout</h1>
+      <h1 className="text-[24px] font-medium text-ink sm:text-[28px]">Checkout</h1>
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <div className="space-y-4">
           {quote.issues.map((issue) => (

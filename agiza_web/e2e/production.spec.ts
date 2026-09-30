@@ -45,12 +45,13 @@ test("the in-stock filter is a shareable URL and can be cleared", async ({ page 
   await page.goto("/shop?stock=1");
   await openFilters(page);
   await expect(page.getByRole("checkbox", { name: "In stock only" }).first()).toHaveAttribute("aria-checked", "true");
-  await expect(page.getByText(/\d+ products?/).first()).toBeVisible();
+  await expect(page.getByText(/\d+ products? found/i).first()).toBeVisible();
 });
 
 test("product pages show verified reviews; only buyers can write one", async ({ page }) => {
   await page.goto("/shop?q=levis");
   await page.getByRole("link", { name: /Levi's 501 Original Jeans/ }).first().click();
+  await page.getByRole("tab", { name: /reviews/i }).click();
   await expect(page.getByRole("heading", { name: "Customer reviews" })).toBeVisible();
   await expect(page.getByText("Only customers who received this product can review it.")).toBeVisible();
   await expect(page.getByRole("button", { name: /write a review/i })).toHaveCount(0); // signed out
@@ -73,4 +74,25 @@ test("the website is for customers: selling points to the AGIZA Seller app", asy
   await page.goto("/vendor-terms");
   await expect(page.getByRole("heading", { name: "Seller terms", level: 1 })).toBeVisible();
   await expect(page.getByText(/AGIZA Seller app/).first()).toBeVisible();
+});
+
+test("navigation: departments on desktop, a bottom bar on phones", async ({ page, isMobile }) => {
+  await page.goto("/");
+  if (isMobile) {
+    const bar = page.getByRole("navigation", { name: "Quick navigation" });
+    await expect(bar).toBeVisible();
+    await bar.getByRole("button", { name: "Categories" }).click();
+    await expect(page.getByRole("dialog", { name: "Menu" }).getByText("Shop by Department")).toBeVisible();
+  } else {
+    await page.getByRole("button", { name: "Shop by Department" }).hover();
+    await expect(page.getByRole("link", { name: "All products" }).first()).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Quick navigation" })).toBeHidden();
+  }
+});
+
+test("the rating link opens the reviews tab", async ({ page }) => {
+  await page.goto("/shop?q=levis");
+  await page.getByRole("link", { name: /Levi's 501 Original Jeans/ }).first().click();
+  await page.locator('a[href="#tab-reviews"]').click();
+  await expect(page.getByRole("tab", { name: /reviews/i })).toHaveAttribute("aria-selected", "true");
 });

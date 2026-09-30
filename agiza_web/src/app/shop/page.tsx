@@ -27,7 +27,7 @@ export default async function ShopPage({ searchParams }: Props) {
   return (
     <Container className="py-6 sm:py-8">
       <Breadcrumbs items={[{ label: params.q ? `Search results` : "Shop" }]} />
-      <h1 className="mb-5 text-2xl font-bold text-ink sm:text-[28px]">{params.q ? `Results for “${params.q}”` : "All products"}</h1>
+      <h1 className="mb-5 text-[24px] font-medium text-ink sm:text-[28px]">{params.q ? `Results for “${params.q}”` : "All products"}</h1>
       <Listing path="/shop" params={params} scope={{}} categories={categories} title="All products" />
     </Container>
   );

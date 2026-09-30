@@ -26,7 +26,7 @@ export function ProductReviews({ productId, productName }: { productId: number; 
   const data = reviews.data;
 
   return (
-    <section className="rounded-lg bg-surface p-5 shadow-card sm:p-6" aria-labelledby="reviews-title">
+    <section aria-labelledby="reviews-title">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="reviews-title" className="text-lg font-semibold text-ink">
           Customer reviews

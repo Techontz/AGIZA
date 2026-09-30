@@ -39,7 +39,7 @@ export function ProfileView() {
   const pwErr = change.error instanceof ApiError ? change.error : null;
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-ink">Profile</h1>
+      <h1 className="text-[24px] font-medium text-ink">Profile</h1>
       <Card>
         <form
           className="grid gap-4 sm:grid-cols-2"

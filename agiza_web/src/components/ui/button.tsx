@@ -3,21 +3,23 @@ import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger" | "dark";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "dark" | "yellow";
 type Size = "sm" | "md" | "lg";
 
 const variants: Record<Variant, string> = {
-  primary: "bg-primary text-white border-primary hover:bg-primary-pressed hover:border-primary-pressed",
-  secondary: "bg-surface text-ink border-line-strong hover:bg-canvas",
-  ghost: "bg-transparent text-primary border-transparent hover:bg-primary-soft",
+  // agizastore.com: the main action is black ("Add to cart"), the second one yellow ("Buy now").
+  primary: "bg-ink text-white border-ink hover:bg-[#333] hover:border-[#333]",
+  yellow: "bg-yellow text-ink border-yellow hover:bg-yellow-pressed hover:border-yellow-pressed",
+  secondary: "bg-surface text-ink border-line-strong hover:border-ink",
+  ghost: "bg-transparent text-primary border-transparent hover:bg-canvas",
   danger: "bg-surface text-danger border-danger hover:bg-danger-soft",
-  dark: "bg-ink text-white border-ink hover:bg-black",
+  dark: "bg-ink text-white border-ink hover:bg-[#333]",
 };
 
 const sizes: Record<Size, string> = {
-  sm: "h-9 px-3 text-[13px] gap-1.5 rounded-sm",
-  md: "h-11 px-4 text-[15px] gap-2 rounded-md",
-  lg: "h-[50px] px-5 text-base gap-2 rounded-md",
+  sm: "h-9 px-3.5 text-[13px] gap-1.5 rounded-sm",
+  md: "h-11 px-5 text-[15px] gap-2 rounded-sm",
+  lg: "h-[50px] px-[30px] text-[17px] gap-2 rounded-sm",
 };
 
 export function buttonClass(variant: Variant = "primary", size: Size = "md", className?: string) {

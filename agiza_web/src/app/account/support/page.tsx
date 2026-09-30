@@ -26,7 +26,7 @@ export default function SupportPage() {
   useEffect(() => end.current?.scrollIntoView({ block: "end" }), [messages.data]);
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-ink">Support</h1>
+      <h1 className="text-[24px] font-medium text-ink">Support</h1>
       <div className="flex h-[60vh] min-h-96 flex-col rounded-lg bg-surface shadow-card">
         <div className="flex-1 space-y-3 overflow-y-auto p-4">
           {messages.isLoading ? (
@@ -36,7 +36,7 @@ export default function SupportPage() {
           ) : (
             messages.data.messages.map((m) => (
               <div key={m.id} className={cn("flex", m.from === "me" ? "justify-end" : m.from === "system" ? "justify-center" : "justify-start")}>
-                <div className={cn("max-w-[80%] rounded-lg px-3.5 py-2.5 text-[15px]", m.from === "me" ? "bg-primary text-white" : m.from === "system" ? "bg-canvas text-[13px] text-muted" : "bg-canvas text-ink")}>
+                <div className={cn("max-w-[80%] rounded-lg px-3.5 py-2.5 text-[15px]", m.from === "me" ? "bg-ink text-white" : m.from === "system" ? "bg-canvas text-[13px] text-muted" : "bg-canvas text-ink")}>
                   {m.from === "agiza" && m.author ? <p className="mb-0.5 text-[12px] font-semibold text-primary">{m.author}</p> : null}
                   <p className="whitespace-pre-line">{m.body}</p>
                   <p className={cn("mt-1 text-[11px]", m.from === "me" ? "text-white/75" : "text-muted")}>{dateTime(m.created_at)}</p>

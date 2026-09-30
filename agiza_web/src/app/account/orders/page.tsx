@@ -26,7 +26,7 @@ export default function OrdersPage() {
   const orders = useQuery({ queryKey: ["orders", group], queryFn: () => orderApi.list(group || undefined) });
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-ink">Orders</h1>
+      <h1 className="text-[24px] font-medium text-ink">Orders</h1>
       <div className="flex gap-1 rounded-md bg-surface p-1 shadow-card" role="tablist">
         {TABS.map((t) => (
           <button
@@ -34,7 +34,7 @@ export default function OrdersPage() {
             role="tab"
             aria-selected={group === t.value}
             onClick={() => setGroup(t.value)}
-            className={cn("flex-1 rounded-sm px-3 py-2 text-[14px] font-medium", group === t.value ? "bg-primary text-white" : "text-ink hover:bg-canvas")}
+            className={cn("flex-1 rounded-sm px-3 py-2 text-[14px] font-medium", group === t.value ? "bg-ink text-white" : "text-ink hover:bg-canvas")}
           >
             {t.label}
           </button>

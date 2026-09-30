@@ -17,10 +17,10 @@ export function QuantityStepper({
   disabled?: boolean;
   size?: "sm" | "md";
 }) {
-  const box = size === "sm" ? "h-8" : "h-11";
-  const btn = size === "sm" ? "w-8" : "w-10";
+  const box = size === "sm" ? "h-8" : "h-[50px]";
+  const btn = size === "sm" ? "w-8" : "w-11";
   return (
-    <div className={cn("inline-flex items-center rounded-md border border-line bg-surface", box)}>
+    <div className={cn("inline-flex items-center rounded-sm border border-line-strong bg-surface", box)}>
       <button
         type="button"
         aria-label="Decrease quantity"
@@ -30,7 +30,7 @@ export function QuantityStepper({
       >
         <Minus className="size-4" />
       </button>
-      <span className="min-w-8 text-center text-[15px] font-semibold text-ink tabular-nums" aria-live="polite">
+      <span className="min-w-8 text-center text-[15px] text-ink tabular-nums" aria-live="polite">
         {value}
       </span>
       <button

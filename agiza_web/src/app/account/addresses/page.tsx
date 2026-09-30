@@ -25,7 +25,7 @@ export default function AddressesPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-ink">Addresses</h1>
+        <h1 className="text-[24px] font-medium text-ink">Addresses</h1>
         {!editing ? (
           <Button icon={<Plus className="size-4" />} onClick={() => setEditing("new")}>
             Add address

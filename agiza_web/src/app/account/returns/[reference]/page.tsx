@@ -58,7 +58,7 @@ export default function ReturnPage() {
       ) : null}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-ink">Return {r.reference}</h1>
+          <h1 className="text-[24px] font-medium text-ink">Return {r.reference}</h1>
           <p className="text-[14px] text-muted">
             Order{" "}
             <Link href={`/account/orders/${r.order}`} className="font-medium text-primary hover:underline">

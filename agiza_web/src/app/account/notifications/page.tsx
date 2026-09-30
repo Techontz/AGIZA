@@ -22,7 +22,7 @@ export default function NotificationsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-ink">Notifications</h1>
+        <h1 className="text-[24px] font-medium text-ink">Notifications</h1>
         {list.data?.unread ? (
           <Button variant="secondary" size="sm" loading={readAll.isPending} onClick={() => readAll.mutate()}>
             Mark all as read
