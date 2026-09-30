@@ -1,5 +1,15 @@
 /** Public site settings (safe for the browser). */
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3200").replace(/\/+$/, "");
+function siteUrl(): string {
+  const value = process.env.NEXT_PUBLIC_SITE_URL;
+  if (!value) {
+    // Canonical links, the sitemap and Open Graph must never point at a development host.
+    if (process.env.NODE_ENV === "production") throw new Error("NEXT_PUBLIC_SITE_URL must be set for production builds");
+    return "http://localhost:3200";
+  }
+  return value.replace(/\/+$/, "");
+}
+
+export const SITE_URL = siteUrl();
 export const SITE_NAME = "AGIZA";
 export const SITE_TAGLINE = "Shop Tanzania's stores, delivered by AGIZA";
 export const SITE_DESCRIPTION =

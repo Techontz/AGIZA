@@ -45,12 +45,18 @@ export function ServicePage({
   );
 }
 
-export function ProsePage({ title, updated, children }: { title: string; updated?: string; children: React.ReactNode }) {
+export function ProsePage({ title, updated, draft, children }: { title: string; updated?: string; draft?: boolean; children: React.ReactNode }) {
   return (
     <Container className="max-w-3xl py-8 sm:py-10">
       <Breadcrumbs items={[{ label: title }]} />
       <h1 className="text-[28px] font-bold text-ink sm:text-[34px]">{title}</h1>
       {updated ? <p className="mt-1 text-[13px] text-muted">Last updated {updated}</p> : null}
+      {draft ? (
+        <p role="note" className="mt-4 rounded-md border border-warning/40 bg-warning-soft p-3 text-[14px] text-warning">
+          <strong>Draft: not yet approved.</strong> This text is a working draft that AGIZA&apos;s management and legal advisers must review
+          and approve before it takes effect.
+        </p>
+      ) : null}
       <div className="mt-6 space-y-4 rounded-lg bg-surface p-5 text-[15px] leading-relaxed text-text shadow-card sm:p-8 [&_a]:font-medium [&_a]:text-primary [&_h2]:mt-6 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-ink [&_li]:ml-5 [&_li]:list-disc">
         {children}
       </div>

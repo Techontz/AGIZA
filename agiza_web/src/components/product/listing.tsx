@@ -11,7 +11,7 @@ import { EmptyState } from "../ui/states";
 import { ProductGrid } from "./product-card";
 import { SortSelect } from "./sort-select";
 
-export type ListingParams = { q?: string; sort?: string; min?: string; max?: string; page?: string; deals?: string; featured?: string };
+export type ListingParams = { q?: string; sort?: string; min?: string; max?: string; page?: string; deals?: string; featured?: string; stock?: string };
 
 export const SORTS = [
   { value: "newest", label: "Newest" },
@@ -34,6 +34,7 @@ export function readParams(sp: Record<string, string | string[] | undefined>): L
     page: one(sp.page).replace(/[^\d]/g, ""),
     deals: one(sp.deals),
     featured: one(sp.featured),
+    stock: one(sp.stock),
   };
 }
 
@@ -75,14 +76,15 @@ export async function Listing({
       max_price: params.max,
       deals: params.deals ? 1 : undefined,
       featured: params.featured ? 1 : undefined,
+      in_stock: params.stock ? 1 : undefined,
       page,
       page_size: PAGE_SIZE,
-    }, params.q ? 15 : 60).catch(() => null)) /* searches go stale fastest: cache them briefly */ ?? { count: 0, page: 1, page_size: PAGE_SIZE, total_pages: 0, results: [] };
+    }, params.q ? 15 : 60)) /* searches go stale fastest: cache them briefly; an outage shows the error page */ ?? { count: 0, page: 1, page_size: PAGE_SIZE, total_pages: 0, results: [] };
 
   const filters = (
     <Filters path={path} params={params} categories={categories} activeCategory={activeCategory} />
   );
-  const active = [params.q && `“${params.q}”`, params.deals && "Ofa kali", params.featured && "Featured", (params.min || params.max) && "Price"].filter(Boolean);
+  const active = [params.q && `“${params.q}”`, params.deals && "Ofa kali", params.featured && "Featured", params.stock && "In stock", (params.min || params.max) && "Price"].filter(Boolean);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[232px_1fr]">
@@ -178,8 +180,9 @@ function Filters({ path, params, categories, activeCategory }: { path: string; p
         <h2 className="text-[13px] font-semibold tracking-wide text-ink uppercase">Show</h2>
         <Toggle href={hrefWith(path, params, { deals: params.deals ? "" : "1", page: "" })} on={Boolean(params.deals)} label="Ofa kali deals" />
         <Toggle href={hrefWith(path, params, { featured: params.featured ? "" : "1", page: "" })} on={Boolean(params.featured)} label="Featured" />
+        <Toggle href={hrefWith(path, params, { stock: params.stock ? "" : "1", page: "" })} on={Boolean(params.stock)} label="In stock only" />
       </div>
-      {params.q || params.min || params.max || params.deals || params.featured ? (
+      {params.q || params.min || params.max || params.deals || params.featured || params.stock ? (
         <Link href={path} className="block text-[14px] font-semibold text-primary hover:underline">
           Clear filters
         </Link>

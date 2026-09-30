@@ -17,7 +17,6 @@ import type {
   ProductCard,
   QuoteRequest,
   SellerDashboard,
-  SellerEarnings,
   SellerOrder,
   SellerProduct,
   SellerProductDetail,
@@ -174,11 +173,64 @@ export const sellerApi = {
   orders: (status?: string) => api.get<Paginated<SellerOrder>>("seller/orders/", { status, page_size: 50 }),
   order: (id: number) => api.get<SellerOrder>(`seller/orders/${id}/`),
   orderAction: (id: number, action: "accept" | "ready") => api.post<SellerOrder>(`seller/orders/${id}/${action}/`),
-  earnings: () =>
+  earnings: () => api.get<import("./types").SellerEarningsPage>("seller/earnings/"),
+};
+
+export const reviewApi = {
+  list: (productId: number, page = 1) => api.get<import("./types").ReviewPage>(`products/${productId}/reviews/`, { page }),
+  submit: (productId: number, data: { rating: number; title?: string; body?: string }) =>
+    api.post<import("./types").Review>(`products/${productId}/reviews/`, data),
+  mine: () =>
     api.get<{
-      summary: SellerEarnings;
-      payout_schedule: string;
-      payout_account: { method: string | null; provider: string; account_name: string; account_number: string };
-      payouts: { reference: string; amount: string; method: string; transaction_reference: string; paid_at: string; orders: number }[];
-    }>("seller/earnings/"),
+      reviews: (import("./types").Review & { product_name: string })[];
+      to_review: { product_id: number; name: string; order: string; image: string | null }[];
+    }>("me/reviews/"),
+  remove: (id: number) => api.delete<null>(`me/reviews/${id}/`),
+};
+
+export type WishlistBody = { product_ids: number[]; products: ProductCard[] };
+
+export const wishlistApi = {
+  get: () => api.get<WishlistBody>("wishlist/"),
+  add: (product: number) => api.post<WishlistBody>("wishlist/", { product }),
+  remove: (product: number) => api.delete<WishlistBody>(`wishlist/${product}/`),
+  merge: (products: number[]) => api.post<WishlistBody>("wishlist/merge/", { products }),
+};
+
+export const notificationApi = {
+  list: (page = 1) =>
+    api.get<Paginated<import("./types").AppNotification> & { unread: number }>("notifications/", { page }),
+  read: (ids?: number[]) => api.post<{ unread: number }>("notifications/read/", ids ? { ids } : {}),
+};
+
+export const returnApi = {
+  returnable: (order: string) => api.get<import("./types").Returnable>(`orders/${order}/returns/`),
+  create: (order: string, data: { lines: { item: number; quantity: number }[]; reason_code: string; explanation: string }) =>
+    api.post<import("./types").ReturnDetail>(`orders/${order}/returns/`, data),
+  list: () => api.get<Paginated<import("./types").ReturnSummary>>("returns/", { page_size: 50 }),
+  get: (reference: string) => api.get<import("./types").ReturnDetail>(`returns/${reference}/`),
+  addEvidence: (reference: string, file: File) => api.upload<import("./types").ReturnDetail>(`returns/${reference}/evidence/`, file),
+};
+
+export const sellerExtraApi = {
+  reportIssue: (id: number, issue_type: string, note: string) =>
+    api.post<SellerOrder>(`seller/orders/${id}/issue/`, { issue_type, note }),
+  returns: () => api.get<Paginated<import("./types").SellerReturn>>("seller/returns/", { page_size: 50 }),
+  return: (reference: string) => api.get<import("./types").SellerReturn>(`seller/returns/${reference}/`),
+  respond: (reference: string, message: string) =>
+    api.post<import("./types").SellerReturn>(`seller/returns/${reference}/`, { message }),
+  reviews: () =>
+    api.get<Paginated<import("./types").SellerReview> & { summary: { rating: string | null; rating_count: number } }>(
+      "seller/reviews/",
+      { page_size: 50 },
+    ),
+  reply: (id: number, text: string) => api.post<{ ok: boolean }>(`seller/reviews/${id}/reply/`, { text }),
+  flag: (id: number, reason: string) => api.post<{ ok: boolean }>(`seller/reviews/${id}/flag/`, { reason }),
+  documents: () => api.get<import("./types").SellerDocument[]>("seller/documents/"),
+  uploadDocument: (kind: string, file: File) => {
+    const form = new FormData();
+    form.append("kind", kind);
+    form.append("file", file);
+    return api.post<import("./types").SellerDocument[]>("seller/documents/", form);
+  },
 };

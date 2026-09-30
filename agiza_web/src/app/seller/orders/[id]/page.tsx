@@ -1,16 +1,19 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, PackageCheck } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, PackageCheck } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Field, Select, Textarea } from "@/components/ui/field";
 import { Card, Notice, Row, Skeleton } from "@/components/ui/states";
 import { errorMessage } from "@/lib/api/client";
-import { sellerApi } from "@/lib/api/endpoints";
+import { sellerApi, sellerExtraApi } from "@/lib/api/endpoints";
+import type { SellerOrder } from "@/lib/api/types";
 import { dateTime, money } from "@/lib/format";
 
 import { fulfilmentTone, settlementTone } from "../tones";
@@ -64,6 +67,7 @@ export default function SellerOrderPage() {
           )}
         </Card>
       ) : null}
+      <IssueCard order={o} queryKey={key} />
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <Card>
           <h2 className="mb-2 text-lg font-semibold text-ink">Items to prepare</h2>
@@ -87,7 +91,7 @@ export default function SellerOrderPage() {
               {o.events.map((e, i) => (
                 <li key={i} className="flex justify-between gap-3 text-muted">
                   <span className="text-ink">
-                    {e.by_you ? e.status_display : e.note || e.status_display}
+                    {e.note || e.status_display}
                     {e.by_you ? " (you)" : ""}
                   </span>
                   <span>{dateTime(e.at)}</span>
@@ -109,5 +113,92 @@ export default function SellerOrderPage() {
         </Card>
       </div>
     </>
+  );
+}
+
+const ISSUE_TYPES = [
+  { value: "item_unavailable", label: "An item is unavailable" },
+  { value: "stock_discrepancy", label: "Stock count was wrong" },
+  { value: "damaged_item", label: "An item is damaged" },
+  { value: "cannot_fulfill", label: "I can't fulfil this order" },
+  { value: "other", label: "Other problem" },
+];
+
+function IssueCard({ order, queryKey }: { order: SellerOrder; queryKey: unknown[] }) {
+  const client = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [type, setType] = useState("");
+  const [note, setNote] = useState("");
+  const report = useMutation({
+    mutationFn: () => sellerExtraApi.reportIssue(order.id, type, note),
+    onSuccess: (o) => {
+      client.setQueryData(queryKey, o);
+      client.invalidateQueries({ queryKey: ["seller", "orders"] });
+      setOpen(false);
+      toast.success("Reported. AGIZA will contact the customer and decide what happens next.");
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  });
+  const issue = order.issue;
+  if (issue) {
+    return (
+      <Notice tone={issue.resolved_at ? "info" : "warning"}>
+        <span className="font-semibold">
+          {issue.resolved_at ? "Problem resolved" : "Problem reported"}: {issue.type_display}.
+        </span>{" "}
+        {issue.note}
+        {issue.resolved_at ? ` AGIZA's decision: ${issue.resolution || "resolved"} (${dateTime(issue.resolved_at)}).` : ` Reported ${dateTime(issue.reported_at)}. AGIZA is handling it; don't ship until they confirm.`}
+      </Notice>
+    );
+  }
+  if (!order.can_report_issue) return null;
+  if (!open) {
+    return (
+      <p className="text-[14px] text-muted">
+        Can&apos;t supply something?{" "}
+        <button type="button" onClick={() => setOpen(true)} className="font-semibold text-primary hover:underline">
+          Report a problem with this order
+        </button>
+      </p>
+    );
+  }
+  return (
+    <Card>
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          report.mutate();
+        }}
+      >
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
+          <AlertTriangle className="size-5 text-warning" aria-hidden /> Report a problem
+        </h2>
+        <p className="text-[14px] text-muted">
+          AGIZA will tell the customer and decide whether to cancel your part and refund them. Other sellers in the order aren&apos;t affected.
+        </p>
+        <Field label="What's wrong?" htmlFor="issue-type">
+          <Select id="issue-type" required value={type} onChange={(e) => setType(e.target.value)}>
+            <option value="">Choose…</option>
+            {ISSUE_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Details" htmlFor="issue-note">
+          <Textarea id="issue-note" required minLength={5} maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Which item, how many, and why" />
+        </Field>
+        <div className="flex gap-2">
+          <Button type="submit" loading={report.isPending} disabled={!type || note.trim().length < 5}>
+            Send to AGIZA
+          </Button>
+          <Button variant="secondary" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+        </div>
+      </form>
+    </Card>
   );
 }

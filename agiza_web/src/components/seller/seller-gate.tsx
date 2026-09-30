@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Clock, LayoutDashboard, Package, Settings, ShoppingCart, Store as StoreIcon, Wallet, XCircle } from "lucide-react";
+import { AlertTriangle, Clock, LayoutDashboard, Package, Settings, ShoppingCart, Star, Store as StoreIcon, Undo2, Wallet, XCircle } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -23,6 +23,8 @@ const NAV = [
   { href: "/seller", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { href: "/seller/products", label: "Products", icon: Package },
   { href: "/seller/orders", label: "Orders", icon: ShoppingCart },
+  { href: "/seller/returns", label: "Returns", icon: Undo2 },
+  { href: "/seller/reviews", label: "Reviews", icon: Star },
   { href: "/seller/earnings", label: "Earnings", icon: Wallet },
   { href: "/seller/store", label: "Store settings", icon: Settings },
 ];

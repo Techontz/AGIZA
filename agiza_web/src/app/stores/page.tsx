@@ -20,7 +20,7 @@ type Props = { searchParams: Promise<{ q?: string; page?: string }> };
 
 export default async function StoresPage({ searchParams }: Props) {
   const { q = "", page = "1" } = await searchParams;
-  const data = (await publicGet<Paginated<Store>>("stores/", { search: q.slice(0, 80), page: Number(page) || 1, page_size: 24 }).catch(() => null)) ?? {
+  const data = (await publicGet<Paginated<Store>>("stores/", { search: q.slice(0, 80), page: Number(page) || 1, page_size: 24 })) ?? {
     count: 0,
     page: 1,
     page_size: 24,

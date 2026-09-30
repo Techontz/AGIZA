@@ -7,6 +7,9 @@ import { Breadcrumbs } from "@/components/breadcrumbs";
 import { JsonLd } from "@/components/json-ld";
 import { BuyBox } from "@/components/product/buy-box";
 import { Gallery } from "@/components/product/gallery";
+import { ProductReviews } from "@/components/product/reviews";
+import { RatingInline } from "@/components/product/stars";
+import { WishlistButton } from "@/components/product/wishlist-button";
 import { ProductRow } from "@/components/product/product-card";
 import { StoreAvatar, Verified } from "@/components/store/store-avatar";
 import { Badge } from "@/components/ui/badge";
@@ -86,6 +89,9 @@ export default async function ProductPage({ params }: Props) {
             availability: `https://schema.org/${inStock ? "InStock" : "OutOfStock"}`,
             seller: { "@type": "Organization", name: seller.name, url: absolute(storeHref(seller)) },
           },
+          ...(product.rating_count
+            ? { aggregateRating: { "@type": "AggregateRating", ratingValue: product.rating, reviewCount: product.rating_count } }
+            : {}),
         }}
       />
       <Breadcrumbs
@@ -111,7 +117,11 @@ export default async function ProductPage({ params }: Props) {
                 </Badge>
               ))}
             </div>
-            <h1 className="text-[24px] leading-tight font-bold text-ink sm:text-[28px]">{product.name}</h1>
+            <div className="flex items-start justify-between gap-3">
+              <h1 className="text-[24px] leading-tight font-bold text-ink sm:text-[28px]">{product.name}</h1>
+              <WishlistButton productId={product.id} name={product.name} size="lg" className="shrink-0 ring-1 ring-line" />
+            </div>
+            <RatingInline rating={product.rating} count={product.rating_count} className="text-[13px]" />
           </div>
 
           <Link
@@ -161,7 +171,10 @@ export default async function ProductPage({ params }: Props) {
             <li className="flex gap-3">
               <RotateCcw className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden />
               <span className="text-muted">
-                <span className="font-semibold text-ink">Problem with an order?</span> AGIZA support handles returns with the seller.
+                <span className="font-semibold text-ink">Problem with an order?</span> Ask for a return from your account; AGIZA handles it with the seller.{" "}
+                <Link href="/returns-policy" className="font-medium text-primary hover:underline">
+                  Return policy
+                </Link>
               </span>
             </li>
           </ul>
@@ -191,6 +204,10 @@ export default async function ProductPage({ params }: Props) {
             </dl>
           </section>
         ) : null}
+      </div>
+
+      <div className="mt-6">
+        <ProductReviews productId={product.id} productName={product.name} />
       </div>
 
       {more.length ? (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ImagePlus } from "lucide-react";
+import { FileText, ImagePlus, Upload } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -13,7 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Card, Notice, Skeleton } from "@/components/ui/states";
 import { ApiError, errorMessage } from "@/lib/api/client";
-import { sellerApi, shopApi } from "@/lib/api/endpoints";
+import { sellerApi, sellerExtraApi, shopApi } from "@/lib/api/endpoints";
+import { date } from "@/lib/format";
 import type { SellerStore } from "@/lib/api/types";
 
 export default function StoreSettings() {
@@ -125,7 +126,81 @@ function Settings({ store }: { store: SellerStore }) {
           </fieldset>
         </form>
       </Card>
+      <Documents disabled={suspended} />
     </>
+  );
+}
+
+const DOC_KINDS = [
+  { value: "business_license", label: "Business licence" },
+  { value: "tin_certificate", label: "TIN certificate" },
+  { value: "registration", label: "Registration certificate" },
+  { value: "id", label: "Owner's ID" },
+  { value: "other", label: "Other" },
+];
+
+function Documents({ disabled }: { disabled: boolean }) {
+  const client = useQueryClient();
+  const docs = useQuery({ queryKey: ["seller", "documents"], queryFn: sellerExtraApi.documents });
+  const [kind, setKind] = useState("");
+  const input = useRef<HTMLInputElement>(null);
+  const upload = useMutation({
+    mutationFn: (file: File) => sellerExtraApi.uploadDocument(kind, file),
+    onSuccess: (list) => {
+      client.setQueryData(["seller", "documents"], list);
+      setKind("");
+      toast.success("Document uploaded");
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  });
+  return (
+    <Card>
+      <h2 className="text-lg font-semibold text-ink">Business documents</h2>
+      <p className="mb-3 text-[14px] text-muted">PDF or photo, up to 10 files. Only AGIZA staff can see them.</p>
+      {docs.isLoading ? (
+        <Skeleton className="h-16" />
+      ) : docs.isError ? (
+        <Notice tone="danger">{errorMessage(docs.error)}</Notice>
+      ) : docs.data?.length ? (
+        <ul className="mb-4 divide-y divide-line">
+          {docs.data.map((d) => (
+            <li key={d.id} className="flex items-center gap-3 py-2 text-[14px]">
+              <FileText className="size-4 text-muted" aria-hidden />
+              <span className="flex-1 text-ink">{d.kind_display}</span>
+              <span className="text-muted">{date(d.uploaded_at)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mb-4 text-[14px] text-muted">No documents uploaded yet.</p>
+      )}
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label="Document type" htmlFor="doc-kind" className="min-w-52 flex-1 sm:flex-none">
+          <Select id="doc-kind" value={kind} disabled={disabled} onChange={(e) => setKind(e.target.value)}>
+            <option value="">Choose…</option>
+            {DOC_KINDS.map((k) => (
+              <option key={k.value} value={k.value}>
+                {k.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Button variant="secondary" icon={<Upload className="size-4" />} disabled={disabled || !kind} loading={upload.isPending} onClick={() => input.current?.click()}>
+          Choose file
+        </Button>
+        <input
+          ref={input}
+          type="file"
+          accept="application/pdf,image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) upload.mutate(file);
+            e.target.value = "";
+          }}
+        />
+      </div>
+    </Card>
   );
 }
 

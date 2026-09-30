@@ -26,7 +26,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     all<Store>("stores/"),
     publicGet<Category[]>("categories/", undefined, 3600).catch(() => null),
   ]);
-  const fixed = ["/", "/shop", "/stores", "/buy-for-me", "/deliver-for-me", "/sell", "/about", "/contact", "/faq", "/privacy", "/terms"];
+  const fixed = ["/", "/shop", "/stores", "/buy-for-me", "/deliver-for-me", "/sell", "/about", "/contact", "/faq", "/privacy", "/terms", "/marketplace-terms", "/vendor-terms", "/returns-policy", "/delivery-policy", "/cookies"];
   return [
     ...fixed.map((path) => ({ url: absolute(path), changeFrequency: "weekly" as const, priority: path === "/" ? 1 : 0.6 })),
     ...(categories ?? []).flatMap((c) => [c, ...c.children]).map((c) => ({ url: absolute(categoryHref(c)), changeFrequency: "daily" as const, priority: 0.7 })),

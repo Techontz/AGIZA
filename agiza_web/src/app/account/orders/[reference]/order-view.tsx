@@ -161,15 +161,23 @@ export function OrderView({ reference }: { reference: string }) {
 
           {o.items.length ? (
             <Card>
-              <h2 className="mb-2 text-lg font-semibold text-ink">Items</h2>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-ink">Items</h2>
+                {o.can_return ? (
+                  <Link href={`/account/orders/${o.reference}/return`} className="text-[14px] font-semibold text-primary hover:underline">
+                    Return items
+                  </Link>
+                ) : null}
+              </div>
               <ul className="divide-y divide-line">
                 {o.items.map((i) => (
                   <li key={`${i.sku}-${i.product_id}`} className="flex gap-3 py-3">
                     <Link href={productHref({ id: i.product_id, name: i.name })} className="relative size-14 shrink-0 overflow-hidden rounded-md bg-tile">
                       <ProductImage src={i.image} alt="" sizes="56px" iconClass="size-5" />
                     </Link>
-                    <span className="min-w-0 flex-1">
-                      <span className="line-clamp-1 text-[15px] text-ink">{i.name}</span>
+                    <span className={cn("min-w-0 flex-1", i.cancelled && "opacity-60")}>
+                      <span className={cn("line-clamp-1 text-[15px] text-ink", i.cancelled && "line-through")}>{i.name}</span>
+                      {i.cancelled ? <span className="text-[12px] font-medium text-danger">Not supplied — removed from your order</span> : null}
                       <span className="block text-[13px] text-muted">
                         {i.variant_name ? `${i.variant_name} · ` : ""}
                         {i.quantity} × {money(i.unit_price)}
@@ -194,6 +202,11 @@ export function OrderView({ reference }: { reference: string }) {
                 <div className="my-1 border-t border-line" />
               </>
             ) : null}
+            {o.adjustments?.map((a, i) => (
+              <p key={i} className="py-1 text-[13px] text-muted">
+                {a.reason}: <span className="font-medium text-ink">{money(a.amount)}</span>
+              </p>
+            ))}
             <Row label="Total" value={money(o.payment.total, o.currency)} strong />
             <Row label="Paid" value={money(o.payment.paid, o.currency)} />
             {o.payment.due && Number(o.payment.due) > 0 ? <Row label="Due" value={money(o.payment.due, o.currency)} strong /> : null}
@@ -224,6 +237,21 @@ export function OrderView({ reference }: { reference: string }) {
                 </p>
               ) : null}
               {o.notes ? <p className="mt-2 text-[13px] text-muted">Notes: {o.notes}</p> : null}
+            </Card>
+          ) : null}
+          {o.returns?.length ? (
+            <Card>
+              <h2 className="mb-2 text-lg font-semibold text-ink">Returns</h2>
+              <ul className="space-y-1.5">
+                {o.returns.map((r) => (
+                  <li key={r.reference}>
+                    <Link href={`/account/returns/${r.reference}`} className="flex items-center justify-between gap-2 text-[14px] hover:text-primary">
+                      <span className="font-medium">{r.reference}</span>
+                      <span className="text-muted">{r.status_display}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             </Card>
           ) : null}
           {o.can_cancel ? (

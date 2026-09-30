@@ -1,6 +1,6 @@
 "use client";
 
-import { Globe, LifeBuoy, LogOut, MapPin, Package, Store, User } from "lucide-react";
+import { Bell, Globe, Heart, LifeBuoy, LogOut, MapPin, Package, RotateCcw, Star, Store, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -11,6 +11,10 @@ import { cn } from "@/lib/cn";
 const LINKS = [
   { href: "/account", label: "Profile", icon: User, exact: true },
   { href: "/account/orders", label: "Orders", icon: Package },
+  { href: "/account/returns", label: "Returns", icon: RotateCcw },
+  { href: "/account/saved", label: "Saved", icon: Heart },
+  { href: "/account/reviews", label: "Reviews", icon: Star },
+  { href: "/account/notifications", label: "Notifications", icon: Bell },
   { href: "/account/addresses", label: "Addresses", icon: MapPin },
   { href: "/account/requests", label: "Buy / Deliver for me", icon: Globe },
   { href: "/account/support", label: "Support", icon: LifeBuoy },

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useState } from "react";
 
 import { SESSION_KEY } from "@/hooks/use-session";
@@ -138,7 +139,13 @@ export function ApplicationForm({ store, onDone }: { store?: SellerStore | null;
         <Button type="submit" size="lg" loading={save.isPending}>
           {store ? "Save and resubmit" : "Submit application"}
         </Button>
-        <p className="text-[13px] text-muted">AGIZA reviews every application, usually within a few working days.</p>
+        <p className="text-[13px] text-muted">
+          AGIZA reviews every application, usually within a few working days. By applying you accept the{" "}
+          <Link href="/vendor-terms" className="font-medium text-primary hover:underline">
+            seller terms
+          </Link>
+          .
+        </p>
       </div>
     </form>
   );

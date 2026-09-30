@@ -1,7 +1,10 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import {
+  Bell,
   ChevronDown,
+  Heart,
   Globe,
   LayoutGrid,
   LogOut,
@@ -20,7 +23,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 
 import { useCart } from "@/hooks/use-cart";
 import { useSession } from "@/hooks/use-session";
-import { sessionApi } from "@/lib/api/endpoints";
+import { notificationApi, sessionApi } from "@/lib/api/endpoints";
 import type { Category } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
 import { categoryHref } from "@/lib/format";
@@ -172,6 +175,7 @@ function AccountLink() {
         <div className="absolute top-full right-0 z-40 mt-1 w-56 rounded-lg border border-line bg-surface p-1.5 shadow-raised" onClick={() => setOpen(false)}>
           <MenuLink href="/account" icon={User} label="My account" />
           <MenuLink href="/account/orders" icon={Package} label="My orders" />
+          <MenuLink href="/account/saved" icon={Heart} label="Saved products" />
           {store ? <MenuLink href="/seller" icon={StoreIcon} label={store.can_sell ? "Seller dashboard" : "My store application"} /> : null}
           <button
             type="button"
@@ -193,6 +197,48 @@ function MenuLink({ href, icon: Icon, label }: { href: string; icon: typeof User
   return (
     <Link href={href} className="flex items-center gap-2.5 rounded-sm px-3 py-2 text-[14px] text-ink hover:bg-canvas">
       <Icon className="size-4 text-muted" aria-hidden /> {label}
+    </Link>
+  );
+}
+
+function NotificationBell() {
+  const { signedIn } = useSession();
+  const inbox = useQuery({
+    queryKey: ["notifications"],
+    queryFn: () => notificationApi.list(),
+    enabled: signedIn,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  if (!signedIn) return null;
+  const unread = inbox.data?.unread ?? 0;
+  return (
+    <Link
+      href="/account/notifications"
+      prefetch={false}
+      aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`}
+      className="relative flex h-10 items-center rounded-sm px-2.5 text-ink hover:bg-canvas"
+    >
+      <Bell className="size-5" aria-hidden />
+      {unread ? (
+        <span className="absolute top-1 right-1 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] leading-4 font-bold text-white">
+          {unread > 9 ? "9+" : unread}
+        </span>
+      ) : null}
+    </Link>
+  );
+}
+
+function SavedLink() {
+  const { signedIn } = useSession();
+  return (
+    <Link
+      href={signedIn ? "/account/saved" : "/login?next=/account/saved"}
+      prefetch={false}
+      aria-label="Saved products"
+      className="hidden h-10 items-center rounded-sm px-2.5 text-ink hover:bg-canvas sm:flex"
+    >
+      <Heart className="size-5" aria-hidden />
     </Link>
   );
 }
@@ -301,6 +347,8 @@ export function Header({ categories }: { categories: Category[] }) {
               <Link href="/sell" className="hidden h-10 items-center rounded-sm px-3 text-[14px] font-semibold text-primary hover:bg-primary-soft xl:flex">
                 Sell on AGIZA
               </Link>
+              <NotificationBell />
+              <SavedLink />
               <AccountLink />
               <CartLink />
             </div>

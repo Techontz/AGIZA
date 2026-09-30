@@ -15,7 +15,10 @@ export interface TokenPair {
   refresh: string;
 }
 
-const secure = () => process.env.SESSION_COOKIE_SECURE === "true";
+/** Secure cookies in production unless explicitly disabled (e.g. testing a production build over http). */
+const secure = () =>
+  process.env.SESSION_COOKIE_SECURE === "true" ||
+  (process.env.NODE_ENV === "production" && process.env.SESSION_COOKIE_SECURE !== "false");
 
 function secondsUntilExpiry(token: string, fallback: number): number {
   try {

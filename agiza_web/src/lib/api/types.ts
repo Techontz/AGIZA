@@ -14,6 +14,7 @@ export type Seller = {
 export type Store = Seller & {
   banner: string | null;
   rating: string | null;
+  rating_count?: number;
   joined: string | null;
   products_count: number | null;
   description?: string;
@@ -61,6 +62,8 @@ export type ProductCard = {
   labels: { name: string; color: string }[];
   vendor: Seller;
   created_at: string;
+  rating: string | null;
+  rating_count: number;
 };
 
 export type Variant = {
@@ -85,6 +88,7 @@ export type ProductDetail = ProductCard & {
   shipping_methods: string[];
   ready_to_ship_days: number;
   allow_chat: boolean;
+  rating_distribution?: Record<string, number>;
 };
 
 export type CartLine = {
@@ -205,6 +209,8 @@ export type OrderDetail = OrderCard & {
     product_id: number;
     image: string | null;
     vendor?: Seller;
+    item?: number;
+    cancelled?: boolean;
   }[];
   payment: PaymentSummary;
   payments: { amount: string; method: string; paid_at: string; kind: string }[];
@@ -222,6 +228,9 @@ export type OrderDetail = OrderCard & {
   amounts?: { subtotal: string; shipping_fee: string; total: string };
   payment_preference?: PaymentMethod["code"] | null;
   sellers?: OrderSeller[];
+  can_return?: boolean;
+  returns?: { reference: string; status_display: string; refund_status: RefundStatus }[];
+  adjustments?: { amount: string; reason: string; at: string }[];
   international?: { service: string; source_country: string; tracking_number: string; estimated_delivery: string | null };
   cargo?: { key: string; label: string; status: "completed" | "pending"; at: string | null; expected: string | null }[];
 };
@@ -367,6 +376,8 @@ export type SellerOrder = {
   ready_at: string | null;
   can_accept: boolean;
   can_mark_ready: boolean;
+  can_report_issue?: boolean;
+  issue?: { type: string; type_display: string; note: string; reported_at: string; resolved_at: string | null; resolution: string } | null;
   items?: { name: string; variant_name: string; sku: string; quantity: number; unit_price: string; line_total: string; commission: string | null }[];
   events?: { status: string; status_display: string; note: string; at: string; by_you: boolean }[];
   payout?: string | null;
@@ -380,6 +391,9 @@ export type SellerEarnings = {
   payable: string;
   paid_out: string;
   orders: number;
+  in_payout?: string;
+  refunds?: string;
+  adjustments?: string;
 };
 
 export type SellerDashboard = {
@@ -389,3 +403,128 @@ export type SellerDashboard = {
   orders_to_prepare: number;
   low_stock: number;
 };
+
+// --------------------------------------------------------------------------- //
+// Reviews, returns, notifications
+// --------------------------------------------------------------------------- //
+export type Review = {
+  id: number;
+  rating: number;
+  title: string;
+  body: string;
+  author: string;
+  verified_purchase: boolean;
+  created_at: string;
+  edited_at: string | null;
+  vendor_reply: string | null;
+  vendor_replied_at: string | null;
+  status?: "published" | "pending" | "flagged" | "hidden";
+  product_id?: number;
+};
+
+export type ReviewPage = Paginated<Review> & {
+  rating: string | null;
+  rating_count: number;
+  distribution: Record<string, number>;
+  mine: Review | null;
+  can_review: boolean;
+};
+
+export type RefundStatus = "not_decided" | "pending" | "refunded" | "none";
+
+export type ReturnSummary = {
+  reference: string;
+  order: string;
+  status: string;
+  status_display: string;
+  refund_status: RefundStatus;
+  reason: string;
+  items: string;
+  value: string;
+  refund_amount: string | null;
+  created_at: string;
+  message: string | null;
+};
+
+export type ReturnDetail = ReturnSummary & {
+  explanation: string;
+  lines: { name: string; variant_name: string; quantity: number; amount: string; image: string | null }[];
+  evidence: string[];
+  history: { status: string; at: string }[];
+  can_add_evidence: boolean;
+};
+
+export type Returnable = {
+  can_return: boolean;
+  window_open: boolean;
+  window_days: number;
+  items: { item: number; name: string; variant_name: string; quantity: number; returnable: number; unit_price: string }[];
+  reasons: { code: string; label: string }[];
+  returns: ReturnSummary[];
+};
+
+export type AppNotification = { id: number; title: string; body: string; data: Record<string, string>; read: boolean; created_at: string };
+
+export type SellerReturn = {
+  reference: string;
+  order_reference: string;
+  status: string;
+  status_display: string;
+  refund_status: RefundStatus;
+  reason: string;
+  created_at: string;
+  items: { name: string; variant_name: string; quantity: number; amount: string }[];
+  explanation?: string;
+  evidence?: string[];
+  responses?: { message: string; at: string }[];
+  can_respond?: boolean;
+};
+
+export type SellerReview = {
+  id: number;
+  product_id: number;
+  product_name: string;
+  rating: number;
+  title: string;
+  body: string;
+  author: string;
+  status: string;
+  created_at: string;
+  vendor_reply: string | null;
+  flag_reason: string | null;
+};
+
+export type SellerPayout = {
+  reference: string;
+  amount: string;
+  method: string;
+  status: "processing" | "paid" | "failed" | "reversed";
+  status_display: string;
+  gross_sales: string;
+  commission: string;
+  refund_deductions: string;
+  adjustments: string;
+  transaction_reference: string;
+  paid_at: string | null;
+  created_at: string;
+  orders: number;
+};
+
+export type LedgerLine = {
+  kind: "earning" | "refund" | "adjustment" | "payout" | "payout_reversal";
+  kind_display: string;
+  amount: string;
+  reference: string;
+  note: string;
+  at: string;
+};
+
+export type SellerEarningsPage = {
+  summary: SellerEarnings;
+  payout_schedule: string;
+  payout_account: { method: string | null; provider: string; account_name: string; account_number: string };
+  payouts: SellerPayout[];
+  ledger: LedgerLine[];
+};
+
+export type SellerDocument = { id: number; kind: string; kind_display: string; uploaded_at: string };
