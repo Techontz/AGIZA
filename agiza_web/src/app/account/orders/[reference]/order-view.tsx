@@ -172,8 +172,8 @@ export function OrderView({ reference }: { reference: string }) {
               <ul className="divide-y divide-line">
                 {o.items.map((i) => (
                   <li key={`${i.sku}-${i.product_id}`} className="flex gap-3 py-3">
-                    <Link href={productHref({ id: i.product_id, name: i.name })} className="relative size-14 shrink-0 overflow-hidden rounded-md bg-tile">
-                      <ProductImage src={i.image} alt="" sizes="56px" iconClass="size-5" />
+                    <Link href={productHref({ id: i.product_id, name: i.name })} aria-label={i.name} className="relative size-14 shrink-0 overflow-hidden border border-line bg-surface">
+                      <ProductImage src={i.image} alt="" sizes="56px" iconClass="size-5" className="object-contain" />
                     </Link>
                     <span className={cn("min-w-0 flex-1", i.cancelled && "opacity-60")}>
                       <span className={cn("line-clamp-1 text-[15px] text-ink", i.cancelled && "line-through")}>{i.name}</span>

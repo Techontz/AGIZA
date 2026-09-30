@@ -34,7 +34,7 @@ export function ProductTabs({ tabs }: { tabs: { id: string; label: string; conte
             onClick={() => setActive(t.id)}
             className={cn(
               "-mb-px shrink-0 border-b-2 py-3.5 text-[18px] font-semibold whitespace-nowrap sm:text-[20px]",
-              active === t.id ? "border-yellow text-ink" : "border-transparent text-subtle hover:text-ink",
+              active === t.id ? "border-yellow text-ink" : "border-transparent text-muted hover:text-ink",
             )}
           >
             {t.label}

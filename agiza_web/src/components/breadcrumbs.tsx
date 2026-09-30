@@ -28,7 +28,7 @@ export function Breadcrumbs({ items, bar = true }: { items: Crumb[]; bar?: boole
             <li key={i} className={i === all.length - 1 ? "flex min-w-0 items-center gap-2" : "flex shrink-0 items-center gap-2"}>
               {i > 0 ? (bar ? <span className="text-muted" aria-hidden>/</span> : <ChevronRight className="size-3.5 shrink-0" aria-hidden />) : null}
               {c.href && i < all.length - 1 ? (
-                <Link href={c.href} className="text-[#0099cc] hover:underline">
+                <Link href={c.href} className="text-[#006d9c] hover:underline">
                   {c.label}
                 </Link>
               ) : (

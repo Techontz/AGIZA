@@ -30,7 +30,7 @@ export function ProductCard({ product, priority, sizes = GRID_SIZES, className }
             {!product.in_stock ? (
               <Label className="bg-[#666] text-white">Out of stock</Label>
             ) : off >= 1 ? (
-              <Label className="bg-[#ff3300] text-white">−{off}%</Label>
+              <Label className="bg-[#d42a00] text-white">−{off}%</Label>
             ) : product.ofa_kali ? (
               <Label className="bg-yellow text-ink">Ofa kali</Label>
             ) : null}
@@ -43,7 +43,7 @@ export function ProductCard({ product, priority, sizes = GRID_SIZES, className }
             {product.vendor.verified && !product.vendor.is_agiza ? <Verified className="size-3" /> : null}
           </p>
           <RatingCount rating={product.rating} count={product.rating_count} className="mt-1" />
-          <p className={cn("mt-1.5 text-[16px] leading-[22px] tabular-nums", compare ? "text-[#ff3300]" : "text-ink")}>
+          <p className={cn("mt-1.5 text-[16px] leading-[22px] tabular-nums", compare ? "text-[#d42a00]" : "text-ink")}>
             {range ? `From ${money(product.price)}` : money(product.price)}
           </p>
           {compare ? <p className="text-[14px] leading-5 text-muted line-through tabular-nums">{money(compare)}</p> : null}
