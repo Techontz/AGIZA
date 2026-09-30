@@ -75,7 +75,7 @@ export function SellerGate({ children }: { children: React.ReactNode }) {
   if (s.approval_status !== "approved" && s.approval_status !== "suspended") return <Application store={s} />;
 
   return (
-    <Container className="grid items-start gap-6 py-6 sm:py-8 lg:grid-cols-[230px_minmax(0,1fr)]">
+    <Container className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 py-6 sm:py-8 lg:grid-cols-[230px_minmax(0,1fr)]">
       <nav aria-label="Seller" className="lg:sticky lg:top-32">
         <Link href={storeHref(s)} className="mb-3 hidden items-center gap-3 rounded-lg bg-surface p-3 shadow-card hover:shadow-raised lg:flex">
           <StoreAvatar seller={{ name: s.name, logo: s.logo, is_agiza: false }} size={40} />
