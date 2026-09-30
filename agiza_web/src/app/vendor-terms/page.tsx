@@ -11,7 +11,7 @@ export default function VendorTermsPage() {
       <p>These terms apply to businesses selling on AGIZA. They are in addition to the terms of use.</p>
       <h2>Joining</h2>
       <p>
-        You apply with your AGIZA account and accurate business, tax and payout details, and may be asked for business documents.
+        You apply in the AGIZA Seller app with your AGIZA account and accurate business, tax and payout details, and may be asked for business documents. Stores are managed only in the AGIZA Seller app.
         AGIZA may approve, ask for changes, reject or later suspend a store.
       </p>
       <h2>Listings</h2>
@@ -28,7 +28,7 @@ export default function VendorTermsPage() {
       </ul>
       <h2>Commission and payouts</h2>
       <ul>
-        <li>AGIZA deducts its commission, at the rate shown in your seller dashboard, from each sale.</li>
+        <li>AGIZA deducts its commission, at the rate shown in the AGIZA Seller app, from each sale.</li>
         <li>Earnings become payable once the order is delivered and fully paid, and are paid to your registered payout account on AGIZA&apos;s payout schedule.</li>
         <li>
           If a customer is refunded for your item after you were paid, the amount is deducted from your next payout. Every change is

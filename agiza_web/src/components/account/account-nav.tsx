@@ -22,8 +22,8 @@ const LINKS = [
 
 export function AccountNav() {
   const pathname = usePathname();
-  const { customer, store } = useSession();
-  const links = [...LINKS, store ? { href: "/seller", label: "My store", icon: Store } : { href: "/sell", label: "Sell on AGIZA", icon: Store }];
+  const { customer } = useSession();
+  const links = [...LINKS, { href: "/sell", label: "Sell on AGIZA", icon: Store }];
   return (
     <nav aria-label="Account" className="lg:sticky lg:top-32">
       {customer ? (

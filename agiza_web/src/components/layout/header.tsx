@@ -136,7 +136,7 @@ function CategoriesMenu({ categories }: { categories: Category[] }) {
 }
 
 function AccountLink() {
-  const { customer, store, ready } = useSession();
+  const { customer, ready } = useSession();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -176,7 +176,6 @@ function AccountLink() {
           <MenuLink href="/account" icon={User} label="My account" />
           <MenuLink href="/account/orders" icon={Package} label="My orders" />
           <MenuLink href="/account/saved" icon={Heart} label="Saved products" />
-          {store ? <MenuLink href="/seller" icon={StoreIcon} label={store.can_sell ? "Seller dashboard" : "My store application"} /> : null}
           <button
             type="button"
             onClick={async () => {
@@ -263,7 +262,7 @@ function CartLink() {
 }
 
 function MobileMenu({ categories, onClose }: { categories: Category[]; onClose: () => void }) {
-  const { customer, store } = useSession();
+  const { customer } = useSession();
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", esc);
@@ -303,7 +302,6 @@ function MobileMenu({ categories, onClose }: { categories: Category[]; onClose: 
             <>
               <DrawerLink href="/account" label="My account" icon={User} />
               <DrawerLink href="/account/orders" label="My orders" icon={Package} />
-              {store ? <DrawerLink href="/seller" label="Seller dashboard" icon={StoreIcon} /> : null}
             </>
           ) : (
             <DrawerLink href="/login" label="Sign in or create account" icon={User} />

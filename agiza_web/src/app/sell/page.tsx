@@ -1,18 +1,21 @@
-import { BadgeCheck, ClipboardCheck, PackagePlus, ShoppingCart, Truck, Wallet } from "lucide-react";
+import { BadgeCheck, ClipboardCheck, Download, PackagePlus, ShoppingCart, Smartphone, Truck, Wallet } from "lucide-react";
 import type { Metadata } from "next";
 
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { ButtonLink } from "@/components/ui/button";
 import { Container } from "@/components/ui/container";
+import { SELLER_ANDROID_APP_URL, SELLER_IOS_APP_URL, SUPPORT_EMAIL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Sell on AGIZA",
-  description: "Open your store on AGIZA: reach customers on the AGIZA website and app. AGIZA takes the payment and delivers across Tanzania.",
+  description:
+    "Open your store on AGIZA with the AGIZA Seller app: reach customers on the AGIZA website and app. AGIZA takes the payment and delivers across Tanzania.",
   alternates: { canonical: "/sell" },
 };
 
 const STEPS = [
-  { icon: ClipboardCheck, title: "Apply", text: "Tell us about your store and business with your AGIZA account." },
+  { icon: Download, title: "Get the app", text: "Download AGIZA Seller and sign in or create your account." },
+  { icon: ClipboardCheck, title: "Apply", text: "Tell us about your store and business in the app." },
   { icon: BadgeCheck, title: "Get approved", text: "AGIZA reviews your application and may ask for details." },
   { icon: PackagePlus, title: "Add products", text: "Photos, prices and stock. AGIZA checks each product before it goes live." },
   { icon: ShoppingCart, title: "Receive orders", text: "Accept the order and get the items ready. AGIZA collects and delivers." },
@@ -30,14 +33,7 @@ export default function SellPage() {
               Open your store on AGIZA. Your products appear on the AGIZA website and app; customers pay AGIZA, and AGIZA collects
               from you and delivers.
             </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <ButtonLink href="/sell/apply" size="lg">
-                Apply to sell
-              </ButtonLink>
-              <ButtonLink href="/seller" size="lg" variant="secondary">
-                I already have a store
-              </ButtonLink>
-            </div>
+            <SellerAppCta />
           </div>
           <ul className="grid gap-3">
             {[
@@ -73,10 +69,46 @@ export default function SellPage() {
           ))}
         </ol>
         <p className="mt-6 text-[14px] text-muted">
-          AGIZA charges a commission on each sale, shown in your seller dashboard. Your earnings become payable once an order is
-          delivered and paid.
+          AGIZA charges a commission on each sale, shown in the AGIZA Seller app. Your earnings become payable once an order is
+          delivered and paid. Selling is managed only in the app; this website is for shoppers.
         </p>
       </Container>
     </>
+  );
+}
+
+/** Selling happens in the AGIZA Seller app (this website is for customers). */
+function SellerAppCta() {
+  const links = [
+    SELLER_ANDROID_APP_URL ? { href: SELLER_ANDROID_APP_URL, label: "Get AGIZA Seller on Google Play" } : null,
+    SELLER_IOS_APP_URL ? { href: SELLER_IOS_APP_URL, label: "Download AGIZA Seller on the App Store" } : null,
+  ].filter((l): l is { href: string; label: string } => l !== null);
+  return (
+    <div className="mt-6 max-w-xl rounded-lg bg-primary-soft p-5">
+      <p className="flex items-center gap-2 font-semibold text-ink">
+        <Smartphone className="size-5 text-brand" aria-hidden /> Sell with the AGIZA Seller app
+      </p>
+      <p className="mt-1 text-[14px] text-muted">
+        Apply, add products, handle orders and returns, and follow your earnings from your phone. Use the same phone number
+        and password as your AGIZA account.
+      </p>
+      {links.length ? (
+        <div className="mt-4 flex flex-wrap gap-3">
+          {links.map((l) => (
+            <ButtonLink key={l.href} href={l.href} size="lg" variant="dark" icon={<Download className="size-5" />}>
+              {l.label}
+            </ButtonLink>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 text-[14px] text-ink">
+          The app is coming soon to Google Play and the App Store. To start selling now, email{" "}
+          <a href={`mailto:${SUPPORT_EMAIL}?subject=Selling%20on%20AGIZA`} className="font-semibold text-primary hover:underline">
+            {SUPPORT_EMAIL}
+          </a>
+          .
+        </p>
+      )}
+    </div>
   );
 }

@@ -62,9 +62,15 @@ test("product pages show verified reviews; only buyers can write one", async ({ 
   }
 });
 
-test("the seller terms are linked from the seller application", async ({ page }) => {
+test("the website is for customers: selling points to the AGIZA Seller app", async ({ page }) => {
   await page.goto("/sell");
-  await expect(page.getByRole("link", { name: /apply to sell/i }).first()).toBeVisible();
+  await expect(page.getByText("Sell with the AGIZA Seller app")).toBeVisible();
+  await expect(page.getByRole("link", { name: /apply to sell/i })).toHaveCount(0);
+  for (const old of ["/seller", "/seller/orders", "/sell/apply"]) {
+    await page.goto(old);
+    await expect(page).toHaveURL(/\/sell$/);
+  }
   await page.goto("/vendor-terms");
   await expect(page.getByRole("heading", { name: "Seller terms", level: 1 })).toBeVisible();
+  await expect(page.getByText(/AGIZA Seller app/).first()).toBeVisible();
 });

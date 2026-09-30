@@ -12,7 +12,6 @@ export function useSession() {
   return {
     ...query,
     customer: data?.customer ?? null,
-    store: data?.store ?? null,
     signedIn: Boolean(data?.customer),
     ready: query.isSuccess || query.isError,
   };

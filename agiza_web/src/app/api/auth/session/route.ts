@@ -13,13 +13,13 @@ import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/session-cookies";
 export const dynamic = "force-dynamic";
 
 /**
- * Who is signed in: {customer, store} (store = the seller area status, or null).
+ * Who is signed in: {customer}. Selling happens in the AGIZA Seller app, not on this website.
  * Anonymous visitors get {customer: null}.
  */
 export async function GET(req: NextRequest) {
   let access = req.cookies.get(ACCESS_COOKIE)?.value;
   const refresh = req.cookies.get(REFRESH_COOKIE)?.value;
-  if (!refresh) return NextResponse.json({ customer: null, store: null });
+  if (!refresh) return NextResponse.json({ customer: null });
   let rotated: TokenPair | null = null;
   const headers = forwardedHeaders(req);
   const get = (path: string) =>
@@ -36,17 +36,12 @@ export async function GET(req: NextRequest) {
     me = access ? await get("me/").catch(() => null) : null;
   }
   if (!me || !me.ok) {
-    const res = NextResponse.json({ customer: null, store: null });
+    const res = NextResponse.json({ customer: null });
     if (me?.status === 401 || !access) clearSessionCookies(res);
     return res;
   }
   const customer = await me.json();
-  const storeRes = await get("seller/store/").catch(() => null);
-  const store = storeRes?.ok ? await storeRes.json() : null;
-  const res = NextResponse.json({
-    customer,
-    store: store ? { name: store.name, slug: store.slug, approval_status: store.approval_status, can_sell: store.can_sell } : null,
-  });
+  const res = NextResponse.json({ customer });
   if (rotated) setSessionCookies(res, rotated);
   return res;
 }

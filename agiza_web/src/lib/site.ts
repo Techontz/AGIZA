@@ -19,5 +19,8 @@ export const SUPPORT_PHONE = process.env.NEXT_PUBLIC_SUPPORT_PHONE || "";
 export const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "support@agiza.co.tz";
 export const ANDROID_APP_URL = process.env.NEXT_PUBLIC_ANDROID_APP_URL || "";
 export const IOS_APP_URL = process.env.NEXT_PUBLIC_IOS_APP_URL || "";
+/** Sellers use their own app (AGIZA Seller); this website is for customers only. */
+export const SELLER_ANDROID_APP_URL = process.env.NEXT_PUBLIC_SELLER_ANDROID_APP_URL || "";
+export const SELLER_IOS_APP_URL = process.env.NEXT_PUBLIC_SELLER_IOS_APP_URL || "";
 
 export const absolute = (path: string) => `${SITE_URL}${path.startsWith("/") ? path : `/${path}`}`;

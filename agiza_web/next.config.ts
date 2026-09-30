@@ -35,6 +35,14 @@ const nextConfig: NextConfig = {
     imageSizes: [48, 64, 96, 128, 160, 200, 256, 320],
     minimumCacheTTL: 3600,
   },
+  // The seller area moved to the AGIZA Seller app: old links land on the page recommending it.
+  async redirects() {
+    return [
+      { source: "/seller", destination: "/sell", permanent: false },
+      { source: "/seller/:path*", destination: "/sell", permanent: false },
+      { source: "/sell/apply", destination: "/sell", permanent: false },
+    ];
+  },
   async headers() {
     return [
       {

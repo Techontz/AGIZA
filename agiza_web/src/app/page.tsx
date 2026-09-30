@@ -169,7 +169,8 @@ export default async function HomePage() {
               <p className="text-[13px] font-semibold tracking-wide text-amber uppercase">Sell on AGIZA</p>
               <h2 className="mt-2 text-2xl font-bold">Reach customers across Tanzania</h2>
               <p className="mt-2 max-w-md text-[15px] text-white/75">
-                List your products, get orders from the AGIZA app and website, and let AGIZA handle payment and delivery.
+                Sell with the AGIZA Seller app: list your products, get orders from the AGIZA app and website, and let AGIZA handle
+                payment and delivery.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">

@@ -6,7 +6,7 @@ import { REFRESH_COOKIE } from "@/lib/session-cookies";
  * Browsing never needs an account. Only the pages below do; without a session the visitor
  * is sent to sign in and brought back. Django still authorises every request.
  */
-const PROTECTED = ["/account", "/checkout", "/seller", "/sell/apply"];
+const PROTECTED = ["/account", "/checkout"];
 
 export function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
@@ -19,5 +19,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/account/:path*", "/checkout/:path*", "/seller/:path*", "/sell/apply"],
+  matcher: ["/account/:path*", "/checkout/:path*"],
 };

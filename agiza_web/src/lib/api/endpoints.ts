@@ -16,16 +16,10 @@ import type {
   PlaceOrderResult,
   ProductCard,
   QuoteRequest,
-  SellerDashboard,
-  SellerOrder,
-  SellerProduct,
-  SellerProductDetail,
-  SellerStore,
 } from "./types";
 
 export type Session = {
   customer: Customer | null;
-  store: { name: string; slug: string; approval_status: SellerStore["approval_status"]; can_sell: boolean } | null;
 };
 
 export const sessionApi = {
@@ -117,65 +111,6 @@ export const supportApi = {
   send: (body: string) => api.post<ChatMessage>("support/messages/", { body }),
 };
 
-export type ApplicationInput = Partial<
-  Pick<
-    SellerStore,
-    | "name"
-    | "description"
-    | "business_address"
-    | "contact_person"
-    | "phone"
-    | "email"
-    | "business_type"
-    | "legal_name"
-    | "registration_number"
-    | "tin"
-    | "payout_method"
-    | "payout_provider"
-    | "payout_account_name"
-    | "payout_account_number"
-  >
-> & { city?: number | null };
-
-export type SellerProductInput = {
-  name?: string;
-  category?: number;
-  subcategory?: number | null;
-  condition?: string;
-  description?: string;
-  price?: string;
-  compare_at_price?: string | null;
-  weight_kg?: string;
-  keywords?: string;
-  status?: "draft" | "active" | "inactive";
-  stock?: number;
-  specifications?: { name: string; value: string }[];
-  has_variations?: boolean;
-  variants?: { id?: number; name: string; price?: string | null; stock?: number; status?: "active" | "inactive" }[];
-};
-
-export const sellerApi = {
-  store: () => api.get<SellerStore>("seller/store/"),
-  apply: (data: ApplicationInput) => api.post<SellerStore>("seller/store/", data),
-  updateStore: (data: ApplicationInput) => api.patch<SellerStore>("seller/store/", data),
-  uploadMedia: (kind: "logo" | "banner", file: File) => api.upload<SellerStore>(`seller/store/${kind}/`, file),
-  dashboard: () => api.get<SellerDashboard>("seller/dashboard/"),
-  products: (query: { search?: string; page?: number }) => api.get<Paginated<SellerProduct>>("seller/products/", query),
-  product: (id: number) => api.get<SellerProductDetail>(`seller/products/${id}/`),
-  createProduct: (data: SellerProductInput) => api.post<SellerProductDetail>("seller/products/", data),
-  updateProduct: (id: number, data: SellerProductInput) => api.patch<SellerProductDetail>(`seller/products/${id}/`, data),
-  deleteProduct: (id: number) => api.delete<{ result: "deleted" | "deactivated" }>(`seller/products/${id}/`),
-  uploadImage: (id: number, file: File) => api.upload<SellerProductDetail>(`seller/products/${id}/images/`, file),
-  makePrimary: (id: number, imageId: number) => api.post<SellerProductDetail>(`seller/products/${id}/images/${imageId}/`),
-  removeImage: (id: number, imageId: number) => api.delete<SellerProductDetail>(`seller/products/${id}/images/${imageId}/`),
-  setStock: (id: number, variant: number, quantity: number) =>
-    api.post<SellerProductDetail>(`seller/products/${id}/stock/`, { variant, quantity }),
-  orders: (status?: string) => api.get<Paginated<SellerOrder>>("seller/orders/", { status, page_size: 50 }),
-  order: (id: number) => api.get<SellerOrder>(`seller/orders/${id}/`),
-  orderAction: (id: number, action: "accept" | "ready") => api.post<SellerOrder>(`seller/orders/${id}/${action}/`),
-  earnings: () => api.get<import("./types").SellerEarningsPage>("seller/earnings/"),
-};
-
 export const reviewApi = {
   list: (productId: number, page = 1) => api.get<import("./types").ReviewPage>(`products/${productId}/reviews/`, { page }),
   submit: (productId: number, data: { rating: number; title?: string; body?: string }) =>
@@ -210,27 +145,4 @@ export const returnApi = {
   list: () => api.get<Paginated<import("./types").ReturnSummary>>("returns/", { page_size: 50 }),
   get: (reference: string) => api.get<import("./types").ReturnDetail>(`returns/${reference}/`),
   addEvidence: (reference: string, file: File) => api.upload<import("./types").ReturnDetail>(`returns/${reference}/evidence/`, file),
-};
-
-export const sellerExtraApi = {
-  reportIssue: (id: number, issue_type: string, note: string) =>
-    api.post<SellerOrder>(`seller/orders/${id}/issue/`, { issue_type, note }),
-  returns: () => api.get<Paginated<import("./types").SellerReturn>>("seller/returns/", { page_size: 50 }),
-  return: (reference: string) => api.get<import("./types").SellerReturn>(`seller/returns/${reference}/`),
-  respond: (reference: string, message: string) =>
-    api.post<import("./types").SellerReturn>(`seller/returns/${reference}/`, { message }),
-  reviews: () =>
-    api.get<Paginated<import("./types").SellerReview> & { summary: { rating: string | null; rating_count: number } }>(
-      "seller/reviews/",
-      { page_size: 50 },
-    ),
-  reply: (id: number, text: string) => api.post<{ ok: boolean }>(`seller/reviews/${id}/reply/`, { text }),
-  flag: (id: number, reason: string) => api.post<{ ok: boolean }>(`seller/reviews/${id}/flag/`, { reason }),
-  documents: () => api.get<import("./types").SellerDocument[]>("seller/documents/"),
-  uploadDocument: (kind: string, file: File) => {
-    const form = new FormData();
-    form.append("kind", kind);
-    form.append("file", file);
-    return api.post<import("./types").SellerDocument[]>("seller/documents/", form);
-  },
 };

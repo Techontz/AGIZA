@@ -45,8 +45,8 @@ test("a visitor's cart is priced by the server and checkout asks to sign in", as
   await expect(page).toHaveURL(/\/login\?next=%2Fcheckout|\/login\?next=\/checkout/);
 });
 
-test("account, checkout and seller pages need a session", async ({ page }) => {
-  for (const path of ["/account", "/checkout", "/seller"]) {
+test("account and checkout pages need a session", async ({ page }) => {
+  for (const path of ["/account", "/checkout"]) {
     await page.goto(path);
     await expect(page).toHaveURL(/\/login\?next=/);
   }
