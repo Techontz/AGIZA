@@ -132,3 +132,56 @@ Suspended stores can read but not change anything.
   vendor product's methods in the admin product editor if needed.
 - Historical orders (before the marketplace) have their seller recorded but no fulfilments or
   commission.
+
+## Production additions (returns, ledger, payouts, pickups, reviews, wishlist, inbox)
+
+### Customer API additions (`/api/app/`, customer JWT unless noted)
+
+| Endpoint | Notes |
+|---|---|
+| `GET products/<id>/reviews/?page=` (public; customer token optional) | `{count, results: [{id, rating, title, body, author, verified_purchase, created_at, edited_at, vendor_reply, vendor_replied_at}], rating, rating_count, distribution: {"5": n …"1": n}, mine, can_review}` |
+| `POST products/<id>/reviews/` `{rating 1–5, title?, body?}` | Create or edit my review (delivered purchase required; 409 otherwise). Returns my review incl. `status` (`published`/`pending`/`flagged`/`hidden`). |
+| `GET me/reviews/` · `DELETE me/reviews/<id>/` | `{reviews: [...], to_review: [{product_id, name, order, image}]}` |
+| Product cards / detail | now include `rating` (string like `"4.5"` or null) and `rating_count`; detail adds `rating_distribution`. Store payloads' `rating` is computed from reviews and adds `rating_count`. |
+| `GET products/?in_stock=1` | Only products that can be bought now. |
+| `GET/POST wishlist/` `{product}` · `DELETE wishlist/<product_id>/` · `POST wishlist/merge/` `{products: [ids]}` | Body: `{product_ids: [...], products: [ProductCard]}` |
+| `GET notifications/?page=` · `POST notifications/read/` `{ids?}` | Inbox: `{results: [{id, title, body, data, read, created_at}], unread}`; `data` has `type` (order, return, payment, seller…) and a reference to open. |
+| `GET orders/<ref>/returns/` | `{can_return, window_open, window_days, items: [{item, name, variant_name, quantity, returnable, unit_price}], reasons: [{code, label}], returns: [...]}` |
+| `POST orders/<ref>/returns/` `{lines: [{item, quantity}], reason_code, explanation}` | Creates a return request (201) |
+| `GET returns/` · `GET returns/<ref>/` | `{reference, order, status, status_display ("Requested", "Item on its way back", "Item received", "Under review", "Refund pending", "Approved", "Rejected", "Refunded", "Closed"), refund_status (not_decided/pending/refunded/none), reason, items, value, refund_amount, message, created_at}` + detail: `explanation, lines, evidence: [urls], history: [{status, at}], can_add_evidence` |
+| `POST returns/<ref>/evidence/` (multipart `file`, JPEG/PNG/WebP) · `GET returns/<ref>/evidence/<id>/` | Up to 6 photos while the return is open |
+| Order detail (shop) | adds `can_return`, `returns: [{reference, status_display, refund_status}]`, `adjustments: [{amount, reason, at, kind: seller_part|return_refund}]` (a seller's part cancelled, or a refunded return; `amounts.subtotal` is as ordered, so subtotal + shipping_fee + adjustments = total), `items[].item` (id), `items[].cancelled`, `sellers[].status` may be `cancelled` |
+| `POST auth/delete-account/` | 409 while an order is in progress; otherwise anonymises the customer |
+
+### Seller API additions (`/api/app/seller/`)
+
+| Endpoint | Notes |
+|---|---|
+| Orders | payload adds `can_report_issue`, `issue: {type, type_display, note, reported_at, resolved_at, resolution} \| null`; accept/ready are blocked while an issue is open |
+| `POST orders/<id>/issue/` `{issue_type: cannot_fulfill\|item_unavailable\|stock_discrepancy\|damaged_item\|other, note}` | AGIZA decides (continue, or cancel that part) |
+| `GET returns/` · `GET returns/<ref>/` · `POST returns/<ref>/` `{message}` · `GET returns/<ref>/evidence/<id>/` | Returns of this vendor's items: `{reference, order_reference, status, status_display, refund_status, reason, items, created_at}` + detail `explanation, evidence, responses, can_respond` |
+| `GET reviews/` · `POST reviews/<id>/reply/` `{text}` · `POST reviews/<id>/flag/` `{reason}` | Rows `{id, product_id, product_name, rating, title, body, author, status, created_at, vendor_reply, flag_reason}` + `summary {rating, rating_count}` |
+| `GET earnings/` | `summary` adds `in_payout, refunds, adjustments` (payable / paid out now come from the ledger); `payouts[]` add `status, status_display, gross_sales, commission, refund_deductions, adjustments, created_at`; `ledger: [{kind, kind_display, amount, reference, note, at}]` |
+| `GET/POST documents/` (multipart `kind`, `file` PDF/JPEG/PNG/WebP) | `kind`: business_license, tin_certificate, registration, id, other. Private (owner + staff). |
+
+### Staff API additions (`/api/`)
+
+| Endpoint | Permission | Notes |
+|---|---|---|
+| `GET marketplace/fulfillments/?issue_open=true` | view | rows add `issue` and `pickup {reference, status, status_display}` |
+| `POST marketplace/fulfillments/<id>/resolve/` `{action: continue\|cancel_part, note}` | E-commerce edit | |
+| `GET marketplace/payouts/?vendor=&status=&batch=` | Finance view | rows: `status (processing/paid/failed/reversed), status_display, gross_sales, commission, refund_deductions, adjustments, destination, batch, processed_by, processed_at, failure_reason` |
+| `POST marketplace/payouts/` `{vendor, method, record_as_paid=true, transaction_reference (required when paid), notes}` | Finance edit | `record_as_paid=false` starts a processing payout |
+| `POST marketplace/payouts/<id>/paid/` `{transaction_reference}` · `…/failed/` `{reason}` · `…/reverse/` `{reason}` | Finance edit | |
+| `GET/POST marketplace/payout-batches/` `{vendors?: [ids], notes?}` | Finance edit | one processing payout per vendor with a balance |
+| `GET marketplace/ledger/?vendor=<id>` | Finance view | `{balance: {payable, gross_sales, commission, refunds, adjustments, paid_out, in_payout, pending}, entries: [...]}` |
+| `POST marketplace/adjustments/` `{vendor, amount (±), reason}` | **Finance manage** | |
+| `GET marketplace/earnings/` | view | marketplace adds `refunds_to_customers, payable_to_vendors, paid_to_vendors`; vendor rows add `in_payout, refunds` (payable/paid out from the ledger) |
+| `GET marketplace/reviews/?status=&vendor=&product=&rating=&search=` · `POST marketplace/reviews/<id>/moderate/` `{action: publish\|hide, note}` | E-commerce | `note` required to hide |
+| `GET marketplace/vendors/<id>/documents/` · `…/documents/<doc>/file/` | E-commerce | |
+| `GET/PATCH marketplace/settings/` | | adds `return_window_days`, `auto_publish_reviews` |
+| `GET deliveries/pickups/?status=&order=&driver=&vendor=` · `GET deliveries/pickups/<id>/` | Deliveries (drivers: own only) | `{reference, status (pending/ready/assigned/collected/at_hub/failed/cancelled), status_display, order, vendor, origin {name, address, phone, city}, destination, driver, scheduled_at, collected_at, arrived_at, handed_over_by, events}` |
+| `POST deliveries/pickups/<id>/assign/` `{driver, scheduled_at?}` · `POST deliveries/pickups/<id>/advance/` `{status: collected (needs handed_over_by) \| at_hub \| failed (needs note)}` | Deliveries edit | Shipping a consolidated order is refused until its pickups are `at_hub` |
+| `GET returns/<id>/` | Returns | adds `requested_by_customer, customer_note, customer_message, restocked, reconciled_at, lines [{item, name, variant_name, quantity, amount, seller}], attachments [{id, url, content_type}], vendor_responses, refund_status, customer_status_display, sellers` |
+| `POST returns/<id>/message/` `{message}` · `GET returns/<id>/attachments/<aid>/file/` | Returns | inspect accepts `restock` (bool) |
+| `GET /api/health/` (DB readiness, 503 when down) · `GET /api/health/live/` | public | |

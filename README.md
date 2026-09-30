@@ -247,23 +247,28 @@ Backend
 
 Website (agiza_web)
 1. Same build and standalone run as the admin; environment: `DJANGO_API_URL`, `NEXT_PUBLIC_SITE_URL`
-   (the public https URL), `STOREFRONT_SERVER_KEY` (same value as the backend), `SESSION_COOKIE_SECURE=true`.
+   (the public https URL; required, the build fails without it), `STOREFRONT_SERVER_KEY` (same value as the
+   backend). Sign-in cookies are Secure automatically in production builds.
 2. Publicly reachable (it is the customer site); serve `/sitemap.xml` and `/robots.txt` as generated.
 
 Frontend
 1. `pnpm install --frozen-lockfile && pnpm build` → standalone server in `.next/standalone`.
-2. Environment: `DJANGO_API_URL` (internal URL of Django), `SESSION_COOKIE_SECURE=true`, `NODE_ENV=production`.
+2. Environment: `DJANGO_API_URL` (internal URL of Django), `NODE_ENV=production` (auth cookies are then
+   Secure; `SESSION_COOKIE_SECURE=false` only for a local production build over http).
 3. Run `node .next/standalone/server.js` (copy `.next/static` and `public` next to it) behind the same TLS proxy.
 
 Django only needs to be reachable from the Next.js server; it doesn't need to be public (except the chat
-webhooks, if channels are enabled). Back up PostgreSQL and the media storage.
+webhooks, if channels are enabled). Back up the database and the media storage.
+
+See [docs/PRODUCTION.md](docs/PRODUCTION.md) for every environment variable, upgrading, health checks,
+monitoring, backup/restore/rollback, refunds and seller payouts, and the go-live checklist.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
 | Login fails with "Too many attempts" | Login is rate-limited (`THROTTLE_LOGIN_RATE`); wait a minute. Behind proxies, set `DJANGO_NUM_PROXIES` correctly. |
-| Every page redirects to `/login` | The refresh cookie is missing/expired. With HTTPS disabled locally keep `SESSION_COOKIE_SECURE=false`. |
+| Every page redirects to `/login` | The refresh cookie is missing/expired. Running a production build over plain http locally? Set `SESSION_COOKIE_SECURE=false`. |
 | Frontend shows "Network error" | Django isn't reachable at `DJANGO_API_URL` from the Next.js server. |
 | Prices show "No exchange rate" | Set USD/AED/CNY → TSh rates in Shipping Engine → Settings. |
 | `seed_demo_data` refuses to run | It only runs with `DJANGO_DEBUG=true` (or `--force`). |
