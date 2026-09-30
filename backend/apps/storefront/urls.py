@@ -105,4 +105,8 @@ urlpatterns = [
     path("seller/reviews/", seller.ReviewListView.as_view(), name="seller-reviews"),
     path("seller/reviews/<int:pk>/<str:action>/", seller.ReviewActionView.as_view(), name="seller-review-action"),
     path("seller/documents/", seller.DocumentListView.as_view(), name="seller-documents"),
+    path("seller/notifications/", engagement.NotificationListView.as_view(audience="seller"),
+         name="seller-notifications"),
+    path("seller/notifications/read/", engagement.NotificationReadView.as_view(audience="seller"),
+         name="seller-notifications-read"),
 ]

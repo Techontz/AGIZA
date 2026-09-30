@@ -119,8 +119,15 @@ class CheckoutRequest(models.Model):
         return f"{self.key} → {self.order_id}"
 
 
+class AppKind(models.TextChoices):
+    """Which AGIZA app a device or notification belongs to: sellers use their own app."""
+
+    CUSTOMER = "customer", "Customer app"
+    SELLER = "seller", "Seller app"
+
+
 class PushDevice(TimeStampedModel):
-    """An Expo push token of a device the customer signed in on."""
+    """An Expo push token of a device the customer signed in on (in the customer or the seller app)."""
 
     class Platform(models.TextChoices):
         ANDROID = "android", "Android"
@@ -130,6 +137,7 @@ class PushDevice(TimeStampedModel):
     account = models.ForeignKey(CustomerAccount, on_delete=models.CASCADE, related_name="devices")
     token = models.CharField(max_length=255, unique=True)
     platform = models.CharField(max_length=8, choices=Platform.choices, default=Platform.UNKNOWN)
+    app = models.CharField(max_length=10, choices=AppKind.choices, default=AppKind.CUSTOMER)
     is_active = models.BooleanField(default=True)
     last_seen_at = models.DateTimeField(default=timezone.now)
 
@@ -156,9 +164,11 @@ class WishlistItem(models.Model):
 
 
 class CustomerNotification(models.Model):
-    """In-app inbox: every customer-facing notification is kept here (push is just a way to deliver it)."""
+    """In-app inbox: every notification is kept here (push is just a way to deliver it). `audience`
+    says which app shows it: the customer app, or the seller app for a store owner's notifications."""
 
     customer = models.ForeignKey("parties.Customer", on_delete=models.CASCADE, related_name="app_notifications")
+    audience = models.CharField(max_length=10, choices=AppKind.choices, default=AppKind.CUSTOMER)
     title = models.CharField(max_length=150)
     body = models.CharField(max_length=500, blank=True)
     data = models.JSONField(default=dict, blank=True, help_text="Where it leads: screen, order, return…")
@@ -167,7 +177,7 @@ class CustomerNotification(models.Model):
 
     class Meta:
         ordering = ["-created_at", "-id"]
-        indexes = [models.Index(fields=["customer", "read_at"])]
+        indexes = [models.Index(fields=["customer", "audience", "read_at"])]
 
     def __str__(self) -> str:
         return f"{self.customer_id}: {self.title}"

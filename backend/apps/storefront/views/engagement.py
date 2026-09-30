@@ -163,8 +163,10 @@ class WishlistMergeView(CustomerAPIView):
 # --------------------------------------------------------------------------- #
 @extend_schema(tags=["app: notifications"], responses=OpenApiTypes.OBJECT)
 class NotificationListView(CustomerAPIView):
+    audience = "customer"  # the seller app's inbox uses the same views with audience "seller"
+
     def get(self, request):
-        qs = CustomerNotification.objects.filter(customer=self.customer)
+        qs = CustomerNotification.objects.filter(customer=self.customer, audience=self.audience)
         paginator = StandardPagination()
         page = paginator.paginate_queryset(qs, request, view=self)
         body = paginator.get_paginated_response([
@@ -178,14 +180,16 @@ class NotificationListView(CustomerAPIView):
 class NotificationReadView(CustomerAPIView):
     """Mark notifications read: {"ids": [..]} or {} for all."""
 
+    audience = "customer"
+
     def post(self, request):
-        qs = CustomerNotification.objects.filter(customer=self.customer, read_at__isnull=True)
+        qs = CustomerNotification.objects.filter(customer=self.customer, audience=self.audience, read_at__isnull=True)
         ids = request.data.get("ids") if isinstance(request.data, dict) else None
         if isinstance(ids, list):
             qs = qs.filter(pk__in=[i for i in ids if isinstance(i, int)])
         qs.update(read_at=timezone.now())
-        return Response({"unread": CustomerNotification.objects.filter(customer=self.customer,
-                                                                       read_at__isnull=True).count()})
+        return Response({"unread": CustomerNotification.objects.filter(
+            customer=self.customer, audience=self.audience, read_at__isnull=True).count()})
 
 
 # --------------------------------------------------------------------------- #

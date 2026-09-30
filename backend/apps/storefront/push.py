@@ -46,23 +46,24 @@ def _send(tokens: list[str], title: str, body: str, data: dict):
             PushDevice.objects.filter(token__in=dead).update(is_active=False)
 
 
-def notify_customer(customer, *, title: str, body: str, data: dict | None = None):
+def notify_customer(customer, *, title: str, body: str, data: dict | None = None, audience: str = "customer"):
     """
-    Keep the notification in the customer's in-app inbox, then queue a push to every active device
-    of their app account (push is skipped when disabled or without devices).
+    Keep the notification in the in-app inbox of the right app (`audience`: the customer app, or the
+    seller app for a store owner), then queue a push to that app's active devices of the account
+    (push is skipped when disabled or without devices).
     """
     if customer is None:
         return
     from .models import CustomerNotification
 
     CustomerNotification.objects.create(customer=customer, title=title[:150], body=(body or "")[:500],
-                                        data=data or {})
+                                        data=data or {}, audience=audience)
     if not settings.EXPO_PUSH_ENABLED:
         return
     account = getattr(customer, "account", None) if customer is not None else None
     if account is None or not account.is_active:
         return
-    tokens = list(account.devices.filter(is_active=True).values_list("token", flat=True))
+    tokens = list(account.devices.filter(is_active=True, app=audience).values_list("token", flat=True))
     if not tokens:
         return
     payload = data or {}

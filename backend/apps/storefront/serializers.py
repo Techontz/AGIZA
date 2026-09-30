@@ -87,6 +87,7 @@ class ProfileSerializer(serializers.ModelSerializer):
 class DeviceSerializer(serializers.Serializer):
     token = serializers.CharField(max_length=255)
     platform = serializers.ChoiceField(choices=["android", "ios", "unknown"], default="unknown")
+    app = serializers.ChoiceField(choices=["customer", "seller"], default="customer")
 
 
 # --------------------------------------------------------------------------- #

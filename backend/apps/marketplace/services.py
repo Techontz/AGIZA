@@ -66,7 +66,7 @@ def _notify_owner(vendor: Vendor, title: str, body: str, data: dict | None = Non
         return
     from apps.storefront.push import notify_customer
 
-    notify_customer(vendor.owner.customer, title=title, body=body,
+    notify_customer(vendor.owner.customer, title=title, body=body, audience="seller",
                     data={"type": "seller", "screen": "seller", **(data or {})})
 
 

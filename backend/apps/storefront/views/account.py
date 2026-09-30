@@ -160,6 +160,7 @@ class DeviceView(CustomerAPIView):
         if not is_expo_token(token):
             raise ValidationError({"token": ["Not an Expo push token."]})
         PushDevice.objects.update_or_create(token=token, defaults={
-            "account": request.user, "platform": s.validated_data["platform"], "is_active": True,
+            "account": request.user, "platform": s.validated_data["platform"], "app": s.validated_data["app"],
+            "is_active": True,
             "last_seen_at": timezone.now()})
         return Response(status=status.HTTP_204_NO_CONTENT)
