@@ -10,6 +10,9 @@ export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,
   retries: 0,
+  // One worker: every test browses from the same IP, and the API's per-IP limit for anonymous
+  // visitors would otherwise throttle the browser-side requests (as it should for a real crawler).
+  workers: 1,
   reporter: [["list"]],
   use: { baseURL: process.env.BASE_URL ?? "http://localhost:3200", trace: "retain-on-failure" },
   projects: [

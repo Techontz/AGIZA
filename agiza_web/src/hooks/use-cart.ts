@@ -11,6 +11,8 @@ import { guestCart, readGuestCart } from "@/lib/guest-cart";
 
 import { useSession } from "./use-session";
 
+const EMPTY_CART: Cart = { items: [], groups: [], item_count: 0, subtotal: "0.00", currency: "TZS", has_issues: false };
+
 export const CART_KEY = ["cart"] as const;
 
 let snapshot = "[]";
@@ -55,7 +57,8 @@ export function useCart() {
 
   const query = useQuery<Cart>({
     queryKey: signedIn ? [...CART_KEY, "account"] : [...CART_KEY, "guest", guestJson],
-    queryFn: () => (signedIn ? cartApi.get() : cartApi.guest(guestLines)),
+    // An empty guest cart needs no pricing: skip the request (keeps visitors well under the API's per-IP limit).
+    queryFn: () => (signedIn ? cartApi.get() : guestLines.length ? cartApi.guest(guestLines) : Promise.resolve(EMPTY_CART)),
     enabled: ready,
     placeholderData: keepPreviousData,
     staleTime: 15_000,
