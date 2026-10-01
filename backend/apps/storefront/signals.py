@@ -18,6 +18,10 @@ from .push import notify_customer
 def order_status_changed(sender, instance: OrderStatusHistory, created: bool, **kwargs):
     if not created or not instance.from_status:  # creation is confirmed in the app itself
         return
+    from apps.orders.expiry import EXPIRED_REASON
+
+    if instance.note.startswith(EXPIRED_REASON):  # orders.expiry tells the customer why, in its own words
+        return
     order = instance.order
     notify_customer(order.customer, title=f"Order {order.reference}",
                     body=f"Status: {status_label(order.order_type, instance.to_status)}",

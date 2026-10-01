@@ -13,15 +13,20 @@ from apps.core.pagination import StandardPagination
 from apps.core.uploads import file_response
 from apps.locations.models import City, Country
 
+from .. import cart as carts
 from .. import checkout, otp
-from ..catalog import AGIZA_STORE_SLUG, available_by_variant, public_vendors, visible_categories, visible_products
+from ..catalog import AGIZA_STORE_SLUG, available_by_variant, is_sellable, public_vendors, visible_categories, visible_products
+from ..models import MAX_LINE_QUANTITY
 from ..serializers import (
     CategorySerializer,
     CitySerializer,
+    DeliveryEstimateSerializer,
     ProductCardSerializer,
     ProductDetailSerializer,
+    option_payload,
     store_payload,
 )
+from ..shipping import Line, delivery_options, import_options, is_imported, origin_country, store_hub
 from .base import PublicAPIView
 
 ORDERING = {"newest": ("-created_at", "-id"), "price": ("price", "id"), "-price": ("-price", "id"),
@@ -37,14 +42,31 @@ def _price(value: str | None) -> Decimal | None:
         raise Http404
 
 
-def _stock_for(products) -> dict[int, int]:
-    return available_by_variant(v.pk for p in products for v in getattr(p, "shop_variants", []))
+def _imported(products) -> dict[int, str]:
+    """{product id: country it ships from} for imported products (no local stock needed to order them)."""
+    hub = store_hub()
+    found = {}
+    for product in products:
+        if is_imported(product, hub):
+            found[product.pk] = origin_country(product, hub).name
+    return found
+
+
+def _stock_for(products, imported: dict[int, str]) -> dict[int, int]:
+    stock = available_by_variant(v.pk for p in products for v in getattr(p, "shop_variants", []))
+    for product in products:
+        if product.pk in imported:  # bought abroad once ordered: always orderable
+            for variant in getattr(product, "shop_variants", []):
+                stock[variant.pk] = MAX_LINE_QUANTITY
+    return stock
 
 
 def _card_context(request, products) -> dict:
     from apps.marketplace.reviews import product_ratings
 
-    return {"request": request, "stock": _stock_for(products), "ratings": product_ratings(p.pk for p in products)}
+    imported = _imported(products)
+    return {"request": request, "stock": _stock_for(products, imported), "imported": imported,
+            "ratings": product_ratings(p.pk for p in products)}
 
 
 @extend_schema(tags=["app: shop"], responses=OpenApiTypes.OBJECT)
@@ -209,3 +231,53 @@ class SourcingCountryListView(PublicAPIView):
     def get(self, request):
         countries = Country.objects.filter(is_active=True, is_sourcing_origin=True).order_by("name")
         return Response([{"iso2": c.iso2, "name": c.display_name or c.name} for c in countries])
+
+
+@extend_schema(tags=["app: shop"], responses=OpenApiTypes.OBJECT, parameters=[
+    OpenApiParameter("variant", int, required=True), OpenApiParameter("city", int, required=True),
+    OpenApiParameter("quantity", int)])
+class DeliveryEstimateView(PublicAPIView):
+    """
+    "Calculate delivery" on a product page: what delivering this item to a city costs with each
+    method, priced by the Shipping Engine exactly as checkout will (imported items: shipping to
+    Tanzania plus delivery to the city).
+    """
+
+    def get(self, request):
+        s = DeliveryEstimateSerializer(data=request.query_params)
+        s.is_valid(raise_exception=True)
+        data = s.validated_data
+        items = carts.guest_items([{"variant": data["variant"], "quantity": data["quantity"]}])
+        if not items or not is_sellable(items[0].variant):
+            raise Http404
+        variant = items[0].variant
+        lines = [Line(variant, data["quantity"])]
+        currency = StoreSettings.load().currency
+        hub = store_hub()
+        imported = is_imported(variant.product, hub)
+        imports = import_options(lines, currency=currency)
+        return Response({
+            "imported": imported,
+            "ships_from": origin_country(variant.product, hub).name if imported else None,
+            "hub": hub.name if imported and hub else None,
+            "import_options": [option_payload(o) for o in imports],
+            "customs": _customs_estimate(variant, data["quantity"], imports, hub, currency) if imported else None,
+            "shipping_options": [option_payload(o) for o in delivery_options(lines, data["city"], currency=currency)],
+            "currency": currency,
+            "prepayment_required": imported,
+        })
+
+
+def _customs_estimate(variant, quantity: int, imports: list[dict], hub, currency: str) -> dict | None:
+    """Customs for this item with the cheapest import option, computed exactly as checkout does."""
+    from apps.shipping_engine import customs
+    from apps.shipping_engine.calculator import RateCalculationError
+
+    cheapest = next((o for o in imports if o["available"]), None)
+    item = customs.Item(variant.product, quantity, variant.effective_price * quantity,
+                        origin_country(variant.product, hub).pk)
+    try:
+        result = customs.calculate([item], currency=currency, import_shipping=cheapest["cost"] if cheapest else 0)
+    except RateCalculationError:
+        return None
+    return result.as_dict()

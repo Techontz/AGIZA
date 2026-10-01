@@ -177,6 +177,7 @@ REST_FRAMEWORK = {
         "customer_login": env("THROTTLE_CUSTOMER_LOGIN_RATE", default="10/min"),
         "otp": env("THROTTLE_OTP_RATE", default="5/min"),
         "checkout": env("THROTTLE_CHECKOUT_RATE", default="20/min"),
+        "guest_checkout": env("THROTTLE_GUEST_CHECKOUT_RATE", default="10/hour"),
         "reviews": env("THROTTLE_REVIEWS_RATE", default="20/hour"),
         "returns": env("THROTTLE_RETURNS_RATE", default="10/hour"),
         "uploads": env("THROTTLE_UPLOADS_RATE", default="60/hour"),

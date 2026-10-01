@@ -106,7 +106,8 @@ def test_place_order_splits_it_by_seller_with_commission(app, home, shop, vendor
     # The customer sees one order, with who sells what, and never commissions.
     body = app.get(f"{APP}/orders/{order.reference}/").json()
     assert [s["vendor"]["name"] for s in body["sellers"]] == ["AGIZA", "Vendor A Electronics", "Vendor B Fashion"]
-    assert body["amounts"] == {"subtotal": "425000.00", "shipping_fee": "9000.00", "total": "434000.00"}
+    assert body["amounts"] == {"subtotal": "425000.00", "shipping_fee": "9000.00", "import_fee": "0.00",
+                               "customs_fee": "0.00", "total": "434000.00"}
     assert "commission" not in str(body) and "vendor_net" not in str(body)
 
 

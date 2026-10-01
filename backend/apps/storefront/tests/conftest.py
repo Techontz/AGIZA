@@ -1,16 +1,17 @@
 """Customer app fixtures: a stocked Dar es Salaam shop, a Shipping Engine setup and signed-in customers."""
+from datetime import date
 from decimal import Decimal as D
 
 import pytest
 from rest_framework.test import APIClient
 
 from apps.accounts.constants import StaffLevel
-from apps.catalog.models import Category, Product, ProductVariant, StoreSettings
+from apps.catalog.models import Category, LocationKind, Product, ProductVariant, StoreSettings
 from apps.inventory import services as inventory
 from apps.locations.models import City, Country, Warehouse
 from apps.parties.models import Address, Customer
 from apps.shipping_engine.constants import Scope
-from apps.shipping_engine.models import Route, ShippingMethod, ShippingProfile, ShippingRule
+from apps.shipping_engine.models import ExchangeRate, Route, ShippingMethod, ShippingProfile, ShippingRule
 from apps.storefront.auth import issue_tokens
 from apps.storefront.models import CustomerAccount
 
@@ -128,3 +129,38 @@ def other_app(db):
 def home(account, shop):
     return Address.objects.create(customer=account.customer, label="Home", line1="Plot 12, Mikocheni B",
                                   area="Mikocheni", city=shop.dar, is_default=True)
+
+
+@pytest.fixture
+def imported(shop):
+    """A drone sourced from China (no stock in Tanzania), with China → Tanzania air freight at $12/kg (min $30)."""
+    cn = Country.objects.get(iso2="CN")
+    shop.air = ShippingMethod.objects.create(name="Air Freight", code="AIR", category="air")
+    shop.sea = ShippingMethod.objects.create(name="Sea Freight", code="SEA", category="sea")
+    route = Route.objects.create(type=Scope.INTERNATIONAL, origin_country=cn, destination_country=shop.tz)
+    route.methods.set([shop.air, shop.sea])
+    ShippingRule.objects.create(route=route, method=shop.air, applies_to="general", pricing_model="per_kg",
+                                rate=D("12"), currency="USD", minimum_charge=D("30"), eta_min_days=7, eta_max_days=14)
+    ShippingRule.objects.create(route=route, method=shop.sea, applies_to="general", pricing_model="manual",
+                                currency="USD", eta_min_days=25, eta_max_days=40)
+    ExchangeRate.objects.create(base_currency="USD", quote_currency="TZS", rate=D("2500"), effective_date=date(2026, 1, 1))
+    shop.drone = Product.objects.create(name="Mini Drone", sku="DRN", category=shop.product.category, price=D("500000"),
+                                        status="active", location_kind=LocationKind.TRANSIT, origin_country=cn,
+                                        weight_kg=D("2"))
+    shop.drone_variant = ProductVariant.objects.create(product=shop.drone, name="Default", sku="DRN", is_default=True)
+    return shop
+
+
+@pytest.fixture
+def selcom(monkeypatch):
+    """Mobile money available; opening a payment returns Selcom's page."""
+    monkeypatch.setattr("apps.payments.services.available", lambda: True)
+    started = []
+
+    def start(order, phone):
+        started.append(order.reference)
+        return {"status": "pending", "message": "", "checkout_url": "https://pay.example/checkout", "reference": "S1"}
+
+    monkeypatch.setattr("apps.storefront.views.shopping.start_payment", start)
+    monkeypatch.setattr("apps.storefront.views.guest.start_payment", start)
+    return started

@@ -164,8 +164,9 @@ class CheckoutPreviewView(CustomerAPIView):
         s.is_valid(raise_exception=True)
         address = get_object_or_404(_addresses(self.customer), pk=s.validated_data["address"])
         quote = checkout.preview(self.customer, address=address,
-                                 shipping_method_id=s.validated_data.get("shipping_method"))
-        return Response(quote_payload(quote, request, payment_methods=checkout.payment_methods()))
+                                 shipping_method_id=s.validated_data.get("shipping_method"),
+                                 import_method_id=s.validated_data.get("import_method"))
+        return Response(quote_payload(quote, request))
 
 
 @extend_schema(tags=["app: checkout"], request=PlaceOrderSerializer, responses=OpenApiTypes.OBJECT)
@@ -180,13 +181,14 @@ class PlaceOrderView(CustomerAPIView):
         try:
             order, created = checkout.place_order(
                 self.customer, address=address, shipping_method_id=data["shipping_method"],
+                import_method_id=data.get("import_method"),
                 payment_method=data["payment_method"], notes=data["notes"], idempotency_key=data["idempotency_key"],
                 expected_total=data.get("expected_total"), request=request, channel=_channel(request),
             )
         except checkout.PriceChanged as exc:
             logger.info("Checkout refused for customer %s: total changed", self.customer.pk)
             return Response({"error": {"code": "price_changed", "message": exc.message, "details": quote_payload(
-                exc.preview, request, payment_methods=checkout.payment_methods())}}, status=status.HTTP_409_CONFLICT)
+                exc.preview, request)}}, status=status.HTTP_409_CONFLICT)
         except WorkflowError as exc:
             logger.info("Checkout refused for customer %s: %s", self.customer.pk, exc.message)
             if exc.conflict:
@@ -194,7 +196,7 @@ class PlaceOrderView(CustomerAPIView):
             raise ValidationError({exc.field or "non_field_errors": [exc.message]})
         payment = None
         if created and order.shop.payment_preference == PaymentPreference.MOBILE_MONEY:
-            payment = start_payment(order, request.user)
+            payment = start_payment(order, request.user.phone)
         body = {"order": order_detail_payload(_reload(order), request), "created": created, "payment": payment}
         return Response(body, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
@@ -213,10 +215,10 @@ def _reload(order: Order) -> Order:
     return customer_orders(order.customer).get(pk=order.pk)
 
 
-def start_payment(order: Order, account) -> dict:
+def start_payment(order: Order, phone: str) -> dict:
     """Open a mobile-money checkout. A failure never undoes the order: the customer can retry from it."""
     try:
-        gateway = payments.start_checkout(order, phone=account.phone)
+        gateway = payments.start_checkout(order, phone=phone)
     except WorkflowError as exc:
         return {"status": "failed", "message": exc.message, "checkout_url": None}
     return {"status": gateway.status, "message": "", "checkout_url": gateway.gateway_url,

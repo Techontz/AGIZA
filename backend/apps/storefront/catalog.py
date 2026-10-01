@@ -41,7 +41,8 @@ def visible_products():
         Product.objects.filter(status__in=VISIBLE_STATUSES, category__is_active=True,
                                review_status__in=PUBLISHABLE_REVIEW)
         .filter(SELLER_IS_PUBLIC)
-        .select_related("brand", "category", "subcategory", "vendor__city")
+        .select_related("brand", "category", "subcategory", "vendor__city__country", "location__city",
+                        "location__country", "origin_country")
         .prefetch_related(
             Prefetch("images", queryset=ProductImage.objects.filter(variant__isnull=True), to_attr="shop_images"),
             Prefetch("variants", queryset=ProductVariant.objects.filter(status=VariantStatus.ACTIVE)

@@ -3,6 +3,11 @@ Checkout for the customer app. The server prices everything:
 
     cart lines (live catalogue prices) + delivery fee (Shipping Engine) = total
 
+Visitors on the website can also check out without an account (`guest_preview`,
+`place_guest_order`): their browser cart is priced the same way, the order goes to the
+customer record with that phone number (created if there is none), and signing up later
+with the same number brings those orders into the new account.
+
 A cart may hold products from several sellers: the customer still places one order and
 pays once; the order service splits it into one part per seller (see apps.marketplace).
 
@@ -14,21 +19,30 @@ idempotency key returns the order already created.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, field
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 
+from apps.chat.services import find_customer
 from apps.core.workflow import WorkflowError
 from apps.orders import shop
 from apps.orders.models import Order, PaymentPreference, ShopDetails
-from apps.parties.models import Address
+from apps.parties.models import Address, Customer
 from apps.payments import services as payments
-from apps.shipping_engine.models import ShippingMethod
+from apps.shipping_engine import customs
+from apps.shipping_engine.calculator import RateCalculationError
+from apps.shipping_engine.customs import Charges
+from apps.shipping_engine.models import EngineSettings, ShippingMethod
 
 from . import cart as carts
 from .models import CheckoutRequest
-from .shipping import Line, allocation, delivery_options
+from .shipping import Line, allocation, combined_eta, delivery_options, import_options, origin_country, store_hub
+
+logger = logging.getLogger("apps.storefront")
 
 
 class PriceChanged(WorkflowError):
@@ -39,13 +53,17 @@ class PriceChanged(WorkflowError):
         self.preview = preview
 
 
-def payment_methods() -> list[dict]:
-    methods = []
-    if payments.available():
-        methods.append({"code": PaymentPreference.MOBILE_MONEY, "label": "Mobile money",
-                        "description": "Pay now with mobile money or card on Selcom's secure checkout page."})
-    methods.append({"code": PaymentPreference.PAY_LATER, "label": "Pay later",
-                    "description": "Pay AGIZA by cash on delivery, bank transfer or Lipa number. We confirm your payment."})
+MOBILE_MONEY = {"code": PaymentPreference.MOBILE_MONEY, "label": "Mobile money",
+                "description": "Pay now with mobile money or card on Selcom's secure checkout page."}
+PAY_LATER = {"code": PaymentPreference.PAY_LATER, "label": "Pay later",
+             "description": "Pay AGIZA by cash on delivery, bank transfer or Lipa number. We confirm your payment."}
+
+
+def payment_methods(*, prepayment: bool = False) -> list[dict]:
+    """How the customer can pay. Orders with imported items are paid when ordering (AGIZA buys them abroad)."""
+    methods = [MOBILE_MONEY] if payments.available() else []
+    if not prepayment:
+        methods.append(PAY_LATER)
     return methods
 
 
@@ -57,43 +75,138 @@ class Quote:
     shipping_fee: Decimal | None
     total: Decimal | None
     issues: list[str]
+    import_options: list[dict] = field(default_factory=list)
+    import_selected: dict | None = None
+    import_fee: Decimal = Decimal("0")
+    delivery_fee: Decimal | None = None
+    prepayment_required: bool = False
+    payment_methods: list[dict] = field(default_factory=list)
+    estimated_delivery: str = ""
+    customs: Charges = field(default_factory=Charges)
 
     @property
     def can_place_order(self) -> bool:
-        return not self.issues and self.selected is not None
+        return (not self.issues and self.selected is not None
+                and (self.import_selected is not None or not self.prepayment_required))
 
 
-def _quote(cart, address: Address, method_id: int | None) -> Quote:
-    summary = carts.summarize(cart)
+def _choose(options: list[dict], method_id: int | None) -> tuple[dict | None, bool]:
+    """(chosen option, whether the requested one was unavailable). No request: the cheapest available."""
+    available = [o for o in options if o["available"]]
+    if method_id is None:
+        return (available[0] if available else None), False
+    chosen = next((o for o in available if o["method_id"] == method_id), None)
+    return chosen, chosen is None
+
+
+def _quote(summary: dict, city, method_id: int | None, import_method_id: int | None = None) -> Quote:
     issues = []
     if not summary["lines"]:
         issues.append("Your cart is empty.")
     if summary["has_issues"]:
         issues.append("Some items in your cart are unavailable or low on stock. Update your cart to continue.")
     lines = [Line(line["item"].variant, line["item"].quantity) for line in summary["lines"] if not line["issue"]]
-    options = delivery_options(lines, address.city, currency=summary["currency"]) if lines else []
-    available = [o for o in options if o["available"]]
-    selected = None
-    if method_id is not None:
-        selected = next((o for o in available if o["method_id"] == method_id), None)
-        if selected is None and lines:
-            issues.append("The delivery option you chose isn't available for this address. Choose another.")
-    elif available:
-        selected = available[0]
-    if lines and not available:
+    currency = summary["currency"]
+    imported = summary.get("has_imported", False)
+
+    import_opts = import_options(lines, currency=currency) if imported else []
+    import_selected, refused = _choose(import_opts, import_method_id)
+    if refused:
+        issues.append("The shipping option you chose for imported items isn't available. Choose another.")
+    elif imported and import_selected is None:
+        issues.append("We can't ship the imported items in your cart to Tanzania yet. Remove them or contact AGIZA.")
+
+    options = delivery_options(lines, city, currency=currency) if lines else []
+    selected, refused = _choose(options, method_id)
+    if refused and lines:
+        issues.append("The delivery option you chose isn't available for this address. Choose another.")
+    if lines and not any(o["available"] for o in options):
         issues.append("We can't deliver these items to this address yet. Try another address or contact AGIZA.")
-    fee = selected["cost"] if selected else None
-    total = summary["subtotal"] + fee if fee is not None else None
-    return Quote(summary, options, selected, fee, total, issues)
+
+    methods = payment_methods(prepayment=imported)
+    if imported and not methods:
+        issues.append("Orders with imported items are paid when you order, by mobile money or card, which isn't "
+                      "available right now. Please try again later or contact AGIZA.")
+
+    import_fee = import_selected["cost"] if import_selected else Decimal("0")
+    delivery_fee = selected["cost"] if selected else None
+    priced = delivery_fee is not None and (import_selected is not None or not imported)
+    fee = delivery_fee + import_fee if priced else None
+    charges = _customs(summary, currency, import_fee, issues) if imported else Charges()
+    total = summary["subtotal"] + fee + charges.included if fee is not None else None
+    eta = combined_eta(import_selected, selected) if selected else ""
+    return Quote(summary, options, selected, fee, total, issues, import_options=import_opts,
+                 import_selected=import_selected, import_fee=import_fee, delivery_fee=delivery_fee,
+                 prepayment_required=imported, payment_methods=methods, estimated_delivery=eta, customs=charges)
 
 
-def preview(customer, *, address: Address, shipping_method_id: int | None = None) -> Quote:
-    return _quote(carts.cart_for(customer), address, shipping_method_id)
+def _customs(summary: dict, currency: str, import_fee: Decimal, issues: list[str]) -> Charges:
+    """Import charges for the cart's imported items (Shipping Engine import-charge rules)."""
+    hub = store_hub()
+    items = [customs.Item(line["item"].variant.product, line["item"].quantity, line["line_total"],
+                          getattr(origin_country(line["item"].variant.product, hub), "pk", None))
+             for line in summary["lines"] if line["imported"] and not line["issue"]]
+    try:
+        return customs.calculate(items, currency=currency, import_shipping=import_fee)
+    except RateCalculationError as exc:
+        logger.error("Import charges unavailable: %s", exc.message)
+        issues.append("Customs charges for the imported items are being updated. Please try again later.")
+        return Charges()
+
+
+def preview(customer, *, address: Address, shipping_method_id: int | None = None,
+            import_method_id: int | None = None) -> Quote:
+    return _quote(carts.summarize(carts.cart_for(customer)), address.city, shipping_method_id, import_method_id)
+
+
+def _order_lines(quote: Quote) -> list[dict]:
+    return [{"variant": line["item"].variant, "quantity": line["item"].quantity, "sourced_abroad": line["imported"]}
+            for line in quote.summary["lines"]]
+
+
+def _shipping_fields(quote: Quote) -> dict:
+    """What create_shop_order records about delivery: both legs, the fee split by seller, pay-first."""
+    shares = allocation(quote.selected)
+    if quote.import_selected:
+        for vendor, part in allocation(quote.import_selected).items():
+            shares[vendor] = shares.get(vendor, Decimal("0")) + part
+    return {
+        "delivery_fee": quote.shipping_fee,
+        "shipping_method": ShippingMethod.objects.get(pk=quote.selected["method_id"]),
+        "estimated_delivery": quote.estimated_delivery or "",
+        "shipping_allocation": shares,
+        "import_shipping_method": (ShippingMethod.objects.get(pk=quote.import_selected["method_id"])
+                                   if quote.import_selected else None),
+        "import_fee": quote.import_fee,
+        "prepayment_required": quote.prepayment_required,
+        "payment_due_at": payment_deadline() if quote.prepayment_required else None,
+        "customs_fee": quote.customs.included,
+        "customs_status": quote.customs.status or "",
+        "customs_charges": quote.customs.as_dict() if quote.customs.status else {},
+    }
+
+
+def payment_deadline():
+    """When an order with imported items must be fully paid (Shipping Engine settings)."""
+    hours = EngineSettings.load().import_payment_window_hours
+    return timezone.now() + timedelta(hours=hours)
+
+
+def _check_quote(quote: Quote, payment_method: str, expected_total: Decimal | None):
+    if quote.issues:
+        raise WorkflowError(quote.issues[0], conflict=True)
+    if payment_method not in {m["code"] for m in quote.payment_methods}:
+        if quote.prepayment_required:
+            raise WorkflowError("Orders with imported items are paid when you order. Choose mobile money.",
+                                field="payment_method")
+        raise WorkflowError("Choose a payment method.", field="payment_method")
+    if expected_total is not None and expected_total != quote.total:
+        raise PriceChanged(quote)
 
 
 def place_order(customer, *, address: Address, shipping_method_id: int, payment_method: str, notes: str,
                 idempotency_key: str, expected_total: Decimal | None, request=None,
-                channel: str = ShopDetails.Channel.APP) -> tuple[Order, bool]:
+                channel: str = ShopDetails.Channel.APP, import_method_id: int | None = None) -> tuple[Order, bool]:
     """Returns (order, created). created=False when the idempotency key was already used."""
     if payment_method not in {m["code"] for m in payment_methods()}:
         raise WorkflowError("Choose a payment method.", field="payment_method")
@@ -103,20 +216,14 @@ def place_order(customer, *, address: Address, shipping_method_id: int, payment_
             done = CheckoutRequest.objects.filter(customer=customer, key=idempotency_key).select_related("order").first()
             if done:
                 return done.order, False
-            quote = _quote(cart, address, shipping_method_id)
-            if quote.issues:
-                raise WorkflowError(quote.issues[0], conflict=True)
-            if expected_total is not None and expected_total != quote.total:
-                raise PriceChanged(quote)
+            quote = _quote(carts.summarize(cart), address.city, shipping_method_id, import_method_id)
+            _check_quote(quote, payment_method, expected_total)
             lines = quote.summary["lines"]
             order = shop.create_shop_order(
-                customer=customer, user=None, request=request, channel=channel,
-                items=[{"variant": line["item"].variant, "quantity": line["item"].quantity} for line in lines],
+                customer=customer, user=None, request=request, channel=channel, items=_order_lines(quote),
                 shipping_address=_address_text(address), city=address.city, area=address.area,
-                customer_email=customer.email, delivery_fee=quote.shipping_fee, notes=notes.strip(),
-                delivery_address=address, shipping_method=ShippingMethod.objects.get(pk=quote.selected["method_id"]),
-                estimated_delivery=quote.selected["estimated_delivery"] or "", payment_preference=payment_method,
-                shipping_allocation=allocation(quote.selected),
+                customer_email=customer.email, notes=notes.strip(), delivery_address=address,
+                payment_preference=payment_method, **_shipping_fields(quote),
             )
             if order.total_amount != quote.total:  # defensive: the order service must charge what was quoted
                 raise WorkflowError("The order total couldn't be confirmed. Please try again.", conflict=True)
@@ -125,6 +232,63 @@ def place_order(customer, *, address: Address, shipping_method_id: int, payment_
             return order, True
     except IntegrityError:
         done = CheckoutRequest.objects.filter(customer=customer, key=idempotency_key).select_related("order").first()
+        if done:
+            return done.order, False
+        raise
+
+
+def guest_preview(items: list[dict], *, city, shipping_method_id: int | None = None,
+                  import_method_id: int | None = None) -> Quote:
+    """A visitor's browser cart, priced for a delivery city exactly like a signed-in checkout."""
+    return _quote(carts.summarize_items(carts.guest_items(items)), city, shipping_method_id, import_method_id)
+
+
+def _guest_customer(*, full_name: str, phone: str, email: str) -> Customer:
+    """
+    The customer with this phone number, or a new one. An existing record is never changed
+    from a guest checkout (the number isn't verified), and an email that belongs to someone
+    else is not copied onto a new record; the order still keeps the email typed for it.
+    """
+    customer = find_customer(phone, "web")
+    if customer is None:
+        if email and Customer.objects.filter(email=email).exists():
+            email = ""
+        customer = Customer.objects.create(full_name=full_name, email=email, phone=f"+{phone}",
+                                           preferred_channel=Customer.Channel.WEB)
+    return Customer.objects.select_for_update().get(pk=customer.pk)  # one checkout at a time per customer
+
+
+def place_guest_order(*, items: list[dict], full_name: str, phone: str, email: str, city, line1: str, area: str,
+                      shipping_method_id: int, payment_method: str, notes: str, idempotency_key: str,
+                      expected_total: Decimal | None, request=None,
+                      import_method_id: int | None = None) -> tuple[Order, bool]:
+    """Website checkout without an account. Returns (order, created) like `place_order`."""
+    if payment_method not in {m["code"] for m in payment_methods()}:
+        raise WorkflowError("Choose a payment method.", field="payment_method")
+    try:
+        with transaction.atomic():
+            customer = _guest_customer(full_name=full_name, phone=phone, email=email)
+            done = CheckoutRequest.objects.filter(customer=customer, key=idempotency_key).select_related("order").first()
+            if done:
+                return done.order, False
+            quote = guest_preview(items, city=city, shipping_method_id=shipping_method_id,
+                                  import_method_id=import_method_id)
+            _check_quote(quote, payment_method, expected_total)
+            contact = f"Guest checkout: {full_name}, +{phone}"
+            order = shop.create_shop_order(
+                customer=customer, user=None, request=request, channel=ShopDetails.Channel.WEB,
+                items=_order_lines(quote), shipping_address=line1[:255], city=city, area=area,
+                customer_email=email or customer.email, notes="\n".join(p for p in (contact, notes.strip()) if p),
+                payment_preference=payment_method, **_shipping_fields(quote),
+            )
+            if order.total_amount != quote.total:
+                raise WorkflowError("The order total couldn't be confirmed. Please try again.", conflict=True)
+            CheckoutRequest.objects.create(customer=customer, key=idempotency_key, order=order)
+            return order, True
+    except IntegrityError:
+        customer = find_customer(phone, "web")
+        done = customer and CheckoutRequest.objects.filter(customer=customer, key=idempotency_key).select_related(
+            "order").first()
         if done:
             return done.order, False
         raise

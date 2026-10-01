@@ -29,7 +29,7 @@ def customer_orders(customer):
     """The customer's orders, and only theirs (other ids simply don't exist here: 404)."""
     return (
         Order.objects.filter(customer=customer)
-        .select_related("shop__city", "shop__shipping_method", "international__source_country")
+        .select_related("shop__city", "shop__shipping_method", "shop__import_shipping_method", "international__source_country")
         .prefetch_related(
             "adjustments", "returns__history",
             Prefetch("items", queryset=OrderItem.objects.select_related("variant__product", "vendor__city", "fulfillment")
@@ -49,6 +49,7 @@ def _items(order, request) -> list[dict]:
     return [{"name": i.product_name, "variant_name": i.variant_name, "sku": i.sku, "quantity": i.quantity,
              "unit_price": str(i.unit_price), "line_total": str(i.line_total),
              "product_id": i.variant.product_id, "vendor": seller_payload(request, i.vendor), "item": i.pk,
+             "sourced_abroad": i.sourced_abroad,
              "cancelled": bool(i.fulfillment_id and i.fulfillment.status == "cancelled"),
              "image": image_url(request, primary_image(i.variant.product))} for i in order.items.all()]
 
@@ -89,7 +90,7 @@ def order_detail_payload(order: Order, request) -> dict:
         "delivery": _delivery(order),
         "can_cancel": customer_can_cancel(order, summary),
         "can_pay": (payments.available() and order.status != "cancelled" and bool(summary.due)
-                    and summary.due > 0),
+                    and summary.due > 0 and not payments.payment_deadline_passed(order)),
     }
     if order.order_type == OrderType.SHOP:
         details = order.shop
@@ -101,11 +102,17 @@ def order_detail_payload(order: Order, request) -> dict:
             "address": ", ".join(p for p in (details.shipping_address, details.area, city) if p), "city": city,
             "area": details.area, "method": details.shipping_method.name if details.shipping_method_id else None,
             "estimated_delivery": details.estimated_delivery or None,
+            "import_method": details.import_shipping_method.name if details.import_shipping_method_id else None,
+            "import_fee": str(details.import_fee),
         }
+        body["prepayment_required"] = details.prepayment_required
+        body["payment_due_at"] = details.payment_due_at if details.prepayment_required else None
+        body["customs"] = details.customs_charges or None
         adjustments = [{"amount": str(a.amount), "reason": a.reason, "at": a.created_at,
                         "kind": "return_refund" if a.return_request_id else "seller_part"}
                        for a in order.adjustments.all()]
         body["amounts"] = {"subtotal": str(subtotal), "shipping_fee": str(details.delivery_fee),
+                           "import_fee": str(details.import_fee), "customs_fee": str(details.customs_fee),
                            "total": str(order.total_amount)}
         body["adjustments"] = adjustments
         body["payment_preference"] = details.payment_preference or None
@@ -177,7 +184,7 @@ class OrderPayView(_OrderView):
         from .shopping import start_payment
 
         order = self.get_order(reference)
-        result = start_payment(order, request.user)
+        result = start_payment(order, request.user.phone)
         if result["status"] == "failed":
             raise ConflictError(result["message"])
         return Response(result)
@@ -190,14 +197,17 @@ class OrderPaymentCheckView(_OrderView):
     throttle_scope = "checkout"
 
     def post(self, request, reference: str):
-        order = self.get_order(reference)
-        pending = GatewayPayment.objects.filter(order=order, status=GatewayPayment.Status.PENDING)
-        results = [payments.confirm(g) for g in pending]
-        order = self.get_order(reference)
-        return Response({
-            "payment": {k: (str(v) if v is not None and k != "status" else v)
-                        for k, v in payment_summary(order).as_dict.items()},
-            "gateway": [{"reference": g.provider_order_id, "status": g.status, "amount": str(g.amount)}
-                        for g in results],
-            "status_display": status_label(order.order_type, order.status),
-        })
+        return Response(check_payments(lambda: self.get_order(reference)))
+
+
+def check_payments(get_order) -> dict:
+    """Confirm the order's pending gateway payments with the provider; the order is read again afterwards."""
+    pending = GatewayPayment.objects.filter(order=get_order(), status=GatewayPayment.Status.PENDING)
+    results = [payments.confirm(g) for g in pending]
+    order = get_order()
+    return {
+        "payment": {k: (str(v) if v is not None and k != "status" else v)
+                    for k, v in payment_summary(order).as_dict.items()},
+        "gateway": [{"reference": g.provider_order_id, "status": g.status, "amount": str(g.amount)} for g in results],
+        "status_display": status_label(order.order_type, order.status),
+    }

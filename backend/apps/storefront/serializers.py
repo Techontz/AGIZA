@@ -17,7 +17,13 @@ from apps.parties.models import Address, Customer
 from apps.quotes.models import QuoteRequest
 
 from .catalog import image_url, primary_image, seller_payload, vendor_media_url
-from .phone import display_phone
+from .phone import display_phone, normalize_phone
+
+
+def payment_window_hours() -> int:
+    from apps.shipping_engine.models import EngineSettings
+
+    return EngineSettings.load().import_payment_window_hours
 
 
 def money(value) -> str | None:
@@ -162,12 +168,17 @@ class ProductCardSerializer(serializers.ModelSerializer):
     vendor = serializers.SerializerMethodField()
     rating = serializers.SerializerMethodField()
     rating_count = serializers.SerializerMethodField()
+    ships_from = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
         fields = ["id", "name", "price", "price_max", "compare_at_price", "image", "brand", "category",
                   "condition", "featured", "ofa_kali", "in_stock", "labels", "vendor", "created_at", "rating",
-                  "rating_count"]
+                  "rating_count", "ships_from"]
+
+    def get_ships_from(self, product) -> str | None:
+        """The country an imported product ships from (e.g. "China"); null for products held in Tanzania."""
+        return self.context.get("imported", {}).get(product.pk)
 
     def _rating(self, product) -> dict:
         return self.context.get("ratings", {}).get(product.pk, {"rating": None, "rating_count": 0})
@@ -315,12 +326,14 @@ def cart_payload(summary: dict, request) -> dict:
             "line_total": money(line["line_total"]),
             "available": line["available"],
             "issue": line["issue"],
+            "imported": line["imported"],  # ships from abroad (bought after payment)
+            "origin": line["origin"],  # e.g. "China"
         })
     groups = [{"vendor": seller_payload(request, g["vendor"]), "subtotal": money(g["subtotal"]),
                "variant_ids": [line["item"].variant_id for line in g["lines"]]} for g in summary["groups"]]
     return {"items": lines, "groups": groups, "item_count": summary["item_count"],
             "subtotal": money(summary["subtotal"]), "currency": summary["currency"],
-            "has_issues": summary["has_issues"]}
+            "has_issues": summary["has_issues"], "has_imported": summary["has_imported"]}
 
 
 class GuestCartSerializer(serializers.Serializer):
@@ -334,15 +347,70 @@ class GuestCartSerializer(serializers.Serializer):
 class CheckoutPreviewSerializer(serializers.Serializer):
     address = serializers.IntegerField()
     shipping_method = serializers.IntegerField(required=False, allow_null=True)
+    import_method = serializers.IntegerField(required=False, allow_null=True)
 
 
 class PlaceOrderSerializer(serializers.Serializer):
     address = serializers.IntegerField()
     shipping_method = serializers.IntegerField()
+    import_method = serializers.IntegerField(required=False, allow_null=True)
     payment_method = serializers.CharField(max_length=20)
     notes = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
     idempotency_key = serializers.RegexField(r"^[A-Za-z0-9_-]{8,64}$", max_length=64)
     expected_total = serializers.DecimalField(max_digits=14, decimal_places=2, required=False, allow_null=True)
+
+
+class DeliveryEstimateSerializer(serializers.Serializer):
+    variant = serializers.IntegerField(min_value=1)
+    quantity = serializers.IntegerField(min_value=1, max_value=100, default=1)
+    city = serializers.PrimaryKeyRelatedField(queryset=City.objects.filter(is_active=True))
+
+
+class GuestCheckoutPreviewSerializer(serializers.Serializer):
+    """Website checkout without an account: the browser cart and the delivery city."""
+
+    items = GuestCartSerializer.Line(many=True, max_length=50)
+    city = serializers.PrimaryKeyRelatedField(queryset=City.objects.filter(is_active=True))
+    shipping_method = serializers.IntegerField(required=False, allow_null=True)
+    import_method = serializers.IntegerField(required=False, allow_null=True)
+
+
+class GuestPlaceOrderSerializer(serializers.Serializer):
+    items = GuestCartSerializer.Line(many=True, max_length=50)
+    full_name = serializers.CharField(max_length=150)
+    phone = serializers.CharField(max_length=32)
+    email = serializers.EmailField(required=False, allow_blank=True, default="")
+    city = serializers.PrimaryKeyRelatedField(queryset=City.objects.filter(is_active=True))
+    line1 = serializers.CharField(max_length=255)
+    area = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
+    shipping_method = serializers.IntegerField()
+    import_method = serializers.IntegerField(required=False, allow_null=True)
+    payment_method = serializers.CharField(max_length=20)
+    notes = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
+    idempotency_key = serializers.RegexField(r"^[A-Za-z0-9_-]{8,64}$", max_length=64)
+    expected_total = serializers.DecimalField(max_digits=14, decimal_places=2, required=False, allow_null=True)
+
+    def validate_full_name(self, value: str) -> str:
+        if not value.strip():
+            raise serializers.ValidationError("Enter your full name.")
+        return value.strip()
+
+    def validate_phone(self, value: str) -> str:
+        phone = normalize_phone(value)
+        if not phone:
+            raise serializers.ValidationError("Enter a valid phone number, e.g. 0712 345 678.")
+        return phone
+
+    def validate_email(self, value: str) -> str:
+        return (value or "").strip().lower()
+
+    def validate_line1(self, value: str) -> str:
+        if not value.strip():
+            raise serializers.ValidationError("Enter the street, building or a landmark.")
+        return value.strip()
+
+    def validate_area(self, value: str) -> str:
+        return value.strip()
 
 
 
@@ -353,16 +421,30 @@ def option_payload(option: dict) -> dict:
     return {**option, "cost": money(option["cost"]), "shipments": shipments}
 
 
-def quote_payload(quote, request, *, payment_methods: list[dict]) -> dict:
+def quote_payload(quote, request, *, payment_methods: list[dict] | None = None) -> dict:
+    """
+    shipping_fee is the whole delivery charge: import_fee (abroad → Tanzania, for imported items)
+    plus delivery_fee (to the customer's address). total = subtotal + shipping_fee + customs_fee;
+    customs estimates (customs.estimate) are shown but not charged. Everything is computed here.
+    """
     return {
         "cart": cart_payload(quote.summary, request),
         "shipping_options": [option_payload(o) for o in quote.options],
         "selected_shipping_method": quote.selected["method_id"] if quote.selected else None,
+        "import_options": [option_payload(o) for o in quote.import_options],
+        "selected_import_method": quote.import_selected["method_id"] if quote.import_selected else None,
         "subtotal": money(quote.summary["subtotal"]),
+        "import_fee": money(quote.import_fee),
+        "delivery_fee": money(quote.delivery_fee),
         "shipping_fee": money(quote.shipping_fee),
         "total": money(quote.total),
         "currency": quote.summary["currency"],
-        "payment_methods": payment_methods,
+        "estimated_delivery": quote.estimated_delivery or None,
+        "customs_fee": money(quote.customs.included),
+        "customs": quote.customs.as_dict() if quote.customs.status else None,
+        "payment_window_hours": payment_window_hours() if quote.prepayment_required else None,
+        "payment_methods": quote.payment_methods if payment_methods is None else payment_methods,
+        "prepayment_required": quote.prepayment_required,
         "issues": quote.issues,
         "can_place_order": quote.can_place_order,
     }

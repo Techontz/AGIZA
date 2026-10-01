@@ -3,7 +3,7 @@ from django.urls import path, register_converter
 
 from apps.marketplace import seller
 
-from .views import account, catalog, engagement, orders, requests, shopping
+from .views import account, catalog, engagement, guest, orders, requests, shopping
 
 
 class MediaKind:
@@ -45,6 +45,7 @@ urlpatterns = [
     path("stores/<slug:slug>/", catalog.StoreDetailView.as_view(), name="store"),
     path("stores/<slug:slug>/<store_media:kind>/", catalog.StoreMediaView.as_view(), name="store-media"),
     path("cities/", catalog.CityListView.as_view(), name="cities"),
+    path("delivery-estimate/", catalog.DeliveryEstimateView.as_view(), name="delivery-estimate"),
     path("sourcing-countries/", catalog.SourcingCountryListView.as_view(), name="sourcing-countries"),
     # Addresses, cart, checkout
     path("addresses/", shopping.AddressListView.as_view(), name="addresses"),
@@ -56,6 +57,12 @@ urlpatterns = [
     path("cart/merge/", shopping.CartMergeView.as_view(), name="cart-merge"),
     path("checkout/preview/", shopping.CheckoutPreviewView.as_view(), name="checkout-preview"),
     path("checkout/place-order/", shopping.PlaceOrderView.as_view(), name="place-order"),
+    path("checkout/guest/preview/", guest.GuestCheckoutPreviewView.as_view(), name="guest-checkout-preview"),
+    path("checkout/guest/place-order/", guest.GuestPlaceOrderView.as_view(), name="guest-place-order"),
+    path("guest-orders/<str:reference>/", guest.GuestOrderDetailView.as_view(), name="guest-order"),
+    path("guest-orders/<str:reference>/pay/", guest.GuestOrderPayView.as_view(), name="guest-order-pay"),
+    path("guest-orders/<str:reference>/check-payment/", guest.GuestOrderPaymentCheckView.as_view(),
+         name="guest-order-check-payment"),
     # Orders & tracking
     path("orders/", orders.OrderListView.as_view(), name="orders"),
     path("orders/<str:reference>/", orders.OrderDetailView.as_view(), name="order"),

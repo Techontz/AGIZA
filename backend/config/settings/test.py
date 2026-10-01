@@ -4,7 +4,7 @@ DEBUG = False
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 REST_FRAMEWORK = {**REST_FRAMEWORK, "DEFAULT_THROTTLE_RATES": {  # noqa: F405
     "login": "5/min", "anon": "1000/min", "user": "100000/min",
-    "customer": "100000/min", "customer_login": "1000/min", "otp": "1000/min", "checkout": "1000/min",
+    "customer": "100000/min", "customer_login": "1000/min", "otp": "1000/min", "checkout": "1000/min", "guest_checkout": "1000/min",
     "reviews": "1000/min", "returns": "1000/min", "uploads": "1000/min", "support": "1000/min",
     "seller_apply": "1000/min"}}
 EXPO_PUSH_ENABLED = False

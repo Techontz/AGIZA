@@ -15,6 +15,7 @@ from apps.core.workflow import WorkflowError
 
 from .catalog import available_by_variant, is_sellable
 from .models import MAX_LINE_QUANTITY, Cart, CartItem
+from .shipping import is_imported, origin_country, store_hub
 
 
 def cart_for(customer, *, lock: bool = False) -> Cart:
@@ -70,15 +71,24 @@ def summarize(cart: Cart) -> dict:
 
 
 def summarize_items(items: list[CartItem]) -> dict:
+    """
+    Imported items (shipped from abroad) don't need stock here: AGIZA buys them once the order
+    is paid, so they can be ordered up to the line limit.
+    """
     stock = available_by_variant(i.variant_id for i in items)
+    hub = store_hub()
     lines, subtotal = [], Decimal("0")
     for item in items:
-        available = stock.get(item.variant_id, 0)
+        product = item.variant.product
+        imported = is_imported(product, hub)
+        available = MAX_LINE_QUANTITY if imported else stock.get(item.variant_id, 0)
         price = item.variant.effective_price
         line_total = (price * item.quantity).quantize(Decimal("0.01"))
         issue = _issue(item, available)
+        country = origin_country(product, hub) if imported else None
         lines.append({"item": item, "unit_price": price, "line_total": line_total, "available": available,
-                      "issue": issue, "vendor": item.variant.product.vendor})
+                      "issue": issue, "vendor": product.vendor, "imported": imported,
+                      "origin": country.name if country else None})
         if not issue:
             subtotal += line_total
     return {
@@ -88,6 +98,7 @@ def summarize_items(items: list[CartItem]) -> dict:
         "item_count": sum(i.quantity for i in items),
         "currency": StoreSettings.load().currency,
         "has_issues": any(line["issue"] for line in lines),
+        "has_imported": any(line["imported"] and not line["issue"] for line in lines),
     }
 
 
@@ -110,6 +121,8 @@ def _check_quantity(variant: ProductVariant, quantity: int):
         raise WorkflowError(f"You can order at most {MAX_LINE_QUANTITY} of one item.", field="quantity")
     if not is_sellable(variant):
         raise WorkflowError(f"{variant.product.name} isn't available for sale.", field="variant")
+    if is_imported(variant.product, store_hub()):
+        return  # bought abroad for the order: no local stock needed
     available = available_by_variant([variant.pk]).get(variant.pk, 0)
     if quantity > available:
         raise WorkflowError(f"Only {available} of {variant.product.name} in stock." if available

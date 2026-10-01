@@ -170,7 +170,8 @@ def test_place_order_creates_app_order_reserves_stock_and_clears_cart(app, shop,
     assert StockItem.objects.get(variant=shop.variant).reserved == 2
     assert not CartItem.objects.exists()
 
-    assert body["order"]["amounts"] == {"subtotal": "1700000.00", "shipping_fee": "3000.00", "total": "1703000.00"}
+    assert body["order"]["amounts"] == {"subtotal": "1700000.00", "shipping_fee": "3000.00", "import_fee": "0.00",
+                                      "customs_fee": "0.00", "total": "1703000.00"}
     assert [s["state"] for s in body["order"]["timeline"]["steps"]][:3] == ["completed", "pending", "current"]
 
     # Staff see it in E-commerce orders, with the customer's checkout choices.
