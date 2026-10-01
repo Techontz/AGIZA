@@ -27,6 +27,7 @@ const schema = z.object({
   weight_rounding: z.enum(["half_kg", "one_kg", "exact"]),
   apply_minimum_charge: z.boolean(),
   show_details_to_customers: z.boolean(),
+  import_payment_window_hours: z.string().refine((v) => /^\d+$/.test(v.trim()) && Number(v) >= 1, "Enter a whole number of hours (1 or more)"),
   usd_rate: rate,
   aed_rate: rate,
   cny_rate: rate,
@@ -44,6 +45,7 @@ const DEFAULTS: Omit<Values, "usd_rate" | "aed_rate" | "cny_rate"> = {
   weight_rounding: "half_kg",
   apply_minimum_charge: true,
   show_details_to_customers: true,
+  import_payment_window_hours: "48",
 };
 
 const rateOf = (s: EngineSettings, base: Currency) => {
@@ -61,6 +63,7 @@ const toValues = (s: EngineSettings): Values => ({
   weight_rounding: s.weight_rounding,
   apply_minimum_charge: s.apply_minimum_charge,
   show_details_to_customers: s.show_details_to_customers,
+  import_payment_window_hours: String(s.import_payment_window_hours),
   usd_rate: rateOf(s, "USD"),
   aed_rate: rateOf(s, "AED"),
   cny_rate: rateOf(s, "CNY"),
@@ -82,8 +85,12 @@ export function EngineSettingsView() {
     if (!q.data) return;
     setSaving(true);
     try {
-      const { usd_rate, aed_rate, cny_rate, default_volumetric_divisor, ...rest } = v;
-      await engine.settings.update({ ...rest, default_volumetric_divisor: Number(default_volumetric_divisor) as EngineSettings["default_volumetric_divisor"] });
+      const { usd_rate, aed_rate, cny_rate, default_volumetric_divisor, import_payment_window_hours, ...rest } = v;
+      await engine.settings.update({
+        ...rest,
+        default_volumetric_divisor: Number(default_volumetric_divisor) as EngineSettings["default_volumetric_divisor"],
+        import_payment_window_hours: Number(import_payment_window_hours),
+      });
       // Exchange rates are kept as a dated history; only changed values create a new entry.
       const target = v.display_currency;
       for (const [base, value] of [["USD", usd_rate], ["AED", aed_rate], ["CNY", cny_rate]] as const) {
@@ -204,6 +211,14 @@ export function EngineSettingsView() {
                   <option value="one_kg">Round up to nearest 1 KG</option>
                   <option value="exact">Exact weight</option>
                 </Select>
+              </FormField>
+              <FormField
+                label="Payment deadline for imported items (hours)"
+                hint="Orders with imported items are cancelled automatically if not fully paid within this time"
+                error={form.formState.errors.import_payment_window_hours?.message}
+                htmlFor="import-window"
+              >
+                <Input id="import-window" inputMode="numeric" {...form.register("import_payment_window_hours")} />
               </FormField>
               <FormField label="Default Volumetric Divisor" hint="Used by volumetric-weight rules that don't set their own divisor">
                 <Select {...form.register("default_volumetric_divisor")}>

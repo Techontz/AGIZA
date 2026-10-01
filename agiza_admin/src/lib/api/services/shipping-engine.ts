@@ -171,6 +171,49 @@ export interface RuleOverride {
   created_at: string;
 }
 
+export type ImportChargeKind = "customs_duty" | "import_vat" | "excise" | "clearance" | "other";
+export type ChargeBasis = "percent" | "fixed_item" | "fixed_shipment";
+
+/** A customs / import charge rule. Staff set the rates; none are built in. */
+export interface ImportCharge {
+  id: number;
+  code: string;
+  name: string;
+  kind: ImportChargeKind;
+  kind_display: string;
+  origin_country: number | null;
+  origin_country_name: string | null;
+  category: number | null;
+  category_name: string | null;
+  profile: number | null;
+  profile_name: string | null;
+  product_sku: string;
+  applies_to_label: string;
+  basis: ChargeBasis;
+  basis_display: string;
+  rate: string;
+  currency: Currency | "";
+  percent_base: "goods" | "goods_shipping";
+  percent_base_display: string;
+  rate_display: string;
+  treatment: "included" | "estimate";
+  treatment_display: string;
+  status: "active" | "inactive";
+  status_display: string;
+  notes: string;
+  created_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const IMPORT_CHARGE_KINDS: { id: ImportChargeKind; label: string }[] = [
+  { id: "customs_duty", label: "Customs / import duty" },
+  { id: "import_vat", label: "Import VAT" },
+  { id: "excise", label: "Excise duty" },
+  { id: "clearance", label: "Clearance / handling fee" },
+  { id: "other", label: "Other import charge" },
+];
+
 export interface EngineSettings {
   local_currency: Currency;
   international_currency: Currency;
@@ -182,6 +225,8 @@ export interface EngineSettings {
   weight_rounding: "half_kg" | "one_kg" | "exact";
   apply_minimum_charge: boolean;
   show_details_to_customers: boolean;
+  /** Orders with imported items are cancelled if not fully paid within this many hours. */
+  import_payment_window_hours: number;
   current_rates: { base_currency: Currency; quote_currency: Currency; rate: string | null; effective_date: string | null }[];
   updated_at: string;
   updated_by_name: string | null;
@@ -348,6 +393,7 @@ export const engine = {
   rules: crud<ShippingRule, Record<string, unknown>>("rules"),
   carriers: crud<Carrier, Record<string, unknown>>("carriers"),
   overrides: crud<RuleOverride, Record<string, unknown>>("overrides"),
+  importCharges: crud<ImportCharge, Record<string, unknown>>("import-charges"),
   settings: {
     get: () => api.get<EngineSettings>(`${R}/settings`),
     update: (data: Partial<EngineSettings>) => api.patch<EngineSettings>(`${R}/settings`, data),
