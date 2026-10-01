@@ -21,6 +21,7 @@ from .models import (
     Carrier,
     EngineSettings,
     ExchangeRate,
+    ImportCharge,
     Route,
     RuleOverride,
     ShippingMethod,
@@ -34,6 +35,7 @@ from .serializers import (
     CarrierSerializer,
     EngineSettingsSerializer,
     ExchangeRateSerializer,
+    ImportChargeSerializer,
     RouteSerializer,
     RuleOverrideSerializer,
     ShippingMethodSerializer,
@@ -290,6 +292,32 @@ class RuleOverrideViewSet(EngineViewSet):
             "route__origin_country", "route__origin_city", "route__destination_country", "route__destination_city",
             "route__destination_zone", "destination_city", "destination_region", "profile", "created_by",
         ).prefetch_related("route__rules")
+
+    def get_create_kwargs(self):
+        return {"created_by": self.request.user}
+
+
+# --------------------------------------------------------------------------- #
+# Import charges (customs)
+# --------------------------------------------------------------------------- #
+class ImportChargeFilter(django_filters.FilterSet):
+    class Meta:
+        model = ImportCharge
+        fields = ["kind", "status", "treatment", "origin_country"]
+
+
+@extend_schema(tags=TAG)
+class ImportChargeViewSet(EngineViewSet):
+    """Customs / import charges on imported goods. Staff set the rates; none are built in."""
+
+    serializer_class = ImportChargeSerializer
+    filterset_class = ImportChargeFilter
+    search_fields = ["code", "name", "product_sku", "notes", "category__name", "origin_country__name"]
+    ordering_fields = ["kind", "name", "created_at"]
+    required_access = {"create": "manage", "update": "manage", "partial_update": "manage", "destroy": "manage"}
+
+    def get_queryset(self):
+        return ImportCharge.objects.select_related("origin_country", "category", "profile", "created_by")
 
     def get_create_kwargs(self):
         return {"created_by": self.request.user}

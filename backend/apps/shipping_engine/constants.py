@@ -128,3 +128,30 @@ WEIGHT_ROUNDING_STEP = {
 class ExchangeRateSource(models.TextChoices):
     MANUAL = "manual", "Manual (set rate below)"
     AUTO = "auto", "Auto (live rate API)"
+
+
+# --------------------------------------------------------------------------- #
+# Import charges (customs / import duty). Staff configure the rates; none are seeded.
+# --------------------------------------------------------------------------- #
+class ImportChargeKind(models.TextChoices):
+    CUSTOMS_DUTY = "customs_duty", "Customs / import duty"
+    IMPORT_VAT = "import_vat", "Import VAT"
+    EXCISE = "excise", "Excise duty"
+    CLEARANCE = "clearance", "Clearance / handling fee"
+    OTHER = "other", "Other import charge"
+
+
+class ChargeBasis(models.TextChoices):
+    PERCENT = "percent", "Percentage of value"
+    FIXED_ITEM = "fixed_item", "Fixed amount per item"
+    FIXED_SHIPMENT = "fixed_shipment", "Fixed amount per order"
+
+
+class PercentBase(models.TextChoices):
+    GOODS = "goods", "Goods value"
+    GOODS_SHIPPING = "goods_shipping", "Goods + international shipping"
+
+
+class ChargeTreatment(models.TextChoices):
+    INCLUDED = "included", "Charged at checkout"
+    ESTIMATE = "estimate", "Estimate only (paid separately)"

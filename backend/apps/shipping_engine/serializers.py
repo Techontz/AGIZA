@@ -7,11 +7,12 @@ from rest_framework import serializers
 from apps.locations.models import City, Country, Region, Warehouse
 
 from .calculator import money, rate_display
-from .constants import AppliesTo, Handling, PricingModel, Scope, Status
+from .constants import AppliesTo, ChargeBasis, Handling, PricingModel, Scope, Status
 from .models import (
     Carrier,
     EngineSettings,
     ExchangeRate,
+    ImportCharge,
     Route,
     RuleOverride,
     ShippingMethod,
@@ -527,6 +528,57 @@ class ExchangeRateSerializer(serializers.ModelSerializer):
         return obj
 
 
+# --------------------------------------------------------------------------- #
+# Import charges (customs)
+# --------------------------------------------------------------------------- #
+class ImportChargeSerializer(serializers.ModelSerializer):
+    kind_display = _display("kind")
+    basis_display = _display("basis")
+    percent_base_display = _display("percent_base")
+    treatment_display = _display("treatment")
+    status_display = _display("status")
+    origin_country_name = serializers.CharField(source="origin_country.name", read_only=True, default=None)
+    category_name = serializers.CharField(source="category.name", read_only=True, default=None)
+    profile_name = serializers.CharField(source="profile.name", read_only=True, default=None)
+    applies_to_label = serializers.SerializerMethodField()
+    rate_display = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(source="created_by.full_name", read_only=True, default=None)
+
+    class Meta:
+        model = ImportCharge
+        fields = [
+            "id", "code", "name", "kind", "kind_display", "origin_country", "origin_country_name", "category",
+            "category_name", "profile", "profile_name", "product_sku", "applies_to_label", "basis", "basis_display",
+            "rate", "currency", "percent_base", "percent_base_display", "rate_display", "treatment",
+            "treatment_display", "status", "status_display", "notes", "created_by_name", "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "code", "created_by_name", "created_at", "updated_at"]
+
+    def get_applies_to_label(self, obj) -> str:
+        parts = [f"from {obj.origin_country.name}" if obj.origin_country_id else "",
+                 obj.category.name if obj.category_id else "", obj.profile.name if obj.profile_id else "",
+                 f"SKU {obj.product_sku}" if obj.product_sku else ""]
+        parts = [p for p in parts if p]
+        return " · ".join(parts) if parts else "All imported items"
+
+    def get_rate_display(self, obj) -> str:
+        if obj.basis == ChargeBasis.PERCENT:
+            return f"{obj.rate.normalize():f}% of {obj.get_percent_base_display().lower()}"
+        unit = "per item" if obj.basis == ChargeBasis.FIXED_ITEM else "per order"
+        return f"{obj.currency} {obj.rate:,.2f} {unit}"
+
+    def validate(self, attrs):
+        basis = attrs.get("basis", getattr(self.instance, "basis", ChargeBasis.PERCENT))
+        currency = attrs.get("currency", getattr(self.instance, "currency", ""))
+        if basis != ChargeBasis.PERCENT and not currency:
+            raise serializers.ValidationError({"currency": "Choose the currency of the fixed amount."})
+        if basis == ChargeBasis.PERCENT:
+            attrs["currency"] = ""
+        if attrs.get("rate") is not None and attrs["rate"] < 0:
+            raise serializers.ValidationError({"rate": "Enter zero or more."})
+        return attrs
+
+
 class EngineSettingsSerializer(serializers.ModelSerializer):
     updated_by_name = serializers.CharField(source="updated_by.full_name", read_only=True, default=None)
     current_rates = serializers.SerializerMethodField()
@@ -536,7 +588,8 @@ class EngineSettingsSerializer(serializers.ModelSerializer):
         fields = [
             "local_currency", "international_currency", "display_currency", "exchange_rate_source",
             "default_volumetric_divisor", "no_rule_fallback", "cbm_method", "weight_rounding",
-            "apply_minimum_charge", "show_details_to_customers", "current_rates", "updated_at", "updated_by_name",
+            "apply_minimum_charge", "show_details_to_customers", "import_payment_window_hours", "current_rates",
+            "updated_at", "updated_by_name",
         ]
         read_only_fields = ["updated_at", "updated_by_name", "current_rates"]
 

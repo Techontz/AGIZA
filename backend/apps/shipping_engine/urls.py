@@ -6,6 +6,7 @@ from .views import (
     CarrierViewSet,
     EngineSettingsView,
     ExchangeRateViewSet,
+    ImportChargeViewSet,
     OverviewView,
     RouteViewSet,
     RuleOverrideViewSet,
@@ -24,6 +25,7 @@ router.register("rules", ShippingRuleViewSet, basename="se-rule")
 router.register("carriers", CarrierViewSet, basename="se-carrier")
 router.register("overrides", RuleOverrideViewSet, basename="se-override")
 router.register("exchange-rates", ExchangeRateViewSet, basename="se-exchange-rate")
+router.register("import-charges", ImportChargeViewSet, basename="se-import-charge")
 
 urlpatterns = [
     path("overview/", OverviewView.as_view(), name="se-overview"),

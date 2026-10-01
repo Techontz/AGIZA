@@ -23,11 +23,15 @@ from .constants import (
     AppliesTo,
     CarrierType,
     CbmMethod,
+    ChargeBasis,
+    ChargeTreatment,
     Currency,
     ExchangeRateSource,
     Handling,
+    ImportChargeKind,
     MethodCategory,
     NoRuleFallback,
+    PercentBase,
     PricingModel,
     ProfileType,
     Scope,
@@ -405,6 +409,59 @@ class RuleOverride(TimeStampedModel):
         return dest * 2 + (1 if self.profile_id else 0)
 
 
+class ImportCharge(TimeStampedModel):
+    """
+    A customs / import charge on imported goods, configured by staff (no rates are seeded).
+
+    It applies to imported items matching every condition set (origin country, category,
+    shipping profile, product SKU); an empty condition means "any". For each kind of charge
+    the most specific active match applies, and different kinds add up (e.g. duty + VAT).
+    `treatment` says whether the amount is charged at checkout or only shown as an estimate
+    the customer pays separately.
+    """
+
+    code = models.CharField(max_length=20, unique=True, editable=False)
+    name = models.CharField(max_length=120, help_text='Shown to customers, e.g. "Import duty"')
+    kind = models.CharField(max_length=14, choices=ImportChargeKind.choices, default=ImportChargeKind.CUSTOMS_DUTY)
+    origin_country = models.ForeignKey("locations.Country", null=True, blank=True, on_delete=models.PROTECT,
+                                       related_name="+", help_text="Empty: imports from any country")
+    category = models.ForeignKey("catalog.Category", null=True, blank=True, on_delete=models.PROTECT,
+                                 related_name="+", help_text="Empty: any category")
+    profile = models.ForeignKey(ShippingProfile, null=True, blank=True, on_delete=models.PROTECT, related_name="+",
+                                help_text="Empty: any shipping profile")
+    product_sku = models.CharField(max_length=64, blank=True, help_text="Empty: any product")
+    basis = models.CharField(max_length=14, choices=ChargeBasis.choices, default=ChargeBasis.PERCENT)
+    rate = models.DecimalField(max_digits=14, decimal_places=4, validators=POSITIVE,
+                               help_text="Percent (e.g. 25 for 25%) or a fixed amount in `currency`")
+    currency = models.CharField(max_length=3, choices=Currency.choices, blank=True,
+                                help_text="For fixed amounts (converted with the exchange rates)")
+    percent_base = models.CharField(max_length=14, choices=PercentBase.choices, default=PercentBase.GOODS)
+    treatment = models.CharField(max_length=10, choices=ChargeTreatment.choices, default=ChargeTreatment.ESTIMATE)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.ACTIVE)
+    notes = models.TextField(blank=True, help_text="Internal: legal basis, source of the rate")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta:
+        ordering = ["kind", "name", "id"]
+        indexes = [models.Index(fields=["status", "kind"])]
+
+    def __str__(self) -> str:
+        return f"{self.code} · {self.name}"
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = next_reference("IC", width=4)
+        self.product_sku = (self.product_sku or "").strip().upper()
+        super().save(*args, **kwargs)
+
+    @property
+    def specificity(self) -> int:
+        return ((8 if self.product_sku else 0) + (4 if self.category_id else 0) + (2 if self.profile_id else 0)
+                + (1 if self.origin_country_id else 0))
+
+
 class EngineSettings(models.Model):
     """Singleton (pk=1) holding global Shipping Engine behaviour."""
 
@@ -427,6 +484,9 @@ class EngineSettings(models.Model):
     weight_rounding = models.CharField(max_length=10, choices=WeightRounding.choices, default=WeightRounding.HALF_KG)
     apply_minimum_charge = models.BooleanField(default=True)
     show_details_to_customers = models.BooleanField(default=True)
+    import_payment_window_hours = models.PositiveIntegerField(
+        default=48, validators=[MinValueValidator(1)],
+        help_text="Orders with imported items are cancelled if not fully paid within this many hours of ordering")
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
