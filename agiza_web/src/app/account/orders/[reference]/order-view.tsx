@@ -14,22 +14,28 @@ import { Button } from "@/components/ui/button";
 import { Field, Textarea } from "@/components/ui/field";
 import { Card, Notice, Row, Skeleton } from "@/components/ui/states";
 import { errorMessage } from "@/lib/api/client";
-import { orderApi } from "@/lib/api/endpoints";
+import { guestOrderApi, orderApi } from "@/lib/api/endpoints";
 import type { OrderDetail } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
 import { dateTime, money, productHref, storeHref } from "@/lib/format";
 
-export function OrderView({ reference }: { reference: string }) {
+/**
+ * One order. Signed in: from the account. Guest (website checkout without an account): opened
+ * with the order's signed link (`token`), without the account-only actions (cancel, returns).
+ */
+export function OrderView({ reference, token }: { reference: string; token?: string }) {
   const client = useQueryClient();
   const params = useSearchParams();
-  const key = ["orders", "detail", reference];
-  const order = useQuery({ queryKey: key, queryFn: () => orderApi.get(reference) });
+  const guest = Boolean(token);
+  const source = token ? guestOrderApi(token) : orderApi;
+  const key = ["orders", "detail", reference, guest ? "guest" : "account"];
+  const order = useQuery({ queryKey: key, queryFn: () => source.get(reference) });
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState("");
 
   // Back from the payment page: ask AGIZA to confirm the payment with the provider.
   const check = useMutation({
-    mutationFn: () => orderApi.checkPayment(reference),
+    mutationFn: () => source.checkPayment(reference),
     onSuccess: (r) => {
       client.invalidateQueries({ queryKey: key });
       if (r.payment.status === "fully_paid") toast.success("Payment received. Thank you!");
@@ -41,7 +47,7 @@ export function OrderView({ reference }: { reference: string }) {
   }, [params, checkPayment]);
 
   const pay = useMutation({
-    mutationFn: () => orderApi.pay(reference),
+    mutationFn: () => source.pay(reference),
     onSuccess: (p) => p.checkout_url && window.location.assign(p.checkout_url),
     onError: (e) => toast.error(errorMessage(e)),
   });
@@ -62,14 +68,24 @@ export function OrderView({ reference }: { reference: string }) {
 
   return (
     <div className="space-y-4">
-      <Link href="/account/orders" className="inline-flex items-center gap-1 text-[14px] font-medium text-muted hover:text-ink">
-        <ArrowLeft className="size-4" aria-hidden /> All orders
+      <Link href={guest ? "/shop" : "/account/orders"} className="inline-flex items-center gap-1 text-[14px] font-medium text-muted hover:text-ink">
+        <ArrowLeft className="size-4" aria-hidden /> {guest ? "Continue shopping" : "All orders"}
       </Link>
       {params.get("placed") ? (
         <Notice tone="success">
           <span className="flex items-center gap-2 font-medium">
-            <Check className="size-4" aria-hidden /> Order placed — thank you! We&apos;ll keep you updated here and by notification.
+            <Check className="size-4" aria-hidden />
+            {guest ? "Order placed — thank you! AGIZA will call you to confirm delivery." : "Order placed — thank you! We'll keep you updated here and by notification."}
           </span>
+        </Notice>
+      ) : null}
+      {guest ? (
+        <Notice tone="info">
+          Bookmark this page to follow your order. Or{" "}
+          <Link href="/register" className="font-semibold text-primary hover:underline">
+            create an account
+          </Link>{" "}
+          with the same phone number to see all your orders in one place.
         </Notice>
       ) : null}
       {params.get("payment") === "failed" ? <Notice tone="warning">The payment couldn&apos;t be started. You can try again below or pay later.</Notice> : null}
@@ -178,6 +194,7 @@ export function OrderView({ reference }: { reference: string }) {
                     <span className={cn("min-w-0 flex-1", i.cancelled && "opacity-60")}>
                       <span className={cn("line-clamp-1 text-[15px] text-ink", i.cancelled && "line-through")}>{i.name}</span>
                       {i.cancelled ? <span className="text-[12px] font-medium text-danger">Not supplied — removed from your order</span> : null}
+                      {i.sourced_abroad && !i.cancelled ? <span className="block text-[12px] font-medium text-brand">Imported — bought abroad for your order</span> : null}
                       <span className="block text-[13px] text-muted">
                         {i.variant_name ? `${i.variant_name} · ` : ""}
                         {i.quantity} × {money(i.unit_price)}
@@ -197,8 +214,19 @@ export function OrderView({ reference }: { reference: string }) {
             <h2 className="mb-2 text-lg font-semibold text-ink">Payment</h2>
             {o.amounts ? (
               <>
-                <Row label="Subtotal" value={money(o.amounts.subtotal)} />
-                <Row label="Delivery" value={Number(o.amounts.shipping_fee) === 0 ? "Free" : money(o.amounts.shipping_fee)} />
+                <Row label={o.shipping?.import_method ? "Products" : "Subtotal"} value={money(o.amounts.subtotal)} />
+                {o.shipping?.import_method ? (
+                  <>
+                    <Row label="International shipping" value={money(o.amounts.import_fee)} />
+                    {Number(o.amounts.customs_fee ?? 0) > 0 ? <Row label="Customs / import duty" value={money(o.amounts.customs_fee)} /> : null}
+                    <Row
+                      label="Local delivery"
+                      value={Number(o.amounts.shipping_fee) - Number(o.amounts.import_fee ?? 0) === 0 ? "Free" : money(String(Number(o.amounts.shipping_fee) - Number(o.amounts.import_fee ?? 0)))}
+                    />
+                  </>
+                ) : (
+                  <Row label="Delivery" value={Number(o.amounts.shipping_fee) === 0 ? "Free" : money(o.amounts.shipping_fee)} />
+                )}
                 <div className="my-1 border-t border-line" />
               </>
             ) : null}
@@ -215,6 +243,13 @@ export function OrderView({ reference }: { reference: string }) {
                 Pay with mobile money
               </Button>
             ) : null}
+            {o.prepayment_required && o.payment.status !== "fully_paid" && o.status !== "cancelled" ? (
+              <p className="mt-2 text-[13px] font-medium text-ink">
+                This order has imported items: AGIZA orders them once it is fully paid.
+                {o.payment_due_at ? ` Pay by ${dateTime(o.payment_due_at)} or the order is cancelled.` : ""}
+              </p>
+            ) : null}
+            {o.customs?.note ? <p className="mt-2 text-[12px] text-muted">{o.customs.note}</p> : null}
             {o.payment_preference === "pay_later" && o.payment.status !== "fully_paid" ? (
               <p className="mt-2 text-[13px] text-muted">Pay AGIZA by cash on delivery, bank transfer or Lipa number. We confirm your payment here.</p>
             ) : null}
@@ -230,8 +265,14 @@ export function OrderView({ reference }: { reference: string }) {
               <p className="flex gap-2 text-[14px] text-ink">
                 <MapPin className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden /> {o.shipping.address}
               </p>
+              {o.shipping.import_method ? (
+                <p className="mt-2 text-[14px] text-muted">
+                  Shipping to Tanzania: {o.shipping.import_method} · {money(o.shipping.import_fee)}
+                </p>
+              ) : null}
               {o.shipping.method ? (
                 <p className="mt-2 text-[14px] text-muted">
+                  {o.shipping.import_method ? "Then " : ""}
                   {o.shipping.method}
                   {o.shipping.estimated_delivery ? ` · ${o.shipping.estimated_delivery}` : ""}
                 </p>

@@ -3,10 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { REFRESH_COOKIE } from "@/lib/session-cookies";
 
 /**
- * Browsing never needs an account. Only the pages below do; without a session the visitor
- * is sent to sign in and brought back. Django still authorises every request.
+ * Browsing and checkout never need an account (visitors can check out as guests). Only the
+ * account pages do; without a session the visitor is sent to sign in and brought back.
+ * Django still authorises every request.
  */
-const PROTECTED = ["/account", "/checkout"];
+const PROTECTED = ["/account"];
 
 export function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
@@ -19,5 +20,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/account/:path*", "/checkout/:path*"],
+  matcher: ["/account/:path*"],
 };

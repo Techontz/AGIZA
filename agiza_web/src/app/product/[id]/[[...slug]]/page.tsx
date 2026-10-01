@@ -157,14 +157,19 @@ export default async function ProductPage({ params }: Props) {
             <li className="flex gap-4">
               <Truck className="size-7 shrink-0 stroke-[1.4]" aria-hidden />
               <span>
-                Delivered by AGIZA across Tanzania. The fee for your address is calculated at checkout
-                {product.shipping_methods.length ? ` (${product.shipping_methods.join(", ")})` : ""}.
+                {product.ships_from
+                  ? `Imported from ${product.ships_from}: shipped to Tanzania, then delivered by AGIZA to your address. Use “Calculate delivery” for the cost and time.`
+                  : "Delivered by AGIZA across Tanzania. Use “Calculate delivery” for the cost to your city."}
                 {product.ready_to_ship_days > 0 ? ` Ready to ship in ${product.ready_to_ship_days} day${product.ready_to_ship_days === 1 ? "" : "s"}.` : ""}
               </span>
             </li>
             <li className="flex gap-4">
               <ShieldCheck className="size-7 shrink-0 stroke-[1.4]" aria-hidden />
-              <span>Pay securely with mobile money or card, or pay AGIZA on delivery.</span>
+              <span>
+                {product.ships_from
+                  ? "Paid when you order, with mobile money or card: AGIZA buys it abroad once your payment is confirmed."
+                  : "Pay securely with mobile money or card, or pay AGIZA on delivery."}
+              </span>
             </li>
             <li className="flex gap-4">
               <RotateCcw className="size-7 shrink-0 stroke-[1.4]" aria-hidden />

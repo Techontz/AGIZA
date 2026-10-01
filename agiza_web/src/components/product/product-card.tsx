@@ -43,6 +43,7 @@ export function ProductCard({ product, priority, sizes = GRID_SIZES, className }
             <span className="truncate">{product.vendor.name}</span>
             {product.vendor.verified && !product.vendor.is_agiza ? <Verified className="size-3" /> : null}
           </p>
+          {product.ships_from ? <p className="mt-1 text-[12px] leading-4 font-medium text-brand">Ships from {product.ships_from}</p> : null}
           <RatingCount rating={product.rating} count={product.rating_count} className="mt-1" />
           <p className={cn("mt-1.5 text-[16px] leading-[22px] tabular-nums", compare ? "text-[#d42a00]" : "text-ink")}>
             {range ? `From ${money(product.price)}` : money(product.price)}

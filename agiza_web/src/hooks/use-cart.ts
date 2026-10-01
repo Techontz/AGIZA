@@ -25,6 +25,12 @@ function getSnapshot() {
   return snapshot;
 }
 
+/** The visitor's browser cart lines (variant ids and quantities), updated as they change. */
+export function useGuestLines() {
+  const guestJson = useSyncExternalStore(subscribe, getSnapshot, () => "[]");
+  return { guestJson, guestLines: JSON.parse(guestJson) as { variant: number; quantity: number }[] };
+}
+
 /**
  * One cart API for the whole site. Signed in: the account's cart on the server. Visitor: the
  * browser cart, priced by the server. Either way the numbers shown come from the backend.
@@ -32,8 +38,7 @@ function getSnapshot() {
 export function useCart() {
   const client = useQueryClient();
   const { signedIn, ready } = useSession();
-  const guestJson = useSyncExternalStore(subscribe, getSnapshot, () => "[]");
-  const guestLines = JSON.parse(guestJson) as { variant: number; quantity: number }[];
+  const { guestJson, guestLines } = useGuestLines();
   const merging = useRef(false);
 
   // Signing in: the browser cart joins the account's cart once, then is cleared.

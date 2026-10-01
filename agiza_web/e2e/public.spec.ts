@@ -33,23 +33,57 @@ test("product pages are indexable, show the seller and link to the store", async
   await expect(page).toHaveURL(/\/store\/fashion-forward/);
 });
 
-test("a visitor's cart is priced by the server and checkout asks to sign in", async ({ page }) => {
+test("a visitor checks out as a guest and opens the order with its link", async ({ page }) => {
   await page.goto("/shop?q=levis");
   await page.getByRole("link", { name: /Levi's 501 Original Jeans/ }).first().click();
   await page.getByRole("button", { name: /add to cart/i }).click();
   await expect(page.getByText("Added to your cart").first()).toBeVisible();
   await page.goto("/cart");
-  await expect(page.getByText("Fashion Forward").first()).toBeVisible();
+  // Priced by the server after the page loads: allow for a slow machine.
+  await expect(page.getByText("Fashion Forward").first()).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText("Cart totals")).toBeVisible();
-  await page.getByRole("link", { name: /sign in to check out/i }).click();
-  await expect(page).toHaveURL(/\/login\?next=%2Fcheckout|\/login\?next=\/checkout/);
+  await page.getByRole("link", { name: /proceed to checkout/i }).click();
+  await expect(page).toHaveURL(/\/checkout$/);
+  await expect(page.getByText(/checking out as a guest/i)).toBeVisible();
+
+  await page.getByLabel("Full name").fill("Guest Tester");
+  await page.getByLabel("Phone number").fill("0754 000 111");
+  await page.getByLabel("City").selectOption({ label: "Dar es Salaam" });
+  await page.getByLabel("Street, building or landmark").fill("Plot 7, Sinza");
+  await expect(page.getByText("Order summary")).toBeVisible();
+  await page.getByRole("button", { name: /^place order$/i }).click();
+
+  await expect(page).toHaveURL(/\/order\/[^/?]+\?token=/, { timeout: 20_000 }); // server-rendered order page
+  await expect(page.getByText(/order placed — thank you/i)).toBeVisible();
+  await expect(page.getByText("Levi's 501 Original Jeans").first()).toBeVisible();
+  const forged = page.url().replace(/token=[^&]+/, "token=forged");
+  await page.goto(forged);
+  await expect(page.getByRole("alert")).toBeVisible(); // a wrong link never opens the order
 });
 
-test("account and checkout pages need a session", async ({ page }) => {
-  for (const path of ["/account", "/checkout"]) {
-    await page.goto(path);
-    await expect(page).toHaveURL(/\/login\?next=/);
-  }
+test("imported products show where they ship from, price delivery with the Shipping Engine and are paid when ordered", async ({ page }) => {
+  await page.goto("/shop?q=dji mini");
+  await page.getByRole("link", { name: /DJI Mini 4 Pro/ }).first().click();
+  await expect(page.getByText("Ships from China.").first()).toBeVisible();
+  await page.getByLabel("Deliver to").selectOption({ label: "Dar es Salaam" });
+  await expect(page.getByText(/Shipping from China to Dar es Salaam/)).toBeVisible();
+  await expect(page.getByText("Air Cargo").first()).toBeVisible();
+
+  await page.getByRole("button", { name: /add to cart/i }).click();
+  await expect(page.getByText("Added to your cart").first()).toBeVisible();
+  await page.goto("/checkout");
+  await page.getByLabel("City").selectOption({ label: "Dar es Salaam" });
+  await expect(page.getByRole("heading", { name: "Shipping to Tanzania" })).toBeVisible();
+  await expect(page.getByText("Shipping to Tanzania").last()).toBeVisible(); // its line in the order summary
+  await expect(page.getByText(/so it is paid when you order/)).toBeVisible();
+  await expect(page.getByText("Pay later")).toHaveCount(0);
+});
+
+test("account pages need a session; checkout does not", async ({ page }) => {
+  await page.goto("/account");
+  await expect(page).toHaveURL(/\/login\?next=/);
+  await page.goto("/checkout");
+  await expect(page).toHaveURL(/\/checkout$/);
 });
 
 test("robots.txt and sitemap.xml are served", async ({ request }) => {

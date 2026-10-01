@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ShoppingBag, Zap } from "lucide-react";
+import { Check, Plane, ShoppingBag, Zap } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -14,6 +14,7 @@ import { money } from "@/lib/format";
 
 import { Button } from "../ui/button";
 import { QuantityStepper } from "../ui/stepper";
+import { DeliveryCalculator } from "./delivery-calculator";
 
 /** Options, quantity, Add to cart and Buy now. Availability and prices come from the API. */
 export function BuyBox({ product }: { product: ProductDetail }) {
@@ -39,7 +40,7 @@ export function BuyBox({ product }: { product: ProductDetail }) {
       await cart.add.mutateAsync({ variant: variant.id, quantity });
       setQuantity(1);
       if (thenCheckout) {
-        router.push(cart.signedIn ? "/checkout" : "/login?next=/checkout");
+        router.push("/checkout"); // guests check out without an account
       } else {
         setAdded(true);
         toast.success("Added to your cart", { action: { label: "View cart", onClick: () => router.push("/cart") } });
@@ -87,9 +88,18 @@ export function BuyBox({ product }: { product: ProductDetail }) {
         </fieldset>
       ) : null}
 
-      <p className={cn("text-[14px]", available > 0 ? "text-success" : "text-danger")}>
-        ({available > 0 ? (available <= 3 ? `Only ${available} left` : "Available") : "Out of stock"})
-      </p>
+      {product.ships_from ? (
+        <p className="flex items-start gap-2 text-[14px] text-ink">
+          <Plane className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden />
+          <span>
+            <span className="font-semibold">Ships from {product.ships_from}.</span> AGIZA orders it for you once you pay; see delivery cost and time below.
+          </span>
+        </p>
+      ) : (
+        <p className={cn("text-[14px]", available > 0 ? "text-success" : "text-danger")}>
+          ({available > 0 ? (available <= 3 ? `Only ${available} left` : "Available") : "Out of stock"})
+        </p>
+      )}
       <div>
         {maxAdd > 0 ? <p className="mb-1.5 text-[14px] text-ink">Quantity</p> : null}
         <div className="flex flex-wrap items-center gap-2.5 max-sm:flex-col max-sm:items-stretch max-sm:[&>div]:w-full max-sm:[&>div]:justify-between">
@@ -118,6 +128,7 @@ export function BuyBox({ product }: { product: ProductDetail }) {
           ) : null}
         </div>
       </div>
+      {variant ? <DeliveryCalculator variantId={variant.id} quantity={quantity} /> : null}
       {added ? (
         <p className="flex items-center gap-1.5 text-[14px] font-medium text-success">
           <Check className="size-4" aria-hidden /> Added to your cart ·{" "}

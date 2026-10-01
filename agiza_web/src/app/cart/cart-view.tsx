@@ -94,22 +94,22 @@ export function CartView() {
               Delivery is calculated at checkout for your address{multi ? ", per store that ships your items" : ""}.
             </p>
             <ButtonLink
-              href={cart.signedIn ? "/checkout" : "/login?next=/checkout"}
+              href="/checkout"
               size="lg"
               variant="yellow"
               className="mt-5 w-full"
               aria-disabled={data.has_issues}
               onClick={(e) => data.has_issues && e.preventDefault()}
             >
-              {cart.signedIn ? "Proceed to checkout" : "Sign in to check out"}
+              Proceed to checkout
             </ButtonLink>
             {!cart.signedIn ? (
               <p className="mt-2 text-center text-[13px] text-muted">
-                New to AGIZA?{" "}
-                <Link href="/register?next=/checkout" className="font-semibold text-primary hover:underline">
-                  Create an account
+                No account needed.{" "}
+                <Link href="/login?next=/checkout" className="font-semibold text-primary hover:underline">
+                  Sign in
                 </Link>{" "}
-                — your cart comes with you.
+                to use your saved addresses.
               </p>
             ) : null}
           </div>
@@ -138,6 +138,7 @@ function Line({ line }: { line: CartLine }) {
               {line.name}
             </Link>
             {line.variant_name ? <p className="text-[13px] text-muted">{line.variant_name}</p> : null}
+            {line.imported ? <p className="text-[13px] font-medium text-brand">Ships from {line.origin ?? "abroad"} · paid when you order</p> : null}
           </div>
           <p className="shrink-0 text-[15px] font-semibold text-ink tabular-nums">{money(line.line_total)}</p>
         </div>

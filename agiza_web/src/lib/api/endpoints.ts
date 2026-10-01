@@ -7,7 +7,9 @@ import type {
   ChatMessage,
   CheckoutQuote,
   City,
+  DeliveryEstimate,
   Customer,
+  GuestPlaceOrderResult,
   OrderCard,
   OrderDetail,
   Paginated,
@@ -43,6 +45,8 @@ export const shopApi = {
   categories: () => api.get<Category[]>("categories/"),
   products: (query: Record<string, string | number | boolean | undefined>) => api.get<Paginated<ProductCard>>("products/", query),
   cities: () => api.get<City[]>("cities/"),
+  deliveryEstimate: (variant: number, city: number, quantity = 1) =>
+    api.get<DeliveryEstimate>("delivery-estimate/", { variant, city, quantity }),
   sourcingCountries: () => api.get<{ iso2: string; name: string }[]>("sourcing-countries/"),
 };
 
@@ -67,17 +71,55 @@ export const cartApi = {
 };
 
 export const checkoutApi = {
-  preview: (address: number, shipping_method?: number | null) =>
-    api.post<CheckoutQuote>("checkout/preview/", { address, shipping_method: shipping_method ?? null }),
+  preview: (address: number, shipping_method?: number | null, import_method?: number | null) =>
+    api.post<CheckoutQuote>("checkout/preview/", { address, shipping_method: shipping_method ?? null, import_method: import_method ?? null }),
   placeOrder: (data: {
     address: number;
     shipping_method: number;
+    import_method: number | null;
     payment_method: string;
     notes: string;
     idempotency_key: string;
     expected_total: string;
   }) => api.post<PlaceOrderResult>("checkout/place-order/", data),
 };
+
+export type GuestOrderInput = {
+  items: GuestLine[];
+  full_name: string;
+  phone: string;
+  email: string;
+  city: number;
+  line1: string;
+  area: string;
+  shipping_method: number;
+  import_method: number | null;
+  payment_method: string;
+  notes: string;
+  idempotency_key: string;
+  expected_total: string;
+};
+
+/** Website checkout without an account. The order is opened later with the signed `token` link. */
+export const guestCheckoutApi = {
+  preview: (items: GuestLine[], city: number, shipping_method?: number | null, import_method?: number | null) =>
+    api.post<CheckoutQuote>("checkout/guest/preview/", {
+      items,
+      city,
+      shipping_method: shipping_method ?? null,
+      import_method: import_method ?? null,
+    }),
+  placeOrder: (data: GuestOrderInput) => api.post<GuestPlaceOrderResult>("checkout/guest/place-order/", data),
+};
+
+export const guestOrderApi = (token: string) => ({
+  get: (reference: string) => api.get<OrderDetail>(`guest-orders/${reference}/`, { token }),
+  pay: (reference: string) => api.post<PaymentStart>(`guest-orders/${reference}/pay/?token=${encodeURIComponent(token)}`),
+  checkPayment: (reference: string) =>
+    api.post<{ payment: PaymentSummary; status_display: string }>(
+      `guest-orders/${reference}/check-payment/?token=${encodeURIComponent(token)}`,
+    ),
+});
 
 export const orderApi = {
   list: (group?: string) => api.get<Paginated<OrderCard>>("orders/", { group, page_size: 50 }),
