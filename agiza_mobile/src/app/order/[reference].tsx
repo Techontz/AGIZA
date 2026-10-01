@@ -303,6 +303,10 @@ export default function OrderScreen() {
                       <View style={styles.cancelledBadge}>
                         <Badge label="Cancelled: seller couldn't supply" tone="danger" />
                       </View>
+                    ) : item.sourced_abroad ? (
+                      <Text variant="smallMedium" color={colors.brand}>
+                        Imported — bought abroad for your order
+                      </Text>
                     ) : null}
                     <Text variant="small" color={colors.textMuted}>
                       {item.quantity} × {money(item.unit_price, o.currency)}
@@ -337,10 +341,28 @@ export default function OrderScreen() {
       {o.shipping ? (
         <Section title="Delivery">
           <Card>
+            {o.shipping.import_method ? (
+              <Text variant="small" color={colors.textMuted}>
+                Shipping to Tanzania: {o.shipping.import_method} · {money(o.shipping.import_fee, o.currency)}
+              </Text>
+            ) : null}
             <Text variant="bodyMedium" color={colors.ink}>
+              {o.shipping.import_method ? 'Then ' : ''}
               {o.shipping.method ?? 'Delivery'}
               {o.shipping.estimated_delivery ? ` · ${o.shipping.estimated_delivery}` : ''}
             </Text>
+            {o.prepayment_required && o.payment.status !== 'fully_paid' && o.status !== 'cancelled' ? (
+              <Text variant="smallMedium" color={colors.ink}>
+                {`Has imported items: AGIZA orders them once the order is fully paid.${
+                  o.payment_due_at ? ` Pay by ${dateTime(o.payment_due_at)} or the order is cancelled.` : ''
+                }`}
+              </Text>
+            ) : null}
+            {o.customs?.note ? (
+              <Text variant="small" color={colors.textMuted}>
+                {o.customs.note}
+              </Text>
+            ) : null}
             <Text variant="small" color={colors.textMuted}>
               {o.shipping.address}
             </Text>
@@ -377,11 +399,24 @@ export default function OrderScreen() {
         <Card>
           {o.amounts ? (
             <>
-              <Row label="Subtotal" value={money(o.amounts.subtotal, o.currency)} />
-              <Row
-                label="Delivery"
-                value={isFree(o.amounts.shipping_fee) ? 'Free' : money(o.amounts.shipping_fee, o.currency)}
-              />
+              <Row label={o.shipping?.import_method ? 'Products' : 'Subtotal'} value={money(o.amounts.subtotal, o.currency)} />
+              {o.shipping?.import_method ? (
+                <>
+                  <Row label="International shipping" value={money(o.amounts.import_fee, o.currency)} />
+                  {Number(o.amounts.customs_fee ?? 0) > 0 ? (
+                    <Row label="Customs / import duty" value={money(o.amounts.customs_fee, o.currency)} />
+                  ) : null}
+                  <Row
+                    label="Local delivery"
+                    value={money(String(Number(o.amounts.shipping_fee) - Number(o.amounts.import_fee ?? 0)), o.currency)}
+                  />
+                </>
+              ) : (
+                <Row
+                  label="Delivery"
+                  value={isFree(o.amounts.shipping_fee) ? 'Free' : money(o.amounts.shipping_fee, o.currency)}
+                />
+              )}
               <Divider />
             </>
           ) : null}

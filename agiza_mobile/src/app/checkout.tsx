@@ -3,11 +3,13 @@
  * delivery options the Shipping Engine offers for the chosen address, the fee and the total.
  * Placing the order sends the total the customer saw; if anything changed the server refuses
  * with a fresh preview. One idempotency key per checkout means a retry never orders twice.
+ * Imported items add a "Shipping to Tanzania" choice (also priced by the Shipping Engine) and
+ * are paid when ordering (the server then offers mobile money only).
  */
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
 import { router } from 'expo-router';
-import { Check, CircleAlert, MapPin, Package, Plus } from 'lucide-react-native';
+import { Check, CircleAlert, MapPin, Package, Plane, Plus } from 'lucide-react-native';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
@@ -101,6 +103,70 @@ function ShipmentBreakdown({ option }: { option: ShippingOption }) {
   );
 }
 
+/** One leg's methods: the available ones to choose from, the others behind "show". */
+function OptionsSection({
+  title,
+  intro,
+  options,
+  selectedId,
+  onSelect,
+}: {
+  title: string;
+  intro?: string;
+  options: ShippingOption[];
+  selectedId: number | null;
+  onSelect: (methodId: number) => void;
+}) {
+  const [showUnavailable, setShowUnavailable] = useState(false);
+  const available = options.filter((o) => o.available);
+  const unavailable = options.filter((o) => !o.available);
+  const selectedOption = available.find((o) => o.method_id === selectedId);
+  return (
+    <Section title={title}>
+      {intro ? (
+        <View style={styles.inline}>
+          <Plane size={16} color={colors.brand} />
+          <Text variant="small" color={colors.textMuted} style={{ flex: 1 }}>
+            {intro}
+          </Text>
+        </View>
+      ) : null}
+      {available.length ? (
+        <View style={styles.choices}>
+          {available.map((o) => (
+            <Choice
+              key={o.method_id}
+              selected={o.method_id === selectedId}
+              onPress={() => onSelect(o.method_id)}
+              title={o.name}
+              subtitle={shippingSubtitle(o)}
+              trailing={isFree(o.cost) ? 'Free' : money(o.cost, o.currency)}
+            />
+          ))}
+          {selectedOption ? <ShipmentBreakdown option={selectedOption} /> : null}
+        </View>
+      ) : null}
+      {unavailable.length ? (
+        <>
+          <Pressable accessibilityRole="button" onPress={() => setShowUnavailable((v) => !v)} style={styles.inline}>
+            <CircleAlert size={16} color={colors.textMuted} />
+            <Text variant="small" color={colors.textMuted}>
+              {showUnavailable ? 'Hide' : 'Show'} {unavailable.length} option{unavailable.length === 1 ? '' : 's'} not available here
+            </Text>
+          </Pressable>
+          {showUnavailable ? (
+            <View style={styles.choices}>
+              {unavailable.map((o) => (
+                <Choice key={o.method_id} selected={false} disabled title={o.name} subtitle={shippingSubtitle(o)} />
+              ))}
+            </View>
+          ) : null}
+        </>
+      ) : null}
+    </Section>
+  );
+}
+
 export default function CheckoutScreen() {
   const queryClient = useQueryClient();
   const cart = useCart();
@@ -108,18 +174,19 @@ export default function CheckoutScreen() {
   const [chosenAddress, setAddressId] = useState<number | null>(null);
   // null = let the server pick (the cheapest available option for the address)
   const [methodId, setMethodId] = useState<number | null>(null);
+  const [importMethodId, setImportMethodId] = useState<number | null>(null); // imported items: abroad → Tanzania
   const [chosenPayment, setPayment] = useState<PaymentMethod['code'] | null>(null);
   const [notes, setNotes] = useState('');
   const [changed, setChanged] = useState(false);
-  const [showUnavailable, setShowUnavailable] = useState(false);
   const idempotencyKey = useRef(Crypto.randomUUID());
 
   const defaultAddress = addresses.data?.find((a) => a.is_default) ?? addresses.data?.[0];
   const addressId = chosenAddress ?? defaultAddress?.id ?? null;
 
+  const previewKey = ['checkout-preview', addressId, methodId, importMethodId, cart.data?.item_count, cart.data?.subtotal];
   const preview = useQuery({
-    queryKey: ['checkout-preview', addressId, methodId, cart.data?.item_count, cart.data?.subtotal],
-    queryFn: () => checkoutApi.preview(addressId!, methodId),
+    queryKey: previewKey,
+    queryFn: () => checkoutApi.preview(addressId!, methodId, importMethodId),
     enabled: addressId !== null,
     placeholderData: keepPreviousData,
   });
@@ -133,6 +200,7 @@ export default function CheckoutScreen() {
       checkoutApi.placeOrder({
         address: addressId!,
         shipping_method: quote!.selected_shipping_method!,
+        import_method: quote!.selected_import_method,
         payment_method: payment!,
         notes,
         idempotency_key: idempotencyKey.current,
@@ -156,7 +224,7 @@ export default function CheckoutScreen() {
     onError: (e) => {
       if (e instanceof ApiError && e.code === 'price_changed' && e.details) {
         const fresh = e.details as CheckoutQuote;
-        queryClient.setQueryData(['checkout-preview', addressId, methodId, cart.data?.item_count, cart.data?.subtotal], fresh);
+        queryClient.setQueryData(previewKey, fresh);
         setChanged(true);
       }
     },
@@ -180,9 +248,8 @@ export default function CheckoutScreen() {
     return <EmptyState icon={Check} title="Your cart is empty" action={<Button title="Go shopping" onPress={() => router.replace('/shop')} />} />;
   }
 
-  const available = quote.shipping_options.filter((o) => o.available);
-  const unavailable = quote.shipping_options.filter((o) => !o.available);
-  const selectedOption = available.find((o) => o.method_id === quote.selected_shipping_method);
+  const imported = quote.import_options.length > 0;
+  const origins = [...new Set(quote.cart.items.filter((l) => l.imported && l.origin).map((l) => l.origin))];
   const refreshing = preview.isFetching;
   const canPlace = quote.can_place_order && !!payment && !refreshing && !place.isPending;
   const placeError = place.error instanceof ApiError && place.error.code !== 'price_changed' ? place.error : null;
@@ -270,6 +337,11 @@ export default function CheckoutScreen() {
                       {money(line.unit_price)} each
                     </Text>
                   )}
+                  {line.imported && !line.issue ? (
+                    <Text variant="smallMedium" color={colors.brand}>
+                      Ships from {line.origin ?? 'abroad'}
+                    </Text>
+                  ) : null}
                 </View>
                 <QuantityStepper
                   value={line.quantity}
@@ -284,42 +356,30 @@ export default function CheckoutScreen() {
         {cart.setQuantity.isError ? <Notice tone="danger">{errorMessage(cart.setQuantity.error)}</Notice> : null}
       </Section>
 
-      <Section title="Delivery option">
-        {available.length ? (
-          <View style={styles.choices}>
-            {available.map((o) => (
-              <Choice
-                key={o.method_id}
-                selected={o.method_id === quote.selected_shipping_method}
-                onPress={() => setMethodId(o.method_id)}
-                title={o.name}
-                subtitle={shippingSubtitle(o)}
-                trailing={isFree(o.cost) ? 'Free' : money(o.cost, o.currency)}
-              />
-            ))}
-            {selectedOption ? <ShipmentBreakdown option={selectedOption} /> : null}
-          </View>
-        ) : null}
-        {unavailable.length ? (
-          <>
-            <Pressable accessibilityRole="button" onPress={() => setShowUnavailable((v) => !v)} style={styles.inline}>
-              <CircleAlert size={16} color={colors.textMuted} />
-              <Text variant="small" color={colors.textMuted}>
-                {showUnavailable ? 'Hide' : 'Show'} {unavailable.length} option{unavailable.length === 1 ? '' : 's'} not available here
-              </Text>
-            </Pressable>
-            {showUnavailable ? (
-              <View style={styles.choices}>
-                {unavailable.map((o) => (
-                  <Choice key={o.method_id} selected={false} disabled title={o.name} subtitle={shippingSubtitle(o)} />
-                ))}
-              </View>
-            ) : null}
-          </>
-        ) : null}
-      </Section>
+      {imported ? (
+        <OptionsSection
+          title="Shipping to Tanzania"
+          intro={`${origins.length ? `Imported from ${origins.join(', ')}` : 'Imported items'} — AGIZA buys them after you pay and ships them to Tanzania.`}
+          options={quote.import_options}
+          selectedId={quote.selected_import_method}
+          onSelect={setImportMethodId}
+        />
+      ) : null}
+      <OptionsSection
+        title={imported ? 'Delivery in Tanzania' : 'Delivery option'}
+        options={quote.shipping_options}
+        selectedId={quote.selected_shipping_method}
+        onSelect={setMethodId}
+      />
 
       <Section title="Payment">
+        {quote.prepayment_required ? (
+          <Notice tone="info">
+            {`Your order has imported items, so it is paid when you order. AGIZA buys them abroad once your payment is confirmed.${
+              quote.payment_window_hours ? ` Unpaid orders are cancelled after ${quote.payment_window_hours} hours.` : ''
+            }`}
+          </Notice>
+        ) : null}
         <View style={styles.choices}>
           {quote.payment_methods.map((m) => (
             <Choice key={m.code} selected={payment === m.code} onPress={() => setPayment(m.code)} title={m.label} subtitle={m.description} />
@@ -337,13 +397,30 @@ export default function CheckoutScreen() {
       />
 
       <Card>
-        <Row label="Subtotal" value={money(quote.subtotal, quote.currency)} />
+        <Row label={imported ? 'Products' : 'Subtotal'} value={money(quote.subtotal, quote.currency)} />
+        {imported ? (
+          <Row label="International shipping" value={quote.selected_import_method === null ? '—' : money(quote.import_fee, quote.currency)} />
+        ) : null}
+        {quote.customs?.lines.map((line) => (
+          <Row
+            key={`${line.kind}-${line.name}-${line.treatment}`}
+            label={line.treatment === 'estimate' ? `${line.name} (estimate, paid separately)` : line.name}
+            value={line.treatment === 'estimate' ? `≈ ${money(line.amount, quote.currency)}` : money(line.amount, quote.currency)}
+          />
+        ))}
+        {quote.customs?.status === 'not_included' ? <Row label="Customs / import duty" value="Not included" /> : null}
         <Row
-          label="Delivery"
-          value={quote.shipping_fee === null ? '—' : isFree(quote.shipping_fee) ? 'Free' : money(quote.shipping_fee, quote.currency)}
+          label={imported ? 'Local delivery' : 'Delivery'}
+          value={quote.delivery_fee === null ? '—' : isFree(quote.delivery_fee) ? 'Free' : money(quote.delivery_fee, quote.currency)}
         />
+        {quote.estimated_delivery ? <Row label="Estimated delivery" value={quote.estimated_delivery} /> : null}
         <Divider />
         <Row label="Total" value={money(quote.total, quote.currency)} strong />
+        {quote.customs?.note ? (
+          <Text variant="small" color={colors.textMuted}>
+            {quote.customs.note}
+          </Text>
+        ) : null}
       </Card>
     </FormScreen>
   );

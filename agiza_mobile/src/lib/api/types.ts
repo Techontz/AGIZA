@@ -57,6 +57,8 @@ export type ProductCard = {
   /** Average from reviews, e.g. "4.5"; null when nobody has rated it. */
   rating: string | null;
   rating_count: number;
+  /** Imported product: the country it ships from (bought abroad after payment). Null when held in Tanzania. */
+  ships_from: string | null;
 };
 
 export type Variant = {
@@ -100,6 +102,8 @@ export type CartLine = {
   line_total: string;
   available: number;
   issue: string;
+  imported: boolean;
+  origin: string | null;
 };
 
 /** The cart's lines per seller (AGIZA first). `variant_ids` link a group to its lines. */
@@ -112,6 +116,7 @@ export type Cart = {
   subtotal: string;
   currency: string;
   has_issues: boolean;
+  has_imported?: boolean;
 };
 
 export type City = { id: number; name: string; region: string; country: string };
@@ -142,21 +147,73 @@ export type ShippingOption = {
   estimated_delivery: string | null;
   carrier: string | null;
   message: string;
+  eta_min_days: number | null;
+  eta_max_days: number | null;
   /** How the fee splits when goods ship from more than one place; `label` already names the origin. */
   shipments: { label: string; origin: string; cost: string }[];
 };
 
+/**
+ * shipping_fee = import_fee (imported items: abroad → Tanzania) + delivery_fee (to the address).
+ * Orders with imported items are paid when placed (prepayment_required: mobile money only).
+ */
 export type CheckoutQuote = {
   cart: Cart;
   shipping_options: ShippingOption[];
   selected_shipping_method: number | null;
+  import_options: ShippingOption[];
+  selected_import_method: number | null;
   subtotal: string;
+  import_fee: string;
+  delivery_fee: string | null;
   shipping_fee: string | null;
   total: string | null;
   currency: string;
+  estimated_delivery: string | null;
+  /** Customs charged in the total (Shipping Engine import-charge rules). */
+  customs_fee: string;
+  /** Null when nothing is imported. */
+  customs: Customs | null;
+  /** Orders with imported items must be paid within this many hours or they are cancelled. */
+  payment_window_hours: number | null;
   payment_methods: PaymentMethod[];
+  prepayment_required: boolean;
   issues: string[];
   can_place_order: boolean;
+};
+
+/** "Calculate delivery" for one product and city, priced by the Shipping Engine. */
+export type CustomsLine = {
+  kind: string;
+  kind_display: string;
+  name: string;
+  treatment: 'included' | 'estimate';
+  amount: string;
+};
+
+/**
+ * Customs / import charges, computed by the server. status: included (all in the total),
+ * estimated (some shown as estimates, paid separately), not_included (no rule: payable separately).
+ */
+export type Customs = {
+  lines: CustomsLine[];
+  included: string;
+  estimate: string;
+  status: 'included' | 'estimated' | 'not_included';
+  note: string;
+  uncovered: string[];
+};
+
+export type DeliveryEstimate = {
+  imported: boolean;
+  ships_from: string | null;
+  hub: string | null;
+  import_options: ShippingOption[];
+  shipping_options: ShippingOption[];
+  /** Customs for this item (same calculation as checkout); null when not imported. */
+  customs: Customs | null;
+  currency: string;
+  prepayment_required: boolean;
 };
 
 export type TimelineStep = { key: string; label: string; at: string | null; state: 'completed' | 'current' | 'pending' };
@@ -194,6 +251,8 @@ export type OrderDetail = OrderCard & {
     item?: number;
     /** The seller couldn't supply this item; it is no longer charged. */
     cancelled?: boolean;
+    /** Imported item bought abroad for this order. */
+    sourced_abroad?: boolean;
   }[];
   payment: PaymentSummary;
   payments: { amount: string; method: string; paid_at: string; kind: string }[];
@@ -201,8 +260,21 @@ export type OrderDetail = OrderCard & {
   delivery: { reference: string; status: string; status_display: string; scheduled_at: string | null; delivered_at: string | null } | null;
   can_cancel: boolean;
   can_pay: boolean;
-  shipping?: { address: string; city: string; area: string; method: string | null; estimated_delivery: string | null };
-  amounts?: { subtotal: string; shipping_fee: string; total: string };
+  shipping?: {
+    address: string;
+    city: string;
+    area: string;
+    method: string | null;
+    estimated_delivery: string | null;
+    import_method?: string | null;
+    import_fee?: string;
+  };
+  /** Has imported items: AGIZA orders them once the order is fully paid. */
+  prepayment_required?: boolean;
+  /** Prepaid orders: cancelled if not fully paid by then. */
+  payment_due_at?: string | null;
+  customs?: Customs | null;
+  amounts?: { subtotal: string; shipping_fee: string; import_fee?: string; customs_fee?: string; total: string };
   /** Shop orders: each seller's part of the one order. */
   sellers?: OrderSeller[];
   payment_preference?: PaymentMethod['code'] | null;

@@ -40,6 +40,11 @@ function Line({ line, cart }: { line: CartLine; cart: ReturnType<typeof useCart>
           <Text variant="small" color={colors.textMuted}>
             {money(line.unit_price)} each
           </Text>
+          {line.imported && !line.issue ? (
+            <Text variant="smallMedium" color={colors.brand}>
+              Ships from {line.origin ?? 'abroad'} · paid when you order
+            </Text>
+          ) : null}
           {line.issue ? (
             <Text variant="smallMedium" color={colors.danger}>
               {line.issue}

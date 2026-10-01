@@ -7,6 +7,7 @@ import type {
   ChatMessage,
   CheckoutQuote,
   City,
+  DeliveryEstimate,
   Customer,
   MyReview,
   MyReviews,
@@ -67,6 +68,8 @@ export const shopApi = {
   stores: (query: { search?: string; page?: number }) => api.get<Paginated<Store>>('stores/', query),
   store: (slug: string) => api.get<Store>(`stores/${encodeURIComponent(slug)}/`),
   cities: () => api.get<City[]>('cities/'),
+  deliveryEstimate: (variant: number, city: number, quantity = 1) =>
+    api.get<DeliveryEstimate>('delivery-estimate/', { variant, city, quantity }),
   sourcingCountries: () => api.get<{ iso2: string; name: string }[]>('sourcing-countries/'),
 };
 
@@ -91,11 +94,12 @@ export const cartApi = {
 };
 
 export const checkoutApi = {
-  preview: (address: number, shipping_method?: number | null) =>
-    api.post<CheckoutQuote>('checkout/preview/', { address, shipping_method: shipping_method ?? null }),
+  preview: (address: number, shipping_method?: number | null, import_method?: number | null) =>
+    api.post<CheckoutQuote>('checkout/preview/', { address, shipping_method: shipping_method ?? null, import_method: import_method ?? null }),
   placeOrder: (data: {
     address: number;
     shipping_method: number;
+    import_method: number | null;
     payment_method: string;
     notes: string;
     idempotency_key: string;

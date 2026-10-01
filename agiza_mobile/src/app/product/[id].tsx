@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Check, ShoppingCart, Truck } from 'lucide-react-native';
+import { Check, Plane, ShoppingCart } from 'lucide-react-native';
 import { useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DeliveryCalculator } from '@/components/delivery-calculator';
 import { ProductReviews } from '@/components/product-reviews';
 import { ProductImage } from '@/components/product-tile';
 import { RatingSummaryLine } from '@/components/rating';
@@ -125,9 +126,18 @@ export default function ProductScreen() {
               </Text>
             ) : null}
           </View>
-          <Text variant="smallMedium" color={available > 0 ? colors.success : colors.danger}>
-            {available > 0 ? (available <= 3 ? `Only ${available} left` : 'In stock') : 'Out of stock'}
-          </Text>
+          {p.ships_from ? (
+            <View style={styles.delivery}>
+              <Plane size={18} color={colors.brand} />
+              <Text variant="small" color={colors.ink} style={{ flex: 1 }}>
+                Ships from {p.ships_from}. AGIZA orders it for you once you pay — see delivery cost and time below.
+              </Text>
+            </View>
+          ) : (
+            <Text variant="smallMedium" color={available > 0 ? colors.success : colors.danger}>
+              {available > 0 ? (available <= 3 ? `Only ${available} left` : 'In stock') : 'Out of stock'}
+            </Text>
+          )}
 
           {p.vendor ? (
             <Card style={styles.seller}>
@@ -193,13 +203,7 @@ export default function ProductScreen() {
             </Card>
           ) : null}
 
-          <View style={styles.delivery}>
-            <Truck size={18} color={colors.textMuted} />
-            <Text variant="small" color={colors.textMuted} style={{ flex: 1 }}>
-              Delivery options and cost are calculated at checkout for your address
-              {p.shipping_methods.length ? ` (${p.shipping_methods.join(', ')})` : ''}.
-            </Text>
-          </View>
+          {variant ? <DeliveryCalculator variantId={variant.id} quantity={quantity} /> : null}
 
           <View onLayout={(e) => setReviewsY(e.nativeEvent.layout.y)}>
             <ProductReviews productId={p.id} name={p.name} />
