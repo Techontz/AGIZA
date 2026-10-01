@@ -1,5 +1,7 @@
-# MySQL 8.0+ deployments (e.g. DirectAdmin): production requirements plus the MySQL driver.
-# Building mysqlclient needs the MySQL client headers and pkg-config on the server
-# (e.g. `dnf install mysql-devel pkgconf` / `apt install default-libmysqlclient-dev pkg-config`).
+# MySQL 8.0+ deployments (e.g. DirectAdmin shared hosting): production requirements plus a
+# pure-Python MySQL driver. PyMySQL needs no compiler or Python headers on the server; it is
+# registered as Django's MySQLdb driver in config/__init__.py. `cryptography` lets it log in
+# with MySQL 8's default caching_sha2_password authentication (prebuilt wheels, no compiling).
 -r prod.txt
-mysqlclient>=2.2,<2.3
+PyMySQL>=1.1,<1.2
+cryptography>=42
