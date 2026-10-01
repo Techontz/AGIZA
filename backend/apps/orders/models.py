@@ -281,6 +281,22 @@ class ShopDetails(models.Model):
                                         on_delete=models.SET_NULL, related_name="+")
     estimated_delivery = models.CharField(max_length=60, blank=True, help_text='Quoted at checkout, e.g. "1–2 days"')
     payment_preference = models.CharField(max_length=16, choices=PaymentPreference.choices, blank=True)
+    # Imported items (shipped from abroad to AGIZA's hub, then delivered with `shipping_method`).
+    import_shipping_method = models.ForeignKey("shipping_engine.ShippingMethod", null=True, blank=True,
+                                               on_delete=models.SET_NULL, related_name="+",
+                                               help_text="How the imported items travel to Tanzania")
+    import_fee = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"), validators=POSITIVE,
+                                     help_text="Part of delivery_fee for shipping imported items to Tanzania")
+    prepayment_required = models.BooleanField(
+        default=False, help_text="Imported items: AGIZA buys them only once the order is fully paid")
+    payment_due_at = models.DateTimeField(
+        null=True, blank=True, help_text="Prepaid orders are cancelled if not fully paid by then")
+    # Customs / import charges (Shipping Engine import-charge rules). customs_fee is part of the total;
+    # estimates and "not included" are only information for the customer.
+    customs_fee = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"), validators=POSITIVE)
+    customs_status = models.CharField(max_length=14, blank=True,
+                                      help_text="included / estimated / not_included (empty: nothing imported)")
+    customs_charges = models.JSONField(default=dict, blank=True, help_text="Breakdown quoted at checkout")
 
     def __str__(self) -> str:
         return f"{self._meta.verbose_name} #{self.pk}"
@@ -300,6 +316,8 @@ class OrderItem(models.Model):
     line_total = models.DecimalField(max_digits=14, decimal_places=2, validators=POSITIVE)
     warehouse = models.ForeignKey("locations.Warehouse", null=True, blank=True, on_delete=models.PROTECT,
                                   related_name="+", help_text="Where the stock is reserved")
+    sourced_abroad = models.BooleanField(default=False,
+                                         help_text="Imported item bought for this order (no stock was reserved)")
     # Marketplace: who sold the line and AGIZA's commission on it, captured when ordered.
     vendor = models.ForeignKey("catalog.Vendor", null=True, blank=True, on_delete=models.PROTECT, related_name="+",
                                help_text="Empty = sold by AGIZA")

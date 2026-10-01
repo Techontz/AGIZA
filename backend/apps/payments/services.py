@@ -41,6 +41,8 @@ def start_checkout(order: Order, *, phone: str) -> GatewayPayment:
         raise WorkflowError("Mobile money payment isn't available right now. Choose Pay later.", conflict=True)
     if order.status == "cancelled":
         raise WorkflowError("This order was cancelled.", conflict=True)
+    if payment_deadline_passed(order):
+        raise WorkflowError("The payment deadline for this order has passed.", conflict=True)
     due = order_services.payment_summary(order).due
     if not due or due <= 0:
         raise WorkflowError("This order has nothing left to pay.", conflict=True)
@@ -133,10 +135,28 @@ def _complete(gateway: GatewayPayment, answer: dict):
         )
     except WorkflowError as exc:
         _needs_attention(gateway, f"Received {received} {gateway.currency} but it couldn't be applied: {exc.message}")
+        if order.status == "cancelled":  # e.g. paid after the payment deadline: never revives the order
+            _tell_customer_late(gateway, received)
         return
     gateway.payment = payment
     if received > amount:
         _needs_attention(gateway, f"Received {received} {gateway.currency}; only {amount} was due. Refund the difference.")
+
+
+def payment_deadline_passed(order) -> bool:
+    details = getattr(order, "shop", None) if order.order_type == "shop" else None
+    return bool(details and details.prepayment_required and details.payment_due_at
+                and details.payment_due_at <= timezone.now())
+
+
+def _tell_customer_late(gateway: GatewayPayment, received):
+    from apps.storefront.notifications import notify
+
+    order = gateway.order
+    notify(order.customer, title=f"Payment received for cancelled order {order.reference}",
+           body=f"We received {received:,.0f} {gateway.currency} after order {order.reference} was cancelled. "
+                f"It was not applied to the order; AGIZA will contact you to refund it.",
+           data={"type": "order_status", "order": order.reference, "screen": "order"})
 
 
 def _needs_attention(gateway: GatewayPayment, reason: str):

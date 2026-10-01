@@ -107,6 +107,20 @@ def _check_transition(order: Order, to_status: str, via_action: str | None = Non
         raise WorkflowError(
             f"{status_label(order.order_type, to_status)} is set with the “{required_action}” action.", field="status"
         )
+    _check_prepayment(order, to_status)
+
+
+def _check_prepayment(order: Order, to_status: str):
+    """Shop orders with imported items are bought abroad only once the customer has paid in full."""
+    if order.order_type != OrderType.SHOP or to_status not in (ShopStatus.PROCESSING, ShopStatus.SHIPPED):
+        return
+    details = getattr(order, "shop", None)
+    if details is None or not details.prepayment_required:
+        return
+    due = payment_summary(order).due
+    if due and due > 0:
+        raise WorkflowError(f"{order.reference} has imported items: it must be fully paid before it is processed "
+                            f"({due:,.2f} {order.currency} still due).", conflict=True)
 
 
 @transaction.atomic

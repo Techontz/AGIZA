@@ -115,6 +115,8 @@ Migrations are additive (data migrations only add rows, e.g. the procurement bac
 ```bash
 .venv/bin/python manage.py evaluate_tag_rules        # hourly: interests + every tag rule (time-based conditions)
 .venv/bin/python manage.py send_due_notifications    # every 5 min: chat follow-up reminders
+.venv/bin/python manage.py expire_unpaid_orders      # every 5 min: cancel unpaid orders with imported items past
+                                                     #   their payment deadline (Shipping Engine → Settings)
 ```
 
 ## Frontend setup

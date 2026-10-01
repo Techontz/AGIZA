@@ -406,6 +406,14 @@ class ShopOrderSerializer(OrderSerializer):
             "estimated_delivery": d.estimated_delivery,
             "payment_preference": d.payment_preference,
             "payment_preference_display": d.get_payment_preference_display() if d.payment_preference else "",
+            "import_shipping_method": ({"id": d.import_shipping_method_id, "name": d.import_shipping_method.name}
+                                       if d.import_shipping_method_id else None),
+            "import_fee": _dec(d.import_fee),
+            "prepayment_required": d.prepayment_required,
+            "payment_due_at": d.payment_due_at,
+            "customs_fee": _dec(d.customs_fee),
+            "customs_status": d.customs_status,
+            "customs_charges": d.customs_charges or None,
             "location": ({"latitude": _dec(d.delivery_address.latitude, 6), "longitude": _dec(d.delivery_address.longitude, 6)}
                          if d.delivery_address_id and d.delivery_address.latitude is not None else None),
         }

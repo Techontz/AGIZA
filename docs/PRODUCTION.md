@@ -75,7 +75,7 @@ There is no `eas.json` yet. Create EAS build profiles that set `EXPO_PUBLIC_API_
    #20 (800 TZS/kg, minimum TZS 3,000). No fee is hard-coded.
 4. Website and admin: `pnpm install --frozen-lockfile && pnpm build`, then run the standalone servers
    behind the same TLS proxy (see README).
-5. Scheduled jobs: `evaluate_tag_rules` hourly and `send_due_notifications` every 5 minutes.
+5. Scheduled jobs: `evaluate_tag_rules` hourly, and `send_due_notifications` and `expire_unpaid_orders` every 5 minutes.
 
 ## 3. Upgrading an existing installation
 

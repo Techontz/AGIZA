@@ -24,10 +24,15 @@ def create_shop_order(*, customer, items: list[dict], shipping_address: str, use
                       customer_email: str = "", channel: str = ShopDetails.Channel.WEB,
                       delivery_fee: Decimal = Decimal("0"), notes: str = "", request=None,
                       delivery_address=None, shipping_method=None, estimated_delivery: str = "",
-                      payment_preference: str = "", shipping_allocation: dict | None = None) -> Order:
+                      payment_preference: str = "", shipping_allocation: dict | None = None,
+                      import_shipping_method=None, import_fee: Decimal = Decimal("0"),
+                      prepayment_required: bool = False, payment_due_at=None,
+                      customs_fee: Decimal = Decimal("0"), customs_status: str = "",
+                      customs_charges: dict | None = None) -> Order:
     """
-    items: [{"variant": ProductVariant, "quantity": int, "unit_price": Decimal | None}]
+    items: [{"variant": ProductVariant, "quantity": int, "unit_price": Decimal | None, "sourced_abroad": bool}]
     shipping_allocation: {vendor_id or None: fee} — which seller's items each part of the delivery fee is for.
+    A line `sourced_abroad` (an imported item) takes stock if some is held, else AGIZA buys it for the order.
     """
     if not items:
         raise WorkflowError("Add at least one item.", field="items")
@@ -50,22 +55,32 @@ def create_shop_order(*, customer, items: list[dict], shipping_address: str, use
         price = variant.effective_price if price is None else price
         total = (price * qty).quantize(Decimal("0.01"))
         subtotal += total
-        lines.append((variant, qty, price, total))
+        lines.append((variant, qty, price, total, bool(line.get("sourced_abroad"))))
     order = services.create_order(
-        OrderType.SHOP, customer=customer, item_details=", ".join(f"{q}× {v.product.name}" for v, q, _, _ in lines)[:255],
-        user=user, request=request, notes=notes, total_amount=subtotal + delivery_fee,
+        OrderType.SHOP, customer=customer, item_details=", ".join(f"{q}× {v.product.name}" for v, q, *_ in lines)[:255],
+        user=user, request=request, notes=notes, total_amount=subtotal + delivery_fee + customs_fee,
         details={"customer_email": customer_email or customer.email, "shipping_address": shipping_address,
                  "city": city, "area": area, "channel": channel, "delivery_fee": delivery_fee,
                  "delivery_address": delivery_address, "shipping_method": shipping_method,
-                 "estimated_delivery": estimated_delivery, "payment_preference": payment_preference},
+                 "estimated_delivery": estimated_delivery, "payment_preference": payment_preference,
+                 "import_shipping_method": import_shipping_method, "import_fee": import_fee,
+                 "prepayment_required": prepayment_required, "payment_due_at": payment_due_at,
+                 "customs_fee": customs_fee, "customs_status": customs_status,
+                 "customs_charges": customs_charges or {}},
     )
-    for variant, qty, price, total in lines:
-        stock = inventory.reserve(variant, qty, order=order, user=user, preferred=variant.product.location)
+    for variant, qty, price, total, abroad in lines:
+        try:
+            warehouse = inventory.reserve(variant, qty, order=order, user=user,
+                                          preferred=variant.product.location).warehouse
+        except WorkflowError:
+            if not abroad:
+                raise
+            warehouse = None  # nothing held: bought abroad for this order
         OrderItem.objects.create(order=order, variant=variant, product_name=variant.product.name,
                                  variant_name="" if variant.is_default else variant.name, sku=variant.sku,
                                  quantity=qty, unit_price=price, unit_cost=variant.effective_cost, line_total=total,
-                                 warehouse=stock.warehouse)
-    first = order.items.first()
+                                 warehouse=warehouse, sourced_abroad=abroad and warehouse is None)
+    first = order.items.exclude(warehouse__isnull=True).first()
     ShopDetails.objects.filter(order=order).update(fulfillment_warehouse=first.warehouse if first else None)
     from apps.marketplace import services as marketplace
 
@@ -97,7 +112,7 @@ def ship(order: Order, *, user, driver=None, scheduled_at=None, note: str = "", 
 
     # Items kept in several places are collected to an AGIZA hub first (pickup tasks), then delivered.
     hub = pickup_tasks.require_consolidated(order)
-    for line in _live_lines(order):
+    for line in _live_lines(order).exclude(warehouse__isnull=True):  # items bought abroad held no stock here
         inventory.dispatch(line, user=user)
     details = order.shop
     details.shipped_at = timezone.now()
