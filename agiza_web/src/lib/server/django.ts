@@ -8,7 +8,9 @@ import "server-only";
 import { rewriteMediaUrls } from "@/lib/media";
 
 export function djangoUrl(path: string): string {
-  const base = process.env.DJANGO_API_URL;
+  // Production falls back to the public AGIZA API so a fresh deployment works without setup.
+  const base =
+    process.env.DJANGO_API_URL || (process.env.NODE_ENV === "production" ? "https://agizastore.xyz/api" : undefined);
   if (!base) throw new Error("DJANGO_API_URL is not configured");
   return `${base.replace(/\/+$/, "")}/app/${path.replace(/^\/+/, "")}`;
 }

@@ -4,6 +4,12 @@ import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV !== "production";
 
+/** On Vercel, default the public site URL to the project's production domain when it isn't set. */
+const vercelSiteUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+  : undefined;
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || vercelSiteUrl;
+
 /**
  * Content Security Policy. Browsers only talk to this Next.js server: Django is reached
  * server-side (pages, /api/proxy) and product images are served from /img/* (optimised by
@@ -25,6 +31,7 @@ const csp = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  ...(siteUrl ? { env: { NEXT_PUBLIC_SITE_URL: siteUrl } } : {}),
   output: "standalone",
   outputFileTracingRoot: path.join(__dirname),
   images: {
