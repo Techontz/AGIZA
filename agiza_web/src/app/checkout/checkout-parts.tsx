@@ -3,6 +3,9 @@
 /**
  * The pieces both checkouts share (signed in and guest): delivery options, payment, and the
  * order summary with the place-order button. Everything shown comes from the server's quote.
+ * When nothing can be priced for the address and the Shipping Engine asks for a manual quote, the
+ * options read "Delivery cost to be confirmed by AGIZA": the order is placed without paying, and the
+ * customer pays from the order once AGIZA sets the cost.
  */
 import { CircleAlert, Lock, MapPin, Package, Plane, ShoppingBag } from "lucide-react";
 import Link from "next/link";
@@ -57,8 +60,15 @@ export function Choice({
   );
 }
 
+/** Orderable: priced, or (nothing priced here) delivery cost to be confirmed by AGIZA. */
+const selectable = (o: ShippingOption) => o.available || o.manual_quote === true;
+
 const optionSubtitle = (o: ShippingOption) =>
-  !o.available ? o.message : [o.estimated_delivery, o.carrier].filter(Boolean).join(" · ") || o.description;
+  o.manual_quote
+    ? "Delivery cost to be confirmed by AGIZA. Order now and pay once it is set."
+    : !o.available
+      ? o.message
+      : [o.estimated_delivery, o.carrier].filter(Boolean).join(" · ") || o.description;
 
 function Shipments({ option }: { option: ShippingOption }) {
   if ((option.shipments?.length ?? 0) < 2) return null;
@@ -111,8 +121,8 @@ export function DeliveryOptions({
   const options = leg === "import" ? quote.import_options : quote.shipping_options;
   const selectedId = leg === "import" ? quote.selected_import_method : quote.selected_shipping_method;
   const title = leg === "import" ? "Shipping to Tanzania" : quote.import_options.length ? "Delivery in Tanzania" : "Delivery option";
-  const available = options.filter((o) => o.available);
-  const unavailable = options.filter((o) => !o.available);
+  const available = options.filter(selectable);
+  const unavailable = options.filter((o) => !selectable(o));
   const selectedOption = available.find((o) => o.method_id === selectedId);
   const origins = [...new Set(quote.cart.items.filter((l) => l.imported && l.origin).map((l) => l.origin))];
   return (
@@ -133,7 +143,7 @@ export function DeliveryOptions({
               onSelect={() => onSelect(o.method_id)}
               title={o.name}
               subtitle={optionSubtitle(o)}
-              trailing={isFree(o.cost) ? "Free" : money(o.cost, o.currency)}
+              trailing={o.manual_quote ? "To be confirmed" : isFree(o.cost) ? "Free" : money(o.cost, o.currency)}
             />
           ))}
           {selectedOption ? <Shipments option={selectedOption} /> : null}
@@ -175,6 +185,12 @@ export function PaymentSection({
 }) {
   return (
     <Section step={step} title="Payment">
+      {quote.delivery_fee_pending ? (
+        <Notice tone="info" className="mb-3">
+          AGIZA will confirm the delivery cost to this address. Place your order now: nothing is charged yet. We&apos;ll let you know
+          when the cost is set, then you pay the full total from your order.
+        </Notice>
+      ) : null}
       {quote.prepayment_required ? (
         <Notice tone="info" className="mb-3">
           Your order has imported items, so it is paid when you order. AGIZA buys them abroad once your payment is confirmed.
@@ -219,7 +235,8 @@ export function OrderSummary({
   onPlace: () => void;
   placeLabel?: string;
 }) {
-  const selectedOption = quote.shipping_options.find((o) => o.available && o.method_id === quote.selected_shipping_method);
+  const selectedOption = quote.shipping_options.find((o) => selectable(o) && o.method_id === quote.selected_shipping_method);
+  const feePending = quote.delivery_fee_pending === true;
   const byVariant = new Map(quote.cart.items.map((l) => [l.variant_id, l]));
   return (
     <aside className="space-y-3 lg:sticky lg:top-24">
@@ -261,7 +278,7 @@ export function OrderSummary({
         <CostLines quote={quote} selectedOption={selectedOption} />
         <div className="my-2 border-t border-line" />
         <div className="flex items-center justify-between py-1">
-          <span className="font-semibold text-ink">Total</span>
+          <span className="font-semibold text-ink">{feePending ? "Total before delivery" : "Total"}</span>
           <span className={cn("text-[22px] font-bold text-ink tabular-nums", refreshing && "opacity-50")}>{money(quote.total, quote.currency)}</span>
         </div>
         {quote.customs?.note ? <p className="mt-2 text-[12px] leading-snug text-muted">{quote.customs.note}</p> : null}
@@ -276,7 +293,7 @@ export function OrderSummary({
           </Notice>
         ) : null}
         <Button size="lg" className="mt-4 w-full" loading={placing} disabled={!canPlace} onClick={onPlace}>
-          {placeLabel ?? (payment === "mobile_money" ? "Place order & pay" : "Place order")}
+          {placeLabel ?? (payment === "mobile_money" && !feePending ? "Place order & pay" : "Place order")}
         </Button>
         <p className="mt-2 flex items-center justify-center gap-1.5 text-[12px] text-muted">
           <Lock className="size-3.5" aria-hidden /> Totals are calculated and checked by AGIZA.
@@ -315,7 +332,15 @@ function CostLines({ quote, selectedOption }: { quote: CheckoutQuote; selectedOp
       {customs && customs.status === "not_included" ? <Row label="Customs / import duty" value="Not included" /> : null}
       <Row
         label={`${imported ? "Local delivery" : "Delivery"}${shipments > 1 ? ` (${shipments} shipments)` : ""}`}
-        value={quote.delivery_fee === null ? "—" : isFree(quote.delivery_fee) ? "Free" : money(quote.delivery_fee, quote.currency)}
+        value={
+          quote.delivery_fee_pending
+            ? "To be confirmed"
+            : quote.delivery_fee === null
+              ? "—"
+              : isFree(quote.delivery_fee)
+                ? "Free"
+                : money(quote.delivery_fee, quote.currency)
+        }
       />
       {quote.estimated_delivery ? <Row label="Estimated delivery" value={quote.estimated_delivery} /> : null}
     </>

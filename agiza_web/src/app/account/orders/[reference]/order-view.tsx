@@ -1,7 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, CircleX, MapPin, Truck } from "lucide-react";
+import { ArrowLeft, Check, CircleX, MapPin, Phone, Truck } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -65,6 +66,8 @@ export function OrderView({ reference, token }: { reference: string; token?: str
   if (order.isError || !order.data) return <Notice tone="danger">{errorMessage(order.error)}</Notice>;
   const o: OrderDetail = order.data;
   const multiSeller = (o.sellers?.length ?? 0) > 1;
+  // Delivery needs a manual quote: AGIZA sets the cost first, then the customer pays.
+  const feePending = !!o.delivery_fee_pending && o.status !== "cancelled";
 
   return (
     <div className="space-y-4">
@@ -75,7 +78,11 @@ export function OrderView({ reference, token }: { reference: string; token?: str
         <Notice tone="success">
           <span className="flex items-center gap-2 font-medium">
             <Check className="size-4" aria-hidden />
-            {guest ? "Order placed — thank you! AGIZA will call you to confirm delivery." : "Order placed — thank you! We'll keep you updated here and by notification."}
+            {feePending
+              ? "Order placed — AGIZA will confirm the delivery cost, then you can pay."
+              : guest
+                ? "Order placed — thank you! AGIZA will call you to confirm delivery."
+                : "Order placed — thank you! We'll keep you updated here and by notification."}
           </span>
         </Notice>
       ) : null}
@@ -139,10 +146,53 @@ export function OrderView({ reference, token }: { reference: string; token?: str
               </ol>
             )}
             {o.delivery ? (
-              <p className="mt-4 flex items-center gap-2 rounded-md bg-canvas p-3 text-[14px] text-ink">
-                <Truck className="size-4 text-brand" aria-hidden /> Delivery {o.delivery.reference}: {o.delivery.status_display}
-                {o.delivery.delivered_at ? ` · ${dateTime(o.delivery.delivered_at)}` : o.delivery.scheduled_at ? ` · scheduled ${dateTime(o.delivery.scheduled_at)}` : ""}
-              </p>
+              <div className="mt-4 space-y-3 rounded-md bg-canvas p-3 text-[14px] text-ink">
+                <p className="flex items-center gap-2">
+                  <Truck className="size-4 text-brand" aria-hidden /> Delivery {o.delivery.reference}: {o.delivery.status_display}
+                  {o.delivery.delivered_at ? ` · ${dateTime(o.delivery.delivered_at)}` : o.delivery.scheduled_at ? ` · scheduled ${dateTime(o.delivery.scheduled_at)}` : ""}
+                </p>
+                {o.delivery.driver ? (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span>
+                      <span className="block text-[13px] text-muted">Your driver</span>
+                      <span className="font-medium">{o.delivery.driver.name}</span>
+                    </span>
+                    {o.delivery.driver.phone ? (
+                      <a
+                        href={`tel:${o.delivery.driver.phone.replace(/\s+/g, "")}`}
+                        className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-line-strong px-3 font-medium text-ink hover:border-brand"
+                        aria-label={`Call ${o.delivery.driver.name} on ${o.delivery.driver.phone}`}
+                      >
+                        <Phone className="size-4 text-brand" aria-hidden /> {o.delivery.driver.phone}
+                      </a>
+                    ) : null}
+                  </div>
+                ) : null}
+                {o.delivery.received_by ? (
+                  <p>
+                    <span className="text-muted">Received by </span>
+                    <span className="font-medium">{o.delivery.received_by}</span>
+                  </p>
+                ) : null}
+                {o.delivery.photos?.length ? (
+                  <div>
+                    <p className="mb-2 text-[13px] text-muted">Proof of delivery</p>
+                    <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                      {o.delivery.photos.map((p, i) => {
+                        // Private photo: loaded through the signed-in proxy (same origin, token in the cookie).
+                        const src = `/api/proxy/orders/${encodeURIComponent(o.reference)}/delivery-photos/${p.id}`;
+                        return (
+                          <li key={p.id} className="relative aspect-square overflow-hidden rounded-md bg-tile">
+                            <a href={src} target="_blank" rel="noopener noreferrer" aria-label={`Open delivery photo ${i + 1}`}>
+                              <Image src={src} alt={`Delivery photo ${i + 1}`} fill unoptimized className="object-cover" />
+                            </a>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
             ) : null}
             {o.cargo?.length ? (
               <ul className="mt-4 space-y-1.5 text-[14px]">
@@ -221,11 +271,17 @@ export function OrderView({ reference, token }: { reference: string; token?: str
                     {Number(o.amounts.customs_fee ?? 0) > 0 ? <Row label="Customs / import duty" value={money(o.amounts.customs_fee)} /> : null}
                     <Row
                       label="Local delivery"
-                      value={Number(o.amounts.shipping_fee) - Number(o.amounts.import_fee ?? 0) === 0 ? "Free" : money(String(Number(o.amounts.shipping_fee) - Number(o.amounts.import_fee ?? 0)))}
+                      value={
+                        feePending
+                          ? "To be confirmed"
+                          : Number(o.amounts.shipping_fee) - Number(o.amounts.import_fee ?? 0) === 0
+                            ? "Free"
+                            : money(String(Number(o.amounts.shipping_fee) - Number(o.amounts.import_fee ?? 0)))
+                      }
                     />
                   </>
                 ) : (
-                  <Row label="Delivery" value={Number(o.amounts.shipping_fee) === 0 ? "Free" : money(o.amounts.shipping_fee)} />
+                  <Row label="Delivery" value={feePending ? "To be confirmed" : Number(o.amounts.shipping_fee) === 0 ? "Free" : money(o.amounts.shipping_fee)} />
                 )}
                 <div className="my-1 border-t border-line" />
               </>
@@ -235,15 +291,20 @@ export function OrderView({ reference, token }: { reference: string; token?: str
                 {a.reason}: <span className="font-medium text-ink">{money(a.amount)}</span>
               </p>
             ))}
-            <Row label="Total" value={money(o.payment.total, o.currency)} strong />
+            <Row label={feePending ? "Total before delivery" : "Total"} value={money(o.payment.total, o.currency)} strong />
             <Row label="Paid" value={money(o.payment.paid, o.currency)} />
             {o.payment.due && Number(o.payment.due) > 0 ? <Row label="Due" value={money(o.payment.due, o.currency)} strong /> : null}
+            {feePending ? (
+              <div className="mt-3">
+                <Notice tone="info">Waiting for AGIZA to confirm the delivery cost. We&apos;ll notify you when it&apos;s set, then you can pay.</Notice>
+              </div>
+            ) : null}
             {o.can_pay ? (
               <Button className="mt-3 w-full" loading={pay.isPending} onClick={() => pay.mutate()}>
                 Pay with mobile money
               </Button>
             ) : null}
-            {o.prepayment_required && o.payment.status !== "fully_paid" && o.status !== "cancelled" ? (
+            {o.prepayment_required && !feePending && o.payment.status !== "fully_paid" && o.status !== "cancelled" ? (
               <p className="mt-2 text-[13px] font-medium text-ink">
                 This order has imported items: AGIZA orders them once it is fully paid.
                 {o.payment_due_at ? ` Pay by ${dateTime(o.payment_due_at)} or the order is cancelled.` : ""}

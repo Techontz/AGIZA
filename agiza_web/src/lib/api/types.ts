@@ -66,6 +66,8 @@ export type ProductCard = {
   rating_count: number;
   /** Imported product: the country it ships from (bought abroad after payment). Null when held in Tanzania. */
   ships_from: string | null;
+  /** Out of stock and AGIZA takes requests for it ("Pata Bei"): show "Request this product". */
+  can_request?: boolean;
 };
 
 export type Variant = {
@@ -156,6 +158,8 @@ export type ShippingOption = {
   eta_min_days: number | null;
   eta_max_days: number | null;
   shipments: Shipment[];
+  /** Nothing can be priced for the address: orderable, and AGIZA confirms the delivery cost afterwards (cost null). */
+  manual_quote?: boolean;
 };
 
 /**
@@ -185,6 +189,8 @@ export type CheckoutQuote = {
   prepayment_required: boolean;
   issues: string[];
   can_place_order: boolean;
+  /** The chosen delivery's cost is set by AGIZA after ordering: delivery_fee/shipping_fee null, total excludes it. */
+  delivery_fee_pending?: boolean;
 };
 
 export type CustomsLine = {
@@ -242,6 +248,8 @@ export type OrderCard = {
   payment_status: PaymentSummary["status"];
   image: string | null;
   created_at: string;
+  /** Waiting for AGIZA to set the delivery cost (manual quote): the order can't be paid until then. */
+  delivery_fee_pending?: boolean;
 };
 
 export type OrderSeller = {
@@ -278,6 +286,11 @@ export type OrderDetail = OrderCard & {
     status_display: string;
     scheduled_at: string | null;
     delivered_at: string | null;
+    /** The driver bringing the order (once assigned). */
+    driver?: { name: string; phone: string } | null;
+    received_by?: string | null;
+    /** Proof-of-delivery photos (signed-in owner only; loaded through the proxy). */
+    photos?: { id: number; url: string }[];
   } | null;
   can_cancel: boolean;
   can_pay: boolean;
