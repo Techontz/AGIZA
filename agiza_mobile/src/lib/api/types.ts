@@ -158,6 +158,8 @@ export type ShippingOption = {
   eta_max_days: number | null;
   /** How the fee splits when goods ship from more than one place; `label` already names the origin. */
   shipments: { label: string; origin: string; cost: string }[];
+  /** Nothing can be priced for the address: orderable, and AGIZA confirms the delivery cost afterwards (cost null). */
+  manual_quote?: boolean;
 };
 
 /**
@@ -187,6 +189,8 @@ export type CheckoutQuote = {
   prepayment_required: boolean;
   issues: string[];
   can_place_order: boolean;
+  /** The chosen delivery's cost is set by AGIZA after ordering: delivery_fee/shipping_fee null, total excludes it. */
+  delivery_fee_pending?: boolean;
 };
 
 /** "Calculate delivery" for one product and city, priced by the Shipping Engine. */
@@ -240,6 +244,21 @@ export type OrderCard = {
   payment_status: PaymentSummary['status'];
   image: string | null;
   created_at: string;
+  /** Waiting for AGIZA to set the delivery cost (manual quote): the order can't be paid until then. */
+  delivery_fee_pending?: boolean;
+};
+
+/** The order's latest delivery: who brings it (once assigned) and the proof once delivered. */
+export type OrderDelivery = {
+  reference: string;
+  status: string;
+  status_display: string;
+  scheduled_at: string | null;
+  delivered_at: string | null;
+  driver?: { name: string; phone: string } | null;
+  received_by?: string | null;
+  /** Proof-of-delivery photos; they load with the customer's token. */
+  photos?: { id: number; url: string }[];
 };
 
 export type OrderDetail = OrderCard & {
@@ -264,7 +283,7 @@ export type OrderDetail = OrderCard & {
   payment: PaymentSummary;
   payments: { amount: string; method: string; paid_at: string; kind: string }[];
   timeline: { steps: TimelineStep[]; cancelled: boolean; cancelled_at: string | null; payment: PaymentSummary };
-  delivery: { reference: string; status: string; status_display: string; scheduled_at: string | null; delivered_at: string | null } | null;
+  delivery: OrderDelivery | null;
   can_cancel: boolean;
   can_pay: boolean;
   shipping?: {
@@ -326,6 +345,28 @@ export type QuoteRequest = {
   can_reply: boolean;
   /** `from`: 'agiza' = attached by staff to the quotation; 'me' = the customer's own. */
   photos: { id: number; url: string; from: 'me' | 'agiza' }[];
+  /** Several items in one quotation (staff intake); empty for single-item requests. */
+  items?: QuoteItemLine[];
+};
+
+/** One item of a multi-item quotation. Prices stay null until AGIZA sends the quotation. */
+export type QuoteItemLine = {
+  id: number;
+  name: string;
+  quantity: number;
+  link: string;
+  category: string;
+  notes: string;
+  service: '' | 'full_service' | 'deliver_for_me';
+  tracking_number: string;
+  origin_country: string | null;
+  unit_price: string | null;
+  amount: string | null;
+  price_notes: string;
+  /** Ids into the quotation's `photos`. */
+  photo_ids: number[];
+  /** The order created for this item once approved. */
+  order: string | null;
 };
 
 export type ChatMessage = { id: number; from: 'me' | 'agiza' | 'system'; body: string; author: string | null; created_at: string };

@@ -5,6 +5,9 @@
  * with a fresh preview. One idempotency key per checkout means a retry never orders twice.
  * Imported items add a "Shipping to Tanzania" choice (also priced by the Shipping Engine) and
  * are paid when ordering (the server then offers mobile money only).
+ * When nothing can be priced for the address and the Shipping Engine asks for a manual quote, the
+ * options read "Delivery cost to be confirmed by AGIZA": the order is placed without paying, and the
+ * customer pays from the order once AGIZA sets the cost (they are notified).
  */
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
@@ -72,7 +75,12 @@ function Choice({
   );
 }
 
+function selectable(o: ShippingOption) {
+  return o.available || o.manual_quote === true;
+}
+
 function shippingSubtitle(o: ShippingOption) {
+  if (o.manual_quote) return 'Delivery cost to be confirmed by AGIZA. Order now and pay once it is set.';
   if (!o.available) return o.message;
   return [o.estimated_delivery, o.carrier].filter(Boolean).join(' · ') || o.description;
 }
@@ -118,8 +126,8 @@ function OptionsSection({
   onSelect: (methodId: number) => void;
 }) {
   const [showUnavailable, setShowUnavailable] = useState(false);
-  const available = options.filter((o) => o.available);
-  const unavailable = options.filter((o) => !o.available);
+  const available = options.filter(selectable);
+  const unavailable = options.filter((o) => !selectable(o));
   const selectedOption = available.find((o) => o.method_id === selectedId);
   return (
     <Section title={title}>
@@ -140,7 +148,7 @@ function OptionsSection({
               onPress={() => onSelect(o.method_id)}
               title={o.name}
               subtitle={shippingSubtitle(o)}
-              trailing={isFree(o.cost) ? 'Free' : money(o.cost, o.currency)}
+              trailing={o.manual_quote ? 'To be confirmed' : isFree(o.cost) ? 'Free' : money(o.cost, o.currency)}
             />
           ))}
           {selectedOption ? <ShipmentBreakdown option={selectedOption} /> : null}
@@ -251,6 +259,7 @@ export default function CheckoutScreen() {
   const imported = quote.import_options.length > 0;
   const origins = [...new Set(quote.cart.items.filter((l) => l.imported && l.origin).map((l) => l.origin))];
   const refreshing = preview.isFetching;
+  const feePending = quote.delivery_fee_pending === true;
   const canPlace = quote.can_place_order && !!payment && !refreshing && !place.isPending;
   const placeError = place.error instanceof ApiError && place.error.code !== 'price_changed' ? place.error : null;
 
@@ -262,7 +271,7 @@ export default function CheckoutScreen() {
           {placeError ? <Notice tone="danger">{errorMessage(placeError)}</Notice> : null}
           <View style={styles.totalRow}>
             <Text variant="subheading" color={colors.ink}>
-              Total
+              {feePending ? 'Total before delivery' : 'Total'}
             </Text>
             {refreshing ? (
               <ActivityIndicator color={colors.primary} />
@@ -273,7 +282,7 @@ export default function CheckoutScreen() {
             )}
           </View>
           <Button
-            title={payment === 'mobile_money' ? 'Place order & pay' : 'Place order'}
+            title={payment === 'mobile_money' && !feePending ? 'Place order & pay' : 'Place order'}
             onPress={() => {
               setChanged(false);
               place.mutate();
@@ -373,6 +382,12 @@ export default function CheckoutScreen() {
       />
 
       <Section title="Payment">
+        {feePending ? (
+          <Notice tone="info">
+            AGIZA will confirm the delivery cost to this address. Place your order now: nothing is charged yet. We&apos;ll notify you
+            when the cost is set, then you pay the full total from your order.
+          </Notice>
+        ) : null}
         {quote.prepayment_required ? (
           <Notice tone="info">
             {`Your order has imported items, so it is paid when you order. AGIZA buys them abroad once your payment is confirmed.${
@@ -411,11 +426,19 @@ export default function CheckoutScreen() {
         {quote.customs?.status === 'not_included' ? <Row label="Customs / import duty" value="Not included" /> : null}
         <Row
           label={imported ? 'Local delivery' : 'Delivery'}
-          value={quote.delivery_fee === null ? '—' : isFree(quote.delivery_fee) ? 'Free' : money(quote.delivery_fee, quote.currency)}
+          value={
+            feePending
+              ? 'To be confirmed'
+              : quote.delivery_fee === null
+                ? '—'
+                : isFree(quote.delivery_fee)
+                  ? 'Free'
+                  : money(quote.delivery_fee, quote.currency)
+          }
         />
         {quote.estimated_delivery ? <Row label="Estimated delivery" value={quote.estimated_delivery} /> : null}
         <Divider />
-        <Row label="Total" value={money(quote.total, quote.currency)} strong />
+        <Row label={feePending ? 'Total before delivery' : 'Total'} value={money(quote.total, quote.currency)} strong />
         {quote.customs?.note ? (
           <Text variant="small" color={colors.textMuted}>
             {quote.customs.note}

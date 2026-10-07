@@ -4,6 +4,7 @@ import { MessageCircle } from 'lucide-react-native';
 import { Alert, ScrollView, View } from 'react-native';
 
 import { PrivatePhotos } from '@/components/private-photos';
+import { QuoteItems } from '@/components/quote-items';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, Row, Section } from '@/components/ui/card';
@@ -48,10 +49,15 @@ export default function RequestScreen() {
   if (quote.isLoading) return <Loading />;
   if (quote.isError || !quote.data) return <ErrorState error={quote.error} onRetry={() => quote.refetch()} />;
   const q = quote.data;
-  const details = q.description.split('\n').slice(1).filter((l) => l !== 'Submitted in the AGIZA app');
+  // A multi-item quotation lists its items above; its description would only repeat them.
+  const details = q.items?.length
+    ? []
+    : q.description.split('\n').slice(1).filter((l) => l !== 'Submitted in the AGIZA app');
   const photos = q.photos ?? [];
   const agizaPhotos = photos.filter((p) => p.from === 'agiza').map((p) => p.url);
-  const myPhotos = photos.filter((p) => p.from !== 'agiza').map((p) => p.url);
+  // Photos of a particular item show with that item, not again under "Your request".
+  const itemPhotoIds = new Set((q.items ?? []).flatMap((it) => it.photo_ids));
+  const myPhotos = photos.filter((p) => p.from !== 'agiza' && !itemPhotoIds.has(p.id)).map((p) => p.url);
 
   return (
     <ScrollView contentContainerStyle={styles.content}>
@@ -89,6 +95,14 @@ export default function RequestScreen() {
                 <PrivatePhotos urls={agizaPhotos} label="Photo from AGIZA" />
               </View>
             ) : null}
+          </Card>
+        </Section>
+      ) : null}
+
+      {q.items?.length ? (
+        <Section title={`Items (${q.items.length})`}>
+          <Card>
+            <QuoteItems quote={q} />
           </Card>
         </Section>
       ) : null}

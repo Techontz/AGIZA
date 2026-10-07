@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { ChevronRight, CircleCheck, Copy, MessageCircle, PackageX } from 'lucide-react-native';
+import { ChevronRight, CircleCheck, Copy, MessageCircle, PackageX, Phone, Truck } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { Alert, Linking, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 
+import { PrivatePhotos } from '@/components/private-photos';
 import { ProductImage } from '@/components/product-tile';
 import { StoreAvatar, StoreName, VerifiedMark, openStore } from '@/components/store';
 import { Timeline } from '@/components/timeline';
@@ -15,13 +16,71 @@ import { Input } from '@/components/ui/input';
 import { ErrorState, errorMessage, Loading, Notice } from '@/components/ui/states';
 import { Text } from '@/components/ui/text';
 import { orderApi } from '@/lib/api/endpoints';
-import type { OrderDetail, OrderSeller } from '@/lib/api/types';
+import type { OrderDelivery, OrderDetail, OrderSeller } from '@/lib/api/types';
 import { date, dateTime, isFree, money, signedMoney } from '@/lib/format';
 import { openPaymentPage } from '@/lib/payment-page';
 import { keys } from '@/lib/query';
 import { REFUND_LABEL, refundTone, returnTone } from '@/lib/returns';
 import { openChatRoom, orderRoom } from '@/lib/chat';
 import { colors, space, themed } from '@/theme/tokens';
+
+/** Who is bringing the order (tap to call the driver) and, once delivered, who received it with the photos. */
+function DeliveryCard({ delivery: d }: { delivery: OrderDelivery }) {
+  const photos = d.photos ?? [];
+  return (
+    <Card style={styles.delivery}>
+      <View style={styles.headRow}>
+        <View style={styles.deliveryTitle}>
+          <Truck size={18} color={colors.textMuted} />
+          <Text variant="bodyMedium" color={colors.ink}>
+            {d.status_display}
+          </Text>
+        </View>
+        <Text variant="small" color={colors.textMuted}>
+          {d.reference}
+        </Text>
+      </View>
+      {d.delivered_at ? (
+        <Row label="Delivered" value={dateTime(d.delivered_at)} />
+      ) : d.scheduled_at ? (
+        <Row label="Scheduled" value={dateTime(d.scheduled_at)} />
+      ) : null}
+      {d.driver ? (
+        <View style={styles.driver}>
+          <View style={styles.driverText}>
+            <Text variant="small" color={colors.textMuted}>
+              Your driver
+            </Text>
+            <Text variant="bodyMedium" color={colors.ink}>
+              {d.driver.name}
+            </Text>
+          </View>
+          {d.driver.phone ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Call ${d.driver.name} on ${d.driver.phone}`}
+              onPress={() => Linking.openURL(`tel:${d.driver!.phone.replace(/\s+/g, '')}`)}
+              style={styles.call}>
+              <Phone size={16} color={colors.primary} />
+              <Text variant="smallMedium" color={colors.primary}>
+                {d.driver.phone}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+      {d.received_by ? <Row label="Received by" value={d.received_by} /> : null}
+      {photos.length ? (
+        <View style={styles.deliveryPhotos}>
+          <Text variant="small" color={colors.textMuted}>
+            Proof of delivery
+          </Text>
+          <PrivatePhotos urls={photos.map((p) => p.url)} label="Delivery photo" />
+        </View>
+      ) : null}
+    </Card>
+  );
+}
 
 function Confirmation({
   order,
@@ -55,6 +114,11 @@ function Confirmation({
       <Text variant="small" color={colors.textMuted} style={styles.center}>
         {copied ? 'Order number copied.' : "We'll notify you as it moves. Keep this order number for support."}
       </Text>
+      {order.delivery_fee_pending ? (
+        <Notice tone="info">
+          AGIZA will confirm the delivery cost to your address. We&apos;ll notify you when it&apos;s set, then you can pay.
+        </Notice>
+      ) : null}
       {paymentPending && !paymentFailed ? (
         <Notice tone="info">
           We&apos;re waiting for Selcom to confirm your payment. Tap &quot;I&apos;ve paid, check status&quot; below if
@@ -223,6 +287,8 @@ export default function OrderScreen() {
   if (order.isError || !order.data) return <ErrorState error={order.error} onRetry={() => order.refetch()} />;
   const o = order.data;
   const due = o.payment.due && Number(o.payment.due) > 0 ? o.payment.due : null;
+  // Delivery needs a manual quote: AGIZA sets the cost first, then the customer pays.
+  const feePending = !!o.delivery_fee_pending && o.status !== 'cancelled';
   const actionError = pay.error ?? check.error;
   // Name the seller per item once an order mixes sellers, or when it is not AGIZA's own.
   const sellerSlugs = new Set(o.items.map((item) => item.vendor?.slug).filter(Boolean));
@@ -257,6 +323,12 @@ export default function OrderScreen() {
           </Text>
         ) : null}
       </Card>
+
+      {o.delivery && (o.delivery.driver || o.delivery.received_by || o.delivery.photos?.length) ? (
+        <Section title="Your delivery">
+          <DeliveryCard delivery={o.delivery} />
+        </Section>
+      ) : null}
 
       <Section title="Tracking">
         <Card>
@@ -409,13 +481,19 @@ export default function OrderScreen() {
                   ) : null}
                   <Row
                     label="Local delivery"
-                    value={money(String(Number(o.amounts.shipping_fee) - Number(o.amounts.import_fee ?? 0)), o.currency)}
+                    value={
+                      feePending
+                        ? 'To be confirmed'
+                        : money(String(Number(o.amounts.shipping_fee) - Number(o.amounts.import_fee ?? 0)), o.currency)
+                    }
                   />
                 </>
               ) : (
                 <Row
                   label="Delivery"
-                  value={isFree(o.amounts.shipping_fee) ? 'Free' : money(o.amounts.shipping_fee, o.currency)}
+                  value={
+                    feePending ? 'To be confirmed' : isFree(o.amounts.shipping_fee) ? 'Free' : money(o.amounts.shipping_fee, o.currency)
+                  }
                 />
               )}
               <Divider />
@@ -437,7 +515,7 @@ export default function OrderScreen() {
             </View>
           ))}
           {adjustments.length ? <Divider /> : null}
-          <Row label="Total" value={money(o.total, o.currency)} strong />
+          <Row label={feePending ? 'Total before delivery' : 'Total'} value={money(o.total, o.currency)} strong />
           <Row label="Paid" value={money(o.payment.paid, o.currency)} />
           {due ? <Row label="Balance due" value={money(due, o.currency)} strong /> : null}
           <View style={styles.payBadge}>
@@ -457,6 +535,11 @@ export default function OrderScreen() {
         </Card>
         {actionError ? <Notice tone="danger">{errorMessage(actionError)}</Notice> : null}
         {checked && !actionError ? <PaymentResult result={checked} /> : null}
+        {feePending ? (
+          <Notice tone="info">
+            Waiting for AGIZA to confirm the delivery cost. We&apos;ll notify you when it&apos;s set, then you can pay.
+          </Notice>
+        ) : null}
         {o.can_pay && due ? (
           <View style={styles.actions}>
             <Button
@@ -579,4 +662,25 @@ const styles = themed(() => ({
   },
   actions: { gap: space.xs },
   cancelBox: { gap: space.md },
+  delivery: { gap: space.sm },
+  deliveryTitle: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  driver: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.md,
+    flexWrap: 'wrap',
+  },
+  driverText: { gap: 2, flexShrink: 1 },
+  call: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    minHeight: 44,
+    paddingHorizontal: space.md,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  deliveryPhotos: { gap: space.xs },
 }));

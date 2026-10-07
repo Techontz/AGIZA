@@ -108,7 +108,10 @@ export default function ProductScreen() {
   const imageHeight = width * 1.02;
 
   const loadingFull = product.isPlaceholderData;
-  const outOfStock = !loadingFull && !p.ships_from && available === 0 && p.can_request !== false;
+  // Sold out here (imported products are bought abroad, so never sold out). "Request" only when staff allow
+  // Pata Bei for the product (can_request); otherwise it is simply out of stock.
+  const soldOut = !loadingFull && !p.ships_from && available === 0;
+  const outOfStock = soldOut && p.can_request === true;
   const request = () =>
     requestProduct({
       id: p.id,
@@ -206,7 +209,13 @@ export default function ProductScreen() {
               <Perk
                 icon={Truck}
                 title={available > 0 ? (available <= 3 ? `Only ${available} left` : 'In stock, ready to deliver') : 'Out of stock'}
-                text={available > 0 ? 'Delivered from AGIZA in Tanzania.' : 'Request it below and AGIZA will source it for you.'}
+                text={
+                  available > 0
+                    ? 'Delivered from AGIZA in Tanzania.'
+                    : p.can_request
+                      ? 'Request it below and AGIZA will source it for you.'
+                      : 'Not available right now. Check back soon.'
+                }
                 tone={available > 0 ? 'ok' : 'off'}
               />
             )}
@@ -338,6 +347,8 @@ export default function ProductScreen() {
                 style={styles.addButton}
               />
             </>
+          ) : soldOut ? (
+            <Button title="Out of stock" disabled style={styles.addButton} />
           ) : (
             <>
               {maxAdd > 0 ? <QuantityStepper value={quantity} max={maxAdd} onChange={setQuantity} /> : null}
