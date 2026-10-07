@@ -39,3 +39,7 @@ test-results/
 /agiza-backend-*.zip
 /apks/
 /logs/
+
+# Backend bundles prepared for manual server uploads (may contain server settings)
+/backend.zip
+/backend-update-*.zip
