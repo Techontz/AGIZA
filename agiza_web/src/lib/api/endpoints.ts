@@ -135,8 +135,8 @@ export type RequestInput = {
   item_name: string;
   link?: string;
   quantity: number;
-  origin_country: string;
-  destination_city: number;
+  origin_country?: string;
+  destination_city?: number | null;
   weight_kg?: string | null;
   tracking_number?: string;
   details?: string;
@@ -145,6 +145,7 @@ export type RequestInput = {
 export const requestApi = {
   list: () => api.get<Paginated<QuoteRequest>>("requests/", { page_size: 50 }),
   create: (data: RequestInput) => api.post<QuoteRequest>("requests/", data),
+  addPhoto: (id: number, file: File) => api.upload<QuoteRequest>(`requests/${id}/photos/`, file),
   accept: (id: number, note = "") => api.post<QuoteRequest>(`requests/${id}/accept/`, { note }),
   decline: (id: number, note = "") => api.post<QuoteRequest>(`requests/${id}/decline/`, { note }),
 };
