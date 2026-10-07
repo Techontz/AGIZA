@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Modal } from "@/components/ui/modal";
+import { PhotoViewer } from "@/components/ui/photo-viewer";
 import { useCities, useCountries } from "@/components/shipping-engine/hooks";
 import { cn } from "@/lib/cn";
 import { fileSrc } from "@/lib/api/files";
@@ -36,19 +37,31 @@ export function ServiceTypeBadge({ type }: { type: string }) {
 
 const label = "block text-sm font-semibold text-gray-700 mb-2";
 
+/** Thumbnails that open the full-screen viewer (click to enlarge, arrows to browse). */
+function PhotoGrid({ photos, alt, size }: { photos: Quote["photos"]; alt: string; size: string }) {
+  const [open, setOpen] = useState<number | null>(null);
+  const urls = photos.map((photo) => fileSrc(photo.url));
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        {urls.map((url, i) => (
+          <button key={photos[i].id} type="button" onClick={() => setOpen(i)} className="block" aria-label={`Enlarge photo ${i + 1}`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={url} alt={alt} className={`${size} rounded-lg object-cover border border-gray-200 hover:ring-2 hover:ring-blue-400`} />
+          </button>
+        ))}
+      </div>
+      <PhotoViewer urls={urls} index={open} onClose={() => setOpen(null)} />
+    </>
+  );
+}
+
 function PhotoStrip({ title, photos }: { title: string; photos: Quote["photos"] }) {
   if (!photos.length) return null;
   return (
     <div>
       <p className="text-sm font-semibold text-gray-700 mb-1">{title}</p>
-      <div className="flex flex-wrap gap-2">
-        {photos.map((photo) => (
-          <a key={photo.id} href={fileSrc(photo.url)} target="_blank" rel="noreferrer" className="block">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={fileSrc(photo.url)} alt={title} className="size-20 rounded-lg object-cover border border-gray-200" />
-          </a>
-        ))}
-      </div>
+      <PhotoGrid photos={photos} alt={title} size="size-20" />
     </div>
   );
 }
@@ -215,13 +228,8 @@ function ItemLines({ items, showPrices }: { items: QuoteItem[]; showPrices?: boo
             {item.notes && <p className="text-xs text-gray-600 whitespace-pre-line">{item.notes}</p>}
             {showPrices && item.price_notes && <p className="text-xs text-gray-600">Price note: {item.price_notes}</p>}
             {item.photos.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {item.photos.map((photo) => (
-                  <a key={photo.id} href={fileSrc(photo.url)} target="_blank" rel="noreferrer">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={fileSrc(photo.url)} alt={item.name} className="size-12 rounded object-cover border border-gray-200" />
-                  </a>
-                ))}
+              <div className="pt-1">
+                <PhotoGrid photos={item.photos} alt={item.name} size="size-12" />
               </div>
             )}
           </li>

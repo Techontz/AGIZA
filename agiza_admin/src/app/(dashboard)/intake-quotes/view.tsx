@@ -13,9 +13,11 @@ import { PageContainer, PageHeader } from "@/components/ui/page";
 import { Pagination } from "@/components/ui/pagination";
 import { StatCard } from "@/components/ui/stat-card";
 import { ErrorState } from "@/components/ui/states";
+import { PhotoThumb } from "@/components/ui/photo-viewer";
 import { PillTabs } from "@/components/ui/tabs";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useUrlFilters } from "@/hooks/use-url-filters";
+import { fileSrc } from "@/lib/api/files";
 import { orderKeys, quotesApi, type Quote } from "@/lib/api/services/orders";
 import { formatDate, formatDateTime, formatTSh } from "@/lib/format";
 import { pageMeta } from "@/lib/nav";
@@ -23,6 +25,33 @@ import { pageMeta } from "@/lib/nav";
 type Tab = "new" | "answered" | "waiting_reply";
 const TAB_STATUS: Record<Tab, string> = { new: "new,declined", answered: "answered", waiting_reply: "waiting_reply" };
 const th = "px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase whitespace-nowrap";
+
+// Requests from the customer app start with a marker line, e.g. "[Buy for me] DJI RS5"; the list shows
+// the order type in its own column (as the old portal did) and the description without the app's boilerplate.
+const APP_MARKERS: [string, string][] = [
+  ["[Buy for me]", "Buy for me"],
+  ["[Deliver for me]", "Deliver for me"],
+  ["[Local delivery]", "Local delivery"],
+];
+const BOILERPLATE = /^(Submitted in the AGIZA app|Quantity: 1)$/i;
+
+function orderType(q: Quote): string {
+  if (q.items?.length) {
+    const kinds = Array.from(new Set(q.items.map((it) => (it.service === "deliver_for_me" ? "Deliver for me" : "Buy for me"))));
+    return kinds.join(" + ");
+  }
+  const first = q.description.split("\n", 1)[0];
+  return APP_MARKERS.find(([marker]) => first.startsWith(marker))?.[1] ?? "";
+}
+
+function cleanDescription(text: string): { title: string; details: string[] } {
+  const [first = "", ...rest] = text.split("\n").map((line) => line.trim()).filter(Boolean);
+  const marker = APP_MARKERS.find(([m]) => first.startsWith(m))?.[0];
+  return {
+    title: marker ? first.slice(marker.length).trim() : first,
+    details: rest.filter((line) => !BOILERPLATE.test(line)),
+  };
+}
 
 export function IntakeView() {
   const meta = pageMeta["/intake-quotes"];
@@ -93,7 +122,9 @@ export function IntakeView() {
                 <tr>
                   <th className={th}>Quote ID</th>
                   <th className={th}>Customer</th>
-                  <th className={th}>Service Type</th>
+                  <th className={th}>Phone</th>
+                  <th className={th}>Image</th>
+                  <th className={th}>Order Type</th>
                   <th className={th}>Description</th>
                   <th className={th}>Route</th>
                   <th className={th}>Request Date</th>
@@ -110,7 +141,7 @@ export function IntakeView() {
                 {list.isPending
                   ? Array.from({ length: 4 }).map((_, i) => (
                       <tr key={i}>
-                        {Array.from({ length: tab === "new" ? 7 : 9 }).map((__, j) => (
+                        {Array.from({ length: tab === "new" ? 9 : 11 }).map((__, j) => (
                           <td key={j} className="px-6 py-4"><div className="h-4 rounded bg-gray-200 animate-pulse" /></td>
                         ))}
                       </tr>
@@ -123,14 +154,28 @@ export function IntakeView() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="text-gray-900 whitespace-nowrap">{q.customer.full_name}</div>
-                          {q.customer.phone && (
-                            <a href={`tel:${q.customer.phone}`} className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-blue-700 whitespace-nowrap">
-                              <Phone className="size-3" />
+                        </td>
+                        <td className="px-6 py-4">
+                          {q.customer.phone ? (
+                            <a href={`tel:${q.customer.phone}`} className="inline-flex items-center gap-1 text-sm font-medium text-gray-900 hover:text-blue-700 whitespace-nowrap">
+                              <Phone className="size-3.5 text-gray-500" />
                               {q.customer.phone}
                             </a>
+                          ) : (
+                            <span className="text-gray-400">—</span>
                           )}
                         </td>
-                        <td className="px-6 py-4"><ServiceTypeBadge type={q.service_type} /></td>
+                        <td className="px-6 py-4">
+                          {/* The customer's photos first, then any AGIZA added to the quotation */}
+                          <PhotoThumb
+                            urls={[...q.photos.filter((p) => !p.from_agiza), ...q.photos.filter((p) => p.from_agiza)].map((p) => fileSrc(p.url))}
+                            alt={`Photo for ${q.reference}`}
+                          />
+                        </td>
+                        <td className="px-6 py-4">
+                          {orderType(q) && <div className="text-sm font-medium text-gray-900 whitespace-nowrap mb-1">{orderType(q)}</div>}
+                          <ServiceTypeBadge type={q.service_type} />
+                        </td>
                         <td className="px-6 py-4">
                           {q.items?.length ? (
                             <div className="max-w-xs">
@@ -142,7 +187,19 @@ export function IntakeView() {
                               </div>
                             </div>
                           ) : (
-                            <div className="text-gray-900 max-w-xs">{q.description}</div>
+                            (() => {
+                              const d = cleanDescription(q.description);
+                              return (
+                                <div className="max-w-xs">
+                                  <div className="text-gray-900 font-medium">{d.title}</div>
+                                  {d.details.length > 0 && (
+                                    <div className="text-xs text-gray-500 line-clamp-3 whitespace-pre-line" title={d.details.join("\n")}>
+                                      {d.details.join("\n")}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()
                           )}
                         </td>
                         <td className="px-6 py-4">
