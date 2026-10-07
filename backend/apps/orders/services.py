@@ -29,6 +29,7 @@ from .models import (
     ShopDetails,
 )
 from .workflows import (
+    ACTION_EDGES,
     INTERNATIONAL_DEPARTMENT,
     TERMINAL,
     WORKFLOWS,
@@ -96,6 +97,9 @@ def _check_transition(order: Order, to_status: str, via_action: str | None = Non
     statuses, transitions, action_only = WORKFLOWS[OrderType(order.order_type)]
     if to_status not in statuses.values:
         raise WorkflowError(f"Unknown status “{to_status}”.", field="status")
+    edge_action = ACTION_EDGES.get(OrderType(order.order_type), {}).get((order.status, to_status))
+    if edge_action and via_action == edge_action:
+        return  # a backward move only this action may make (e.g. the supplier cancelled after payment)
     if to_status not in transitions.get(order.status, set()):
         raise WorkflowError(
             f"Cannot move {order.reference} from {status_label(order.order_type, order.status)} "
@@ -171,6 +175,11 @@ def create_order(
 ) -> Order:
     order_type = OrderType(order_type)
     status = status or INITIAL_STATUS[order_type]
+    if order_type == OrderType.INTERNATIONAL and status in (InternationalStatus.PENDING_PAYMENT, "") \
+            and details.get("service_type") == InternationalDetails.ServiceType.DELIVER_FOR_ME:
+        # "Deliver for Me": the customer bought the goods, so once the order exists we only wait for
+        # them at the consolidation warehouse. Payment is checked before the cargo ships.
+        status = InternationalStatus.WAITING_TO_RECEIVE
     order = Order(order_type=order_type, customer=customer, item_details=item_details, status=status,
                   created_by=user, **order_fields)
     if order_type == OrderType.INTERNATIONAL:

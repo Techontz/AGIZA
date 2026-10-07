@@ -17,6 +17,7 @@ from .models import ProcurementOrder, ProcurementStatus, Supplier
 from .serializers import (
     CancelSupplierSerializer,
     MarkPaidSerializer,
+    MarkShippedSerializer,
     ProcurementHistorySerializer,
     ProcurementSerializer,
     ProcurementUpdateSerializer,
@@ -98,7 +99,8 @@ class ProcurementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixin
         s.is_valid(raise_exception=True)
         data = s.validated_data
         locked = {"unit_cost", "item_cost", "quantity"} & set(data)
-        if locked and proc.status in (ProcurementStatus.PAID, ProcurementStatus.RECEIVED_AT_CARGO):
+        if locked and proc.status in (ProcurementStatus.PAID, ProcurementStatus.SUPPLIER_SHIPPED,
+                                      ProcurementStatus.RECEIVED_AT_CARGO):
             raise ConflictError("Costs and quantity can't change after the supplier has been paid.")
         if proc.status == ProcurementStatus.CANCELLED:
             raise ConflictError("This procurement was cancelled with its order.")
@@ -111,6 +113,10 @@ class ProcurementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixin
             record_audit(action="update", request=request, instance=proc, changes=changes)
             if {"item_cost", "supplier_tracking_number"} & set(changes):
                 services._sync_order_details(proc)
+            if "supplier_tracking_number" in changes:
+                from apps.shipping import services as shipping
+
+                shipping.sync_parcel_tracking(proc.order, proc.supplier_tracking_number)
         return self._respond(proc)
 
     def update(self, request, *args, **kwargs):
@@ -131,6 +137,14 @@ class ProcurementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixin
         s = MarkPaidSerializer(data=request.data)
         s.is_valid(raise_exception=True)
         proc = run(services.mark_paid, self.get_object(), user=request.user, request=request, **s.validated_data)
+        return self._respond(proc)
+
+    @extend_schema(request=MarkShippedSerializer)
+    @action(detail=True, methods=["post"], url_path="mark-shipped")
+    def mark_shipped(self, request, pk=None):
+        s = MarkShippedSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        proc = run(services.mark_shipped, self.get_object(), user=request.user, request=request, **s.validated_data)
         return self._respond(proc)
 
     @extend_schema(request=CancelSupplierSerializer)
@@ -155,6 +169,7 @@ class ProcurementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixin
             total=Count("id", filter=~Q(status=ProcurementStatus.CANCELLED)),
             pending_sourcing=Count("id", filter=Q(status=ProcurementStatus.PENDING_SOURCING)),
             paid=Count("id", filter=Q(status=ProcurementStatus.PAID)),
+            shipped=Count("id", filter=Q(status=ProcurementStatus.SUPPLIER_SHIPPED)),
             received_at_cargo=Count("id", filter=Q(status=ProcurementStatus.RECEIVED_AT_CARGO)),
             with_exceptions=Count("id", filter=~Q(exception_flag="") & ~Q(status=ProcurementStatus.CANCELLED)),
             total_value=Sum("item_cost", filter=~Q(status=ProcurementStatus.CANCELLED)),

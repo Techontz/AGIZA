@@ -1,3 +1,4 @@
+from django.db.models import Q
 from rest_framework import serializers
 
 from apps.accounts.constants import StaffLevel
@@ -22,6 +23,42 @@ SOURCE = {"international": "international", "express": "local_delivery", "shop":
 SOURCE_LABEL = {"international": "International", "local_delivery": "Local Delivery", "shop": "Shop"}
 
 
+def driver_payload(user) -> dict | None:
+    return {"id": user.id, "full_name": user.full_name, "phone": user.phone} if user else None
+
+
+def stock_bins(deliveries) -> dict:
+    """{(variant_id, warehouse_id): bin_code} for every shop line of these deliveries, in one query."""
+    from apps.inventory.models import StockItem
+
+    keys = {(i.variant_id, i.warehouse_id) for d in deliveries for i in d.order.items.all() if i.warehouse_id}
+    if not keys:
+        return {}
+    q = Q()
+    for variant_id, warehouse_id in keys:
+        q |= Q(variant_id=variant_id, warehouse_id=warehouse_id)
+    return {(s.variant_id, s.warehouse_id): s.bin_code
+            for s in StockItem.objects.filter(q).only("variant_id", "warehouse_id", "bin_code")}
+
+
+def delivery_items(delivery, bins: dict) -> list[dict]:
+    """What is being delivered: shop lines with SKU and bin, or the single item of other orders."""
+    order = delivery.order
+    lines = list(order.items.all())
+    if lines:
+        return [{"product_name": i.product_name, "variant_name": i.variant_name, "sku": i.sku,
+                 "quantity": i.quantity, "warehouse": i.warehouse.name if i.warehouse_id else "",
+                 "bin_code": bins.get((i.variant_id, i.warehouse_id)) or i.variant.product.bin_code or ""}
+                for i in lines]
+    cargo = getattr(order, "cargo", None)
+    if cargo is not None:
+        return [{"product_name": cargo.item_name or order.item_details, "variant_name": "", "sku": "",
+                 "quantity": cargo.packages_quantity, "warehouse": cargo.warehouse.name if cargo.warehouse_id else "",
+                 "bin_code": ""}]
+    return [{"product_name": order.item_details, "variant_name": "", "sku": "", "quantity": 1,
+             "warehouse": delivery.pickup_warehouse.name if delivery.pickup_warehouse_id else "", "bin_code": ""}]
+
+
 class DeliverySerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     delivery_type_display = serializers.CharField(source="get_delivery_type_display", read_only=True)
@@ -34,6 +71,7 @@ class DeliverySerializer(serializers.ModelSerializer):
     destination_city = serializers.SerializerMethodField()
     pickup_warehouse = serializers.SerializerMethodField()
     proof = serializers.SerializerMethodField()
+    items = serializers.SerializerMethodField()
     allowed_transitions = serializers.SerializerMethodField()
 
     class Meta:
@@ -42,7 +80,7 @@ class DeliverySerializer(serializers.ModelSerializer):
                   "delivery_type_display", "status", "status_display", "driver", "scheduled_at", "pickup_point",
                   "pickup_warehouse", "delivery_address", "destination_city", "destination_area", "recipient_name",
                   "recipient_phone", "exception_flag", "exception_flag_display", "attempts", "notes", "delivered_at",
-                  "proof", "allowed_transitions", "created_at", "updated_at"]
+                  "proof", "items", "allowed_transitions", "created_at", "updated_at"]
 
     def get_order(self, obj) -> dict:
         o = obj.order
@@ -60,7 +98,11 @@ class DeliverySerializer(serializers.ModelSerializer):
         return {"id": c.id, "full_name": c.full_name, "phone": c.phone}
 
     def get_driver(self, obj) -> dict | None:
-        return _person(obj.driver)
+        return driver_payload(obj.driver)
+
+    def get_items(self, obj) -> list[dict]:
+        bins = self.context.get("bins")
+        return delivery_items(obj, stock_bins([obj]) if bins is None else bins)
 
     def get_destination_city(self, obj) -> dict | None:
         return {"id": obj.destination_city.id, "name": obj.destination_city.name} if obj.destination_city else None
@@ -125,6 +167,10 @@ class AssignDriverSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, default="")
 
 
+class BulkAssignDriverSerializer(AssignDriverSerializer):
+    deliveries = serializers.ListField(child=serializers.IntegerField(), min_length=1, max_length=100)
+
+
 class DeliveryTransitionSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=DeliveryStatus.choices)
     note = serializers.CharField(required=False, allow_blank=True, default="")
@@ -138,6 +184,10 @@ class CompleteSerializer(serializers.Serializer):
     completed_at = serializers.DateTimeField(required=False)
     signature_image = serializers.FileField(required=False)
     photos = serializers.ListField(child=serializers.FileField(), required=False, max_length=6)
+
+
+class BulkCompleteSerializer(CompleteSerializer):
+    deliveries = serializers.ListField(child=serializers.IntegerField(), min_length=1, max_length=100)
 
 
 class DeliveryEventSerializer(serializers.ModelSerializer):

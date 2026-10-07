@@ -1,5 +1,6 @@
 from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
+from django.urls import reverse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.response import Response
@@ -7,8 +8,9 @@ from rest_framework.response import Response
 from apps.catalog.models import ProductImage
 from apps.core.exceptions import ConflictError
 from apps.core.pagination import StandardPagination
+from apps.core.uploads import file_response
 from apps.core.workflow import run
-from apps.deliveries.models import Delivery
+from apps.deliveries.models import Delivery, DeliveryPhoto
 from apps.marketplace.models import VendorFulfillment
 from apps.orders import shop
 from apps.orders.models import Order, OrderItem
@@ -40,7 +42,8 @@ def customer_orders(customer):
             "payments", "status_history",
             Prefetch("fulfillments", queryset=VendorFulfillment.objects.select_related("vendor__city")
                      .order_by("vendor_id", "id")),
-            Prefetch("deliveries", queryset=Delivery.objects.prefetch_related("events")),
+            Prefetch("deliveries", queryset=Delivery.objects.select_related("driver", "proof")
+                     .prefetch_related("events", "photos")),
         )
     )
 
@@ -61,13 +64,29 @@ def _sellers(order, request) -> list[dict]:
             for f in order.fulfillments.all()]
 
 
-def _delivery(order) -> dict | None:
+DRIVER_VISIBLE = {"assigned_driver", "out_for_delivery", "delivered"}
+
+
+def _delivery(order, request=None) -> dict | None:
+    """The order's latest delivery: status, the driver bringing it, and proof once delivered.
+    Proof photos are listed only for the signed-in owner (guests can't open the customer photo route)."""
     deliveries = list(order.deliveries.all())
     if not deliveries:
         return None
-    d = deliveries[-1]
+    d = max(deliveries, key=lambda x: (x.created_at, x.id))
+    driver = None
+    if d.driver_id and d.status in DRIVER_VISIBLE:
+        driver = {"name": d.driver.full_name, "phone": d.driver.phone}
+    proof = getattr(d, "proof", None) if d.status == "delivered" else None
+    viewer = getattr(getattr(request, "user", None), "customer", None) if request else None
+    photos = []
+    if d.status == "delivered" and viewer is not None and viewer.pk == order.customer_id:
+        for p in d.photos.all():
+            path = reverse("storefront:order-delivery-photo", args=[order.reference, p.pk])
+            photos.append({"id": p.pk, "url": request.build_absolute_uri(path)})
     return {"reference": d.reference, "status": d.status, "status_display": d.get_status_display(),
-            "scheduled_at": d.scheduled_at, "delivered_at": d.delivered_at}
+            "scheduled_at": d.scheduled_at, "delivered_at": d.delivered_at, "driver": driver,
+            "received_by": proof.signature_name if proof else None, "photos": photos}
 
 
 def customer_can_cancel(order: Order, summary=None) -> bool:
@@ -87,10 +106,11 @@ def order_detail_payload(order: Order, request) -> dict:
         "payments": [{"amount": str(p.amount), "method": p.get_method_display(), "paid_at": p.paid_at,
                       "kind": p.kind} for p in order.payments.all()],
         "timeline": timeline(order),
-        "delivery": _delivery(order),
+        "delivery": _delivery(order, request),
         "can_cancel": customer_can_cancel(order, summary),
         "can_pay": (payments.available() and order.status != "cancelled" and bool(summary.due)
-                    and summary.due > 0 and not payments.payment_deadline_passed(order)),
+                    and summary.due > 0 and not payments.payment_deadline_passed(order)
+                    and not card["delivery_fee_pending"]),  # card: waiting for AGIZA to set the delivery cost
     }
     if order.order_type == OrderType.SHOP:
         details = order.shop
@@ -155,6 +175,20 @@ class _OrderView(CustomerAPIView):
 class OrderDetailView(_OrderView):
     def get(self, request, reference: str):
         return Response(order_detail_payload(self.get_order(reference), request))
+
+
+@extend_schema(tags=["app: orders"], responses={(200, "image/*"): OpenApiTypes.BINARY})
+class OrderDeliveryPhotoView(CustomerAPIView):
+    """A proof-of-delivery photo of the customer's own order."""
+
+    throttle_classes = []
+
+    def get(self, request, reference: str, photo_id: int):
+        photo = get_object_or_404(DeliveryPhoto, pk=photo_id, delivery__order__reference=reference,
+                                  delivery__order__customer=self.customer, delivery__status="delivered")
+        response = file_response(photo.file, photo.content_type)
+        response["Cache-Control"] = "private, max-age=604800, immutable"  # a photo's file never changes
+        return response
 
 
 @extend_schema(tags=["app: orders"], request=CancelSerializer, responses=OpenApiTypes.OBJECT)

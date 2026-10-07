@@ -16,6 +16,12 @@ all under a lock on the cart, refuses if the total the customer saw has changed,
 creates the shop order through `orders.shop.create_shop_order` (stock reserved),
 and empties the cart only once the order exists. Repeating a request with the same
 idempotency key returns the order already created.
+
+Manual delivery quotes: when the Shipping Engine can't price the delivery to the address and
+asks for a manual quote (not when it blocks it), the option is offered as "Delivery cost to be
+confirmed by AGIZA". The order is placed without the delivery cost (ShopDetails.delivery_fee_pending),
+can't be paid, and has no payment deadline until staff set the cost (orders.shop.set_delivery_fee),
+which tells the customer to pay.
 """
 from __future__ import annotations
 
@@ -85,14 +91,23 @@ class Quote:
     customs: Charges = field(default_factory=Charges)
 
     @property
+    def delivery_fee_pending(self) -> bool:
+        """The chosen delivery needs a manual quote: staff set its cost after the order is placed."""
+        return bool(self.selected and self.selected.get("manual_quote"))
+
+    @property
     def can_place_order(self) -> bool:
         return (not self.issues and self.selected is not None
                 and (self.import_selected is not None or not self.prepayment_required))
 
 
-def _choose(options: list[dict], method_id: int | None) -> tuple[dict | None, bool]:
-    """(chosen option, whether the requested one was unavailable). No request: the cheapest available."""
-    available = [o for o in options if o["available"]]
+def _choose(options: list[dict], method_id: int | None, *, manual: bool = False) -> tuple[dict | None, bool]:
+    """
+    (chosen option, whether the requested one was unavailable). No request: the cheapest available.
+    manual: options needing a manual quote may be chosen too (offered only when nothing is priced).
+    """
+    priced = [o for o in options if o["available"]]
+    available = priced + [o for o in options if manual and o.get("manual_quote")]
     if method_id is None:
         return (available[0] if available else None), False
     chosen = next((o for o in available if o["method_id"] == method_id), None)
@@ -117,11 +132,12 @@ def _quote(summary: dict, city, method_id: int | None, import_method_id: int | N
         issues.append("We can't ship the imported items in your cart to Tanzania yet. Remove them or contact AGIZA.")
 
     options = delivery_options(lines, city, currency=currency) if lines else []
-    selected, refused = _choose(options, method_id)
+    selected, refused = _choose(options, method_id, manual=True)
     if refused and lines:
         issues.append("The delivery option you chose isn't available for this address. Choose another.")
-    if lines and not any(o["available"] for o in options):
+    if lines and not any(o["available"] or o["manual_quote"] for o in options):
         issues.append("We can't deliver these items to this address yet. Try another address or contact AGIZA.")
+    pending = bool(selected and selected["manual_quote"])  # delivery cost set by staff after ordering
 
     methods = payment_methods(prepayment=imported)
     if imported and not methods:
@@ -129,11 +145,14 @@ def _quote(summary: dict, city, method_id: int | None, import_method_id: int | N
                       "available right now. Please try again later or contact AGIZA.")
 
     import_fee = import_selected["cost"] if import_selected else Decimal("0")
-    delivery_fee = selected["cost"] if selected else None
-    priced = delivery_fee is not None and (import_selected is not None or not imported)
-    fee = delivery_fee + import_fee if priced else None
+    delivery_fee = selected["cost"] if selected and not pending else None
+    priced = (delivery_fee is not None or pending) and (import_selected is not None or not imported)
+    fee = (delivery_fee or Decimal("0")) + import_fee if priced else None
     charges = _customs(summary, currency, import_fee, issues) if imported else Charges()
+    # Pending delivery cost: the total so far (items, import shipping, customs); delivery is added by staff.
     total = summary["subtotal"] + fee + charges.included if fee is not None else None
+    if pending:
+        fee = None  # shown as "to be confirmed"; import_fee stays its own line
     eta = combined_eta(import_selected, selected) if selected else ""
     return Quote(summary, options, selected, fee, total, issues, import_options=import_opts,
                  import_selected=import_selected, import_fee=import_fee, delivery_fee=delivery_fee,
@@ -171,7 +190,8 @@ def _shipping_fields(quote: Quote) -> dict:
         for vendor, part in allocation(quote.import_selected).items():
             shares[vendor] = shares.get(vendor, Decimal("0")) + part
     return {
-        "delivery_fee": quote.shipping_fee,
+        # Pending delivery cost: only the import shipping is charged for now (set_delivery_fee adds the rest).
+        "delivery_fee": quote.import_fee if quote.delivery_fee_pending else quote.shipping_fee,
         "shipping_method": ShippingMethod.objects.get(pk=quote.selected["method_id"]),
         "estimated_delivery": quote.estimated_delivery or "",
         "shipping_allocation": shares,
@@ -179,7 +199,9 @@ def _shipping_fields(quote: Quote) -> dict:
                                    if quote.import_selected else None),
         "import_fee": quote.import_fee,
         "prepayment_required": quote.prepayment_required,
-        "payment_due_at": payment_deadline() if quote.prepayment_required else None,
+        # No deadline while the delivery cost is pending: it starts when staff set the cost.
+        "payment_due_at": payment_deadline() if quote.prepayment_required and not quote.delivery_fee_pending else None,
+        "delivery_fee_pending": quote.delivery_fee_pending,
         "customs_fee": quote.customs.included,
         "customs_status": quote.customs.status or "",
         "customs_charges": quote.customs.as_dict() if quote.customs.status else {},

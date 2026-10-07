@@ -100,7 +100,8 @@ class GuestPlaceOrderView(_GuestCheckoutView):
                 raise ConflictError(exc.message)
             raise ValidationError({exc.field or "non_field_errors": [exc.message]})
         payment = None
-        if created and order.shop.payment_preference == PaymentPreference.MOBILE_MONEY:
+        if (created and order.shop.payment_preference == PaymentPreference.MOBILE_MONEY
+                and not order.shop.delivery_fee_pending):  # pending delivery cost: paid once AGIZA sets it
             payment = start_payment(order, data["phone"])
         order = customer_orders(order.customer_id).get(pk=order.pk)
         body = {"order": guest_order_payload(order, request), "created": created, "payment": payment,

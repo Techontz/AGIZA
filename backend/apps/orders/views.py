@@ -28,6 +28,7 @@ from .serializers import (
     AssignSerializer,
     AttachmentSerializer,
     CancelSerializer,
+    DeliveryFeeSerializer,
     EquipmentCreateSerializer,
     EquipmentOrderSerializer,
     EquipmentUpdateSerializer,
@@ -479,13 +480,14 @@ class AttachmentFileView(APIView):
 class ShopFilter(OrderFilter):
     payment = django_filters.ChoiceFilter(choices=[("paid", "Paid"), ("pending", "Pending")], method="filter_payment")
     channel = django_filters.ChoiceFilter(field_name="shop__channel", choices=ShopDetails.Channel.choices)
+    delivery_fee_pending = django_filters.BooleanFilter(field_name="shop__delivery_fee_pending")
 
     def filter_payment(self, qs, name, value):
         paid = Q(paid_total__gte=F("total_amount")) & Q(total_amount__gt=0)
         return qs.filter(paid) if value == "paid" else qs.exclude(paid)
 
     class Meta(OrderFilter.Meta):
-        fields = [*OrderFilter.Meta.fields, "payment", "channel"]
+        fields = [*OrderFilter.Meta.fields, "payment", "channel", "delivery_fee_pending"]
 
 
 @extend_schema(tags=["orders"])
@@ -501,7 +503,7 @@ class ShopOrderViewSet(BaseOrderViewSet):
     update_serializer = ShopNotesSerializer
     filterset_class = ShopFilter
     search_fields = [*BaseOrderViewSet.search_fields, "shop__customer_email", "items__sku", "items__product_name"]
-    required_access = {**BaseOrderViewSet.required_access, "cancel": "manage"}
+    required_access = {**BaseOrderViewSet.required_access, "cancel": "manage", "delivery_fee": "edit"}
 
     def get_queryset(self):
         return super().get_queryset().prefetch_related(
@@ -536,6 +538,7 @@ class ShopOrderViewSet(BaseOrderViewSet):
             "processing": qs.filter(status="processing").count(),
             "shipped": qs.filter(status="shipped").count(),
             "delivered": qs.filter(status="delivered").count(),
+            "delivery_fee_pending": live.filter(shop__delivery_fee_pending=True).count(),
             "revenue": f"{live.aggregate(s=Sum('total_amount'))['s'] or 0:.2f}",
         }
 
@@ -554,4 +557,16 @@ class ShopOrderViewSet(BaseOrderViewSet):
         s.is_valid(raise_exception=True)
         order = run(shop.cancel, self.get_object(), user=request.user, reason=s.validated_data["reason"],
                     request=request)
+        return self._respond(order)
+
+    @extend_schema(request=DeliveryFeeSerializer, responses=ShopOrderSerializer)
+    @action(detail=True, methods=["post"], url_path="delivery-fee")
+    def delivery_fee(self, request, pk=None):
+        """Set the delivery cost of an order placed while it needed a manual quote; the customer can then pay."""
+        s = DeliveryFeeSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        data = s.validated_data
+        order = run(shop.set_delivery_fee, self.get_object(), user=request.user, request=request,
+                    fee=data["delivery_fee"], shipping_method=data["shipping_method"],
+                    estimated_delivery=data["estimated_delivery"], note=data["note"])
         return self._respond(order)

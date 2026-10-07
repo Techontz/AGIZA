@@ -3,10 +3,14 @@ Shipping & Tracking services — the only code that changes parcel stages and
 shipment statuses. Each change runs in a transaction, writes a ShipmentEvent
 (and an audit entry) and moves the international orders on board:
 
+    parcel expected            ← supplier shipped / "Deliver for Me" order (order Waiting to Receive)
     parcel received            → order Sent to Consolidation
+    parcel lost                → order note + procurement exception (order status unchanged)
     shipment Shipping to Dest. → orders Shipping to Tanzania
     shipment Clearance         → orders Customs Clearance
     shipment Completed         → orders Ready for Collection (+ a pending delivery each)
+
+Shipments may jump forward over milestones; each skipped milestone is applied in order.
 """
 from __future__ import annotations
 
@@ -23,6 +27,7 @@ from apps.orders.workflows import InternationalStatus, status_label
 
 from .models import (
     OPEN_STATUSES,
+    SHIPMENT_PATH,
     SHIPMENT_TRANSITIONS,
     CargoParcel,
     CargoType,
@@ -43,7 +48,9 @@ ORDER_STATUS_FOR = {S.SHIPPING_TO_DESTINATION: I.SHIPPING_TO_DESTINATION, S.CLEA
                     S.COMPLETED: I.READY_FOR_COLLECTION}
 ORIGIN_CODE = {"AE": "DXB", "US": "USA", "GB": "UK"}
 RECEIVABLE_ORDER_STATUSES = {I.PENDING_PAYMENT, I.ISSUE_PENDING_PAYMENT, I.SUPPLIER_CONFIRMED, I.PAID_SUPPLIER,
-                             I.IN_PRODUCTION}
+                             I.IN_PRODUCTION, I.WAITING_TO_RECEIVE}
+# Order statuses that move on to Sent to Consolidation when the goods are received.
+ADVANCE_ON_RECEIPT = {I.SUPPLIER_CONFIRMED, I.PAID_SUPPLIER, I.IN_PRODUCTION, I.WAITING_TO_RECEIVE}
 
 
 # --------------------------------------------------------------------------- #
@@ -54,10 +61,12 @@ def _new_parcel(order, source: str, **fields) -> CargoParcel:
         "source": source, "item_name": order.item_details[:200],
         "cargo_type": CLASS_TO_CARGO.get(order.international.order_class, CargoType.STANDARD), **fields,
     })
-    if not created and parcel.stage == ParcelStage.CANCELLED:
+    if not created and parcel.stage in (ParcelStage.CANCELLED, ParcelStage.LOST, ParcelStage.WAITING):
+        # Re-expected (new supplier, re-shipped after a loss) or already expected: take the new details.
         for key, value in fields.items():
             setattr(parcel, key, value)
         parcel.stage = ParcelStage.WAITING
+        parcel.lost_at, parcel.lost_reason = None, ""  # a fresh expectation, not the old loss
         parcel.save()
     return parcel
 
@@ -69,7 +78,7 @@ def expect_client_parcel(order, user=None) -> CargoParcel:
 
 
 def expect_procured_parcel(proc, user=None) -> CargoParcel:
-    """The supplier has been paid; the goods are now on their way to the consolidation warehouse."""
+    """The supplier shipped the goods: they are now on their way to the consolidation warehouse."""
     return _new_parcel(proc.order, ParcelSource.AGIZA_PROCURED,
                        supplier_tracking_number=proc.supplier_tracking_number,
                        estimated_arrival=proc.expected_at_cargo, packages_quantity=1,
@@ -77,12 +86,21 @@ def expect_procured_parcel(proc, user=None) -> CargoParcel:
 
 
 def withdraw_expected_parcel(order, user, note: str = ""):
-    parcel = CargoParcel.objects.filter(order=order, stage=ParcelStage.WAITING).first()
+    """The goods are no longer expected (e.g. the supplier was cancelled). A parcel already marked lost is
+    withdrawn too, so it leaves the Lost list instead of waiting for goods that will never come."""
+    parcel = CargoParcel.objects.filter(order=order, stage__in=[ParcelStage.WAITING, ParcelStage.LOST]).first()
     if parcel:
+        before = parcel.stage
         parcel.stage = ParcelStage.CANCELLED
         parcel.save(update_fields=["stage", "updated_at"])
-        record_audit(action="update", actor=user, instance=parcel, changes={"stage": ["waiting", "cancelled"],
+        record_audit(action="update", actor=user, instance=parcel, changes={"stage": [before, "cancelled"],
                                                                            "note": [None, note]})
+
+
+def sync_parcel_tracking(order, tracking: str):
+    """Procurement corrected the supplier's tracking number of goods still expected."""
+    CargoParcel.objects.filter(order=order, stage=ParcelStage.WAITING).update(
+        supplier_tracking_number=tracking, updated_at=timezone.now())
 
 
 def _lock_parcel(parcel: CargoParcel) -> CargoParcel:
@@ -96,8 +114,10 @@ def receive_parcel(parcel: CargoParcel, *, user, weight_kg: Decimal, cbm: Decima
                    note: str = "", request=None) -> CargoParcel:
     """Goods arrived at the consolidation warehouse: weigh them and make them Ready for Shipment."""
     parcel = _lock_parcel(parcel)
-    if parcel.stage != ParcelStage.WAITING:
+    # A parcel marked lost that turns up after all can still be received.
+    if parcel.stage not in (ParcelStage.WAITING, ParcelStage.LOST):
         raise WorkflowError("Only parcels waiting to be received can be received.", conflict=True)
+    from_stage = parcel.stage
     order = order_services._lock(parcel.order)
     if order.status not in RECEIVABLE_ORDER_STATUSES:
         raise WorkflowError(f"{order.reference} is {status_label(order.order_type, order.status)} and can't be "
@@ -123,12 +143,41 @@ def receive_parcel(parcel: CargoParcel, *, user, weight_kg: Decimal, cbm: Decima
     parcel.received_by = user
     parcel.save()
     record_audit(action="status_change", request=request, actor=user, instance=parcel,
-                 changes={"stage": ["waiting", "ready"], "weight_kg": [None, str(weight_kg)]})
+                 changes={"stage": [from_stage, "ready"], "weight_kg": [None, str(weight_kg)]})
 
     where = f" at {warehouse.name}" if warehouse else ""
-    if order.status in (I.SUPPLIER_CONFIRMED, I.PAID_SUPPLIER, I.IN_PRODUCTION):
+    if order.status in ADVANCE_ON_RECEIPT:
         order_services.advance(order, I.SENT_TO_CONSOLIDATION, user, via_action="cargo-receipt",
                                note=note or f"Received at cargo{where}", request=request)
+    return parcel
+
+
+@transaction.atomic
+def mark_lost(parcel: CargoParcel, *, user, reason: str, request=None) -> CargoParcel:
+    """The expected goods never arrived (lost / damaged in transit to the warehouse).
+
+    The parcel leaves the Waiting to Receive list (it shows under Lost), the order keeps its status with a
+    history note, and an Agiza-procured order's procurement is flagged "Parcel Lost" so Procurement can
+    chase the supplier — or cancel it and source again.
+    """
+    parcel = _lock_parcel(parcel)
+    reason = (reason or "").strip()
+    if parcel.stage != ParcelStage.WAITING:
+        raise WorkflowError("Only parcels waiting to be received can be marked lost.", conflict=True)
+    if not reason:
+        raise WorkflowError("Give the reason the parcel is lost.", field="reason")
+    order = order_services._lock(parcel.order)
+    parcel.stage = ParcelStage.LOST
+    parcel.lost_at = timezone.now()
+    parcel.lost_reason = reason
+    parcel.save(update_fields=["stage", "lost_at", "lost_reason", "updated_at"])
+    record_audit(action="status_change", request=request, actor=user, instance=parcel,
+                 changes={"stage": ["waiting", "lost"], "note": [None, reason]})
+    order_services._history(order, order.status, order.status, user, f"Parcel lost: {reason}")
+    if parcel.source == ParcelSource.AGIZA_PROCURED:
+        from apps.procurement import services as procurement
+
+        procurement.on_parcel_lost(order, user, reason)
     return parcel
 
 
@@ -144,7 +193,7 @@ def on_order_status(order, to_status: str, user):
 
 def on_order_cancelled(order, user):
     parcel = CargoParcel.objects.filter(order=order).first()
-    if parcel and parcel.stage in (ParcelStage.WAITING, ParcelStage.READY):
+    if parcel and parcel.stage in (ParcelStage.WAITING, ParcelStage.READY, ParcelStage.LOST):
         parcel.stage = ParcelStage.CANCELLED
         parcel.save(update_fields=["stage", "updated_at"])
 
@@ -165,6 +214,15 @@ def update_parcel(parcel: CargoParcel, *, user, request=None, **fields) -> Cargo
     return parcel
 
 
+def _client_goods_unpaid(order) -> bool:
+    """A "Deliver for Me" order ships only once the customer paid in full (or installments were approved)."""
+    if order.international.service_type != "deliver_for_me":
+        return False
+    if order.installment_plan and order.installment_allowed:
+        return False
+    return order_services.payment_summary(order, order_services.prefetched_net_paid(order)).status != "fully_paid"
+
+
 def exception_flags(parcel: CargoParcel) -> list[str]:
     flags = []
     if parcel.weight_type == WeightType.ESTIMATED:
@@ -172,7 +230,7 @@ def exception_flags(parcel: CargoParcel) -> list[str]:
     order = parcel.order
     if order.status in (I.PENDING_PAYMENT, I.ISSUE_PENDING_PAYMENT) or (
         order.installment_plan and not order.installment_allowed
-    ):
+    ) or _client_goods_unpaid(order):
         flags.append("payment-pending")
     return flags
 
@@ -200,7 +258,7 @@ def _check_parcels(parcels: list[CargoParcel], origin_country_id: int):
         if p.order.international.source_country_id != origin_country_id:
             raise WorkflowError(f"{p.order.reference} ships from {p.order.international.source_country.name}; "
                                 "a shipment can only consolidate orders from one origin.", field="parcels")
-        if p.order.status != I.SENT_TO_CONSOLIDATION:
+        if p.order.status != I.SENT_TO_CONSOLIDATION or _client_goods_unpaid(p.order):
             raise WorkflowError(f"{p.order.reference} has a pending customer payment and can't ship yet.",
                                 conflict=True)
 
@@ -292,6 +350,11 @@ def remove_parcel(shipment: Shipment, parcel: CargoParcel, *, user, request=None
 @transaction.atomic
 def transition(shipment: Shipment, to_status: str, *, user, note: str = "", location: str = "",
                occurred_at=None, request=None) -> Shipment:
+    """Move the shipment to a later milestone (or cancel it while still open).
+
+    Jumping forward over milestones applies each skipped one in order — its event, departure / arrival
+    dates and the order statuses on board — so every order still walks its own workflow step by step.
+    """
     shipment = _lock_shipment(shipment)
     check_transition(shipment.status, to_status, transitions=SHIPMENT_TRANSITIONS, choices=ShipmentStatus,
                      subject=shipment.cargo_id)
@@ -299,21 +362,39 @@ def transition(shipment: Shipment, to_status: str, *, user, note: str = "", loca
     if to_status != S.CANCELLED and not parcels:
         raise WorkflowError("Add at least one order before moving the shipment on.", conflict=True)
     from_status = shipment.status
-    shipment.status = to_status
-    fields = ["status", "updated_at"]
+    labels = dict(ShipmentStatus.choices)
     when = occurred_at or timezone.now()
-    if to_status == S.SHIPPING_TO_DESTINATION:
-        shipment.departed_at = when
-        fields.append("departed_at")
-    elif to_status == S.CLEARANCE:
-        shipment.arrived_at = when
-        fields.append("arrived_at")
-    shipment.save(update_fields=fields)
-    label = dict(ShipmentStatus.choices)[to_status]
-    _event(shipment, ShipmentEvent.Kind.STATUS, user, note or label, from_status=from_status, to_status=to_status,
-           location=location, occurred_at=when)
+    if to_status == S.CANCELLED:
+        steps = [S.CANCELLED]
+    else:
+        steps = SHIPMENT_PATH[SHIPMENT_PATH.index(from_status) + 1:SHIPMENT_PATH.index(to_status) + 1]
+    skipped = [labels[s] for s in steps[:-1]]
+
+    fields = {"status", "updated_at"}
+    previous = from_status
+    for step in steps:
+        shipment.status = step
+        if step == S.SHIPPING_TO_DESTINATION:
+            shipment.departed_at = when
+            fields.add("departed_at")
+        elif step == S.CLEARANCE:
+            shipment.arrived_at = when
+            fields.add("arrived_at")
+        final = step == to_status
+        if final:
+            description = note or labels[step]
+            if skipped:
+                description = f"{description} (also recorded: {', '.join(skipped)})"
+        else:
+            description = f"{labels[step]} — recorded when moving to {labels[to_status]}"
+        _event(shipment, ShipmentEvent.Kind.STATUS, user, description, from_status=previous, to_status=step,
+               location=location if final else "", occurred_at=when)
+        previous = step
+    shipment.save(update_fields=sorted(fields))
     record_audit(action="status_change", request=request, actor=user, instance=shipment,
-                 changes={"status": [from_status, to_status], **({"note": [None, note]} if note else {})})
+                 changes={"status": [from_status, to_status],
+                          **({"note": [None, note]} if note else {}),
+                          **({"skipped": [None, [str(s) for s in steps[:-1]]]} if skipped else {})})
 
     if to_status == S.CANCELLED:
         for p in parcels:
@@ -323,11 +404,15 @@ def transition(shipment: Shipment, to_status: str, *, user, note: str = "", loca
             p.save(update_fields=["shipment", "stage", "added_to_shipment_at", "updated_at"])
         return shipment
 
-    order_status = ORDER_STATUS_FOR.get(to_status)
-    if order_status:
+    for step in steps:
+        order_status = ORDER_STATUS_FOR.get(step)
+        if not order_status:
+            continue
+        step_note = f"{shipment.cargo_id}: {note or labels[step]}" if step == to_status \
+            else f"{shipment.cargo_id}: {labels[step]}"
         for p in parcels:
-            order_services.advance(p.order, order_status, user, via_action="shipment",
-                                   note=f"{shipment.cargo_id}: {note or label}", request=request)
+            order_services.advance(p.order, order_status, user, via_action="shipment", note=step_note,
+                                   request=request)
     if to_status == S.COMPLETED:
         from apps.deliveries import services as deliveries
 

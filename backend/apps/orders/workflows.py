@@ -75,6 +75,7 @@ class InternationalStatus(models.TextChoices):
     SUPPLIER_CONFIRMED = "supplier_confirmed", "Supplier Confirmed"
     PAID_SUPPLIER = "paid_supplier", "Paid Supplier"
     IN_PRODUCTION = "in_production", "In Production"
+    WAITING_TO_RECEIVE = "waiting_to_receive", "Waiting to Receive"
     SENT_TO_CONSOLIDATION = "sent_to_consolidation", "Sent to Consolidation"
     SHIPPING_TO_DESTINATION = "shipping_to_destination", "Shipping to Tanzania"
     CLEARANCE = "clearance", "Customs Clearance"
@@ -89,8 +90,13 @@ INTERNATIONAL_TRANSITIONS = {
     I.ISSUE_PENDING_PAYMENT: {I.PENDING_PAYMENT, I.SUPPLIER_CONFIRMED, I.CANCELLED},
     # "Deliver for Me" orders skip the supplier payment: the customer bought the goods.
     I.SUPPLIER_CONFIRMED: {I.PAID_SUPPLIER, I.SENT_TO_CONSOLIDATION, I.CANCELLED},
-    I.PAID_SUPPLIER: {I.IN_PRODUCTION, I.SENT_TO_CONSOLIDATION},
-    I.IN_PRODUCTION: {I.SENT_TO_CONSOLIDATION},
+    # Paid Supplier / In Production → Sent to Consolidation is kept for goods expected before
+    # "supplier shipped" existed; new orders go through Waiting to Receive.
+    I.PAID_SUPPLIER: {I.IN_PRODUCTION, I.WAITING_TO_RECEIVE, I.SENT_TO_CONSOLIDATION},
+    I.IN_PRODUCTION: {I.WAITING_TO_RECEIVE, I.SENT_TO_CONSOLIDATION},
+    # Goods on their way to the consolidation warehouse: the supplier shipped them, or the
+    # customer bought them ("Deliver for Me" orders start here).
+    I.WAITING_TO_RECEIVE: {I.SENT_TO_CONSOLIDATION, I.CANCELLED},
     I.SENT_TO_CONSOLIDATION: {I.SHIPPING_TO_DESTINATION},
     I.SHIPPING_TO_DESTINATION: {I.CLEARANCE},
     I.CLEARANCE: {I.READY_FOR_COLLECTION},
@@ -103,10 +109,20 @@ INTERNATIONAL_TRANSITIONS = {
 # there (paying the supplier, receiving cargo, shipment milestones).
 INTERNATIONAL_ACTION_ONLY = {
     I.PAID_SUPPLIER: "procurement",
+    I.WAITING_TO_RECEIVE: "supplier-shipped",
     I.SENT_TO_CONSOLIDATION: "cargo-receipt",
     I.SHIPPING_TO_DESTINATION: "shipment",
     I.CLEARANCE: "shipment",
     I.READY_FOR_COLLECTION: "shipment",
+}
+
+# Backward moves only one action may make, kept out of INTERNATIONAL_TRANSITIONS so the generic
+# status change (and the "next status" dropdown) never offers them: when the supplier cancels after
+# being paid or shipping, the order goes back to Supplier Confirmed to pick a new supplier.
+INTERNATIONAL_ACTION_EDGES = {
+    (I.PAID_SUPPLIER, I.SUPPLIER_CONFIRMED): "procurement-cancel",
+    (I.IN_PRODUCTION, I.SUPPLIER_CONFIRMED): "procurement-cancel",
+    (I.WAITING_TO_RECEIVE, I.SUPPLIER_CONFIRMED): "procurement-cancel",
 }
 
 # Which department owns an international order at each stage.
@@ -116,6 +132,7 @@ INTERNATIONAL_DEPARTMENT = {
     I.SUPPLIER_CONFIRMED: "procurement",
     I.PAID_SUPPLIER: "procurement",
     I.IN_PRODUCTION: "procurement",
+    I.WAITING_TO_RECEIVE: "shipping",
     I.SENT_TO_CONSOLIDATION: "shipping",
     I.SHIPPING_TO_DESTINATION: "shipping",
     I.CLEARANCE: "shipping",
@@ -177,6 +194,9 @@ SHOP_TRANSITIONS = {
 # Shipping deducts stock and opens the delivery; Delivered comes from the delivery's proof.
 SHOP_ACTION_ONLY = {P.SHIPPED: "ship", P.DELIVERED: "deliver", P.CANCELLED: "cancel"}
 
+
+# Transitions reachable only through one action, per order type: {(from, to): action}.
+ACTION_EDGES = {OrderType.INTERNATIONAL: INTERNATIONAL_ACTION_EDGES}
 
 WORKFLOWS = {
     OrderType.EXPRESS: (ExpressStatus, EXPRESS_TRANSITIONS, EXPRESS_ACTION_ONLY),

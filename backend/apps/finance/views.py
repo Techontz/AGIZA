@@ -1,14 +1,21 @@
+import csv
+import json
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 import django_filters
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, OuterRef, Prefetch, Q, Subquery, Sum, Value
 from django.db.models.functions import Coalesce, Greatest
 from django.http import HttpResponse
+from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.generics import GenericAPIView
+from rest_framework.renderers import BaseRenderer
 from rest_framework.response import Response
+from rest_framework.settings import api_settings
 from rest_framework.views import APIView
 
 from apps.accounts.constants import Module
@@ -18,6 +25,7 @@ from apps.core.workflow import run
 from apps.orders import services as order_services
 from apps.orders.models import Order, OrderItem, Payment
 from apps.orders.serializers import _dec
+from apps.orders.workflows import OrderType, status_label
 from apps.parties.models import Customer
 
 from . import services
@@ -367,3 +375,141 @@ class InstallmentPlanViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, m
         s.is_valid(raise_exception=True)
         plan = run(services.decide_plan, self.get_object(), user=request.user, request=request, **s.validated_data)
         return self._respond(plan)
+
+
+# --------------------------------------------------------------------------- #
+# Profit & Loss
+# --------------------------------------------------------------------------- #
+def _day_start(day):
+    """Aware start of a local calendar day (date ranges without per-row timezone conversion in SQL)."""
+    return timezone.make_aware(datetime.combine(day, time.min))
+
+
+def _margin(profit: Decimal, revenue: Decimal) -> Decimal | None:
+    return (profit / revenue * 100).quantize(Decimal("0.1")) if revenue > 0 else None
+
+
+class ProfitLossFilter(django_filters.FilterSet):
+    date_from = django_filters.DateFilter(method="filter_from")
+    date_to = django_filters.DateFilter(method="filter_to")
+    customer = django_filters.NumberFilter(field_name="customer_id")
+
+    class Meta:
+        model = Order
+        fields = ["order_type", "customer", "date_from", "date_to"]
+
+    def filter_from(self, qs, name, value):
+        return qs.filter(created_at__gte=_day_start(value))
+
+    def filter_to(self, qs, name, value):
+        return qs.filter(created_at__lt=_day_start(value + timedelta(days=1)))
+
+
+class CSVRenderer(BaseRenderer):
+    """Lets `?format=csv` select the CSV export (the view builds the file itself)."""
+
+    media_type = "text/csv"
+    format = "csv"
+    charset = "utf-8"
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        # Only error bodies reach here (the export returns an HttpResponse).
+        return json.dumps(data, default=str).encode()
+
+
+PL_CSV_HEADER = ["Reference", "Date", "Customer", "Customer ref", "Order type", "Status", "Total",
+                 "Purchase cost", "Shipping cost", "Profit", "Margin %", "Purchase cost set", "Shipping cost set"]
+
+
+@extend_schema(tags=["finance"])
+class ProfitLossView(GenericAPIView):
+    """
+    Profit & loss per order: profit = order total − purchase cost − shipping cost
+    (costs fall back to the same defaults as Order Payments). Cancelled and
+    not-yet-priced orders are left out. `?format=csv` (or /export/) downloads every
+    filtered row as CSV.
+    """
+
+    module = Module.FINANCE
+    permission_classes = [HasModulePermission]
+    renderer_classes = [*api_settings.DEFAULT_RENDERER_CLASSES, CSVRenderer]
+    filterset_class = ProfitLossFilter
+    search_fields = ["reference", "item_details", "customer__full_name", "customer__reference"]
+    ordering_fields = ["created_at", "total_amount", "profit_value"]
+    ordering = ["-created_at", "-id"]
+    serializer_class = OrderPaymentSerializer  # rows are built in _row(); used for schema generation
+
+    def get_queryset(self):
+        qs = Order.objects.exclude(status="cancelled").filter(total_amount__isnull=False)
+        return (_with_costs(qs).select_related("customer")
+                .annotate(profit_value=ExpressionWrapper(F("total_amount") - F("purchase") - F("shipping"),
+                                                         output_field=MONEY))
+                .order_by("-created_at", "-id"))
+
+    @staticmethod
+    def _totals(qs) -> dict:
+        rows = qs.aggregate(orders=Count("id"), revenue=Coalesce(Sum("total_amount"), ZERO),
+                            purchase_cost=Coalesce(Sum("purchase"), ZERO),
+                            shipping_cost=Coalesce(Sum("shipping"), ZERO))
+        return rows
+
+    @staticmethod
+    def _figures(rows: dict) -> dict:
+        profit = rows["revenue"] - rows["purchase_cost"] - rows["shipping_cost"]
+        return {"orders": rows["orders"], "revenue": _dec(rows["revenue"]),
+                "purchase_cost": _dec(rows["purchase_cost"]), "shipping_cost": _dec(rows["shipping_cost"]),
+                "profit": _dec(profit), "margin": _dec(_margin(profit, rows["revenue"]), 1)}
+
+    def _by_type(self, qs) -> list[dict]:
+        grouped = {r["order_type"]: r for r in qs.order_by().values("order_type").annotate(
+            orders=Count("id"), revenue=Coalesce(Sum("total_amount"), ZERO),
+            purchase_cost=Coalesce(Sum("purchase"), ZERO), shipping_cost=Coalesce(Sum("shipping"), ZERO))}
+        return [{"order_type": t.value, "order_type_display": t.label, **self._figures(grouped[t.value])}
+                for t in OrderType if t.value in grouped]
+
+    @staticmethod
+    def _row(o) -> dict:
+        return {
+            "id": o.id, "reference": o.reference, "date": o.created_at,
+            "customer": {"id": o.customer_id, "reference": o.customer.reference, "full_name": o.customer.full_name},
+            "order_type": o.order_type, "order_type_display": o.get_order_type_display(),
+            "status": o.status, "status_display": status_label(o.order_type, o.status),
+            "item_details": o.item_details,
+            "total": _dec(o.total_amount), "purchase_cost": _dec(o.purchase), "shipping_cost": _dec(o.shipping),
+            "profit": _dec(o.profit_value), "margin": _dec(_margin(o.profit_value, o.total_amount), 1),
+            "purchase_cost_set": o.purchase_cost is not None, "shipping_cost_set": o.shipping_cost is not None,
+        }
+
+    def get(self, request):
+        qs = self.filter_queryset(self.get_queryset())
+        if getattr(request.accepted_renderer, "format", None) == "csv":
+            return self._csv(request, qs)
+        page = self.paginate_queryset(qs)
+        listing = self.get_paginated_response([self._row(o) for o in page]).data
+        return Response({"totals": self._figures(self._totals(qs)), "by_type": self._by_type(qs), **listing})
+
+    def _csv(self, request, qs) -> HttpResponse:
+        start = request.query_params.get("date_from") or "all"
+        end = request.query_params.get("date_to") or timezone.localdate().isoformat()
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = f'attachment; filename="profit-loss-{start}-{end}.csv"'
+        writer = csv.writer(response)
+        writer.writerow(PL_CSV_HEADER)
+        for o in qs.iterator(chunk_size=500):
+            r = self._row(o)
+            writer.writerow([r["reference"], timezone.localtime(o.created_at).date().isoformat(),
+                             r["customer"]["full_name"], r["customer"]["reference"], r["order_type_display"],
+                             r["status_display"], r["total"], r["purchase_cost"], r["shipping_cost"], r["profit"],
+                             r["margin"] or "", "yes" if r["purchase_cost_set"] else "no",
+                             "yes" if r["shipping_cost_set"] else "no"])
+        t = self._figures(self._totals(qs))
+        writer.writerow(["TOTAL", "", f"{t['orders']} orders", "", "", "", t["revenue"], t["purchase_cost"],
+                         t["shipping_cost"], t["profit"], t["margin"] or "", "", ""])
+        return response
+
+
+class ProfitLossExportView(ProfitLossView):
+    """CSV of every filtered P&L row (same filters as the report)."""
+
+    def get(self, request):
+        return self._csv(request, self.filter_queryset(self.get_queryset()))

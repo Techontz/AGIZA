@@ -7,6 +7,8 @@ from .views import (
     InvoiceViewSet,
     OrderPaymentViewSet,
     PaymentViewSet,
+    ProfitLossExportView,
+    ProfitLossView,
     WalletViewSet,
 )
 
@@ -19,5 +21,7 @@ router.register("finance/installment-plans", InstallmentPlanViewSet, basename="i
 
 urlpatterns = [
     path("finance/stats/", FinanceStatsView.as_view(), name="finance-stats"),
+    path("finance/profit-loss/", ProfitLossView.as_view(), name="finance-profit-loss"),
+    path("finance/profit-loss/export/", ProfitLossExportView.as_view(), name="finance-profit-loss-export"),
     *router.urls,
 ]

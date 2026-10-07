@@ -2,9 +2,13 @@
 Procurement workflow services — the only code that changes procurement status.
 
 International Order → Procurement (pending sourcing) → supplier selected →
-supplier paid (order: Paid Supplier; goods now expected at the consolidation
-warehouse) → received at cargo (done by Shipping's receipt, which also moves
+supplier paid (order: Paid Supplier) → supplier shipped, with its tracking number
+(order: Waiting to Receive; the parcel now appears in Shipping's Waiting to
+Receive list) → received at cargo (done by Shipping's receipt, which also moves
 the order to Sent to Consolidation).
+
+The supplier may cancel at any point before receipt: a paid / shipped order then
+goes back to Supplier Confirmed so a new supplier can be selected and paid.
 """
 from __future__ import annotations
 
@@ -113,7 +117,8 @@ def select_supplier(proc: ProcurementOrder, *, supplier, user, item_cost: Decima
 @transaction.atomic
 def mark_paid(proc: ProcurementOrder, *, user, payment_reference: str = "", paid_at=None,
               supplier_tracking_number: str | None = None, note: str = "", request=None) -> ProcurementOrder:
-    """Record the supplier payment. The order moves to Paid Supplier and the goods are expected at cargo."""
+    """Record the supplier payment. The order moves to Paid Supplier; the goods are expected at cargo once
+    the supplier ships them (`mark_shipped`)."""
     proc = _lock(proc)
     if proc.status != P.SUPPLIER_SELECTED:
         raise WorkflowError(f"Only orders with a selected supplier can be paid (currently {LABELS[proc.status]}).",
@@ -133,7 +138,7 @@ def mark_paid(proc: ProcurementOrder, *, user, payment_reference: str = "", paid
                             conflict=True)
     proc.paid_at = paid_at or timezone.now()
     proc.payment_reference = payment_reference
-    if supplier_tracking_number is not None:
+    if supplier_tracking_number:
         proc.supplier_tracking_number = supplier_tracking_number
     if proc.exception_flag == "payment_issue":
         proc.exception_flag = ""
@@ -142,6 +147,37 @@ def mark_paid(proc: ProcurementOrder, *, user, payment_reference: str = "", paid
     _sync_order_details(proc)
     order_services.advance(order, InternationalStatus.PAID_SUPPLIER, user, via_action="procurement",
                            note=f"Supplier {proc.supplier.name} paid", request=request)
+    return proc
+
+
+@transaction.atomic
+def mark_shipped(proc: ProcurementOrder, *, user, supplier_tracking_number: str, shipped_at=None,
+                 expected_at_cargo=None, note: str = "", request=None) -> ProcurementOrder:
+    """The supplier shipped the goods to the consolidation warehouse (old system: "shipped to Shipping Agent").
+
+    The order moves to Waiting to Receive and the parcel, with its tracking number, appears in
+    Shipping's Waiting to Receive list.
+    """
+    proc = _lock(proc)
+    if proc.status != P.PAID:
+        raise WorkflowError(f"Only paid supplier orders can be marked shipped (currently {LABELS[proc.status]}).",
+                            conflict=True)
+    tracking = (supplier_tracking_number or "").strip()
+    if not tracking:
+        raise WorkflowError("Enter the supplier's tracking number.", field="supplier_tracking_number")
+    proc.supplier_tracking_number = tracking
+    proc.shipped_at = shipped_at or timezone.now()
+    if expected_at_cargo is not None:
+        proc.expected_at_cargo = expected_at_cargo
+    if proc.exception_flag in ("supplier_delay", "parcel_lost"):
+        proc.exception_flag = ""
+    _set_status(proc, P.SUPPLIER_SHIPPED, user, note or f"Supplier shipped · tracking {tracking}", request,
+                ["supplier_tracking_number", "shipped_at", "expected_at_cargo", "exception_flag"])
+    _sync_order_details(proc)
+    order = order_services._lock(proc.order)
+    if order.status in (InternationalStatus.PAID_SUPPLIER, InternationalStatus.IN_PRODUCTION):
+        order_services.advance(order, InternationalStatus.WAITING_TO_RECEIVE, user, via_action="supplier-shipped",
+                               note=f"Supplier {proc.supplier.name} shipped · tracking {tracking}", request=request)
 
     from apps.shipping import services as shipping
 
@@ -151,18 +187,50 @@ def mark_paid(proc: ProcurementOrder, *, user, payment_reference: str = "", paid
 
 @transaction.atomic
 def cancel_supplier(proc: ProcurementOrder, *, user, reason: str, request=None) -> ProcurementOrder:
-    """The supplier cancelled (stock-out, delay...). A new supplier must be selected."""
+    """The supplier cancelled (stock-out, delay, failed to ship...). A new supplier must be selected.
+
+    After payment / shipping the order goes back to Supplier Confirmed, the expected parcel is
+    withdrawn and that supplier order's payment and tracking details are cleared (they stay in the
+    procurement history and audit log), so select supplier → mark paid → mark shipped works again.
+    """
     proc = _lock(proc)
-    if proc.status not in (P.SUPPLIER_SELECTED, P.PAID):
+    if proc.status not in (P.SUPPLIER_SELECTED, P.PAID, P.SUPPLIER_SHIPPED):
         raise WorkflowError("Only an active supplier order can be cancelled.", conflict=True)
-    if not reason.strip():
+    reason = (reason or "").strip()
+    if not reason:
         raise WorkflowError("Give the reason the supplier cancelled.", field="reason")
-    was_paid = proc.status == P.PAID
-    _set_status(proc, P.SUPPLIER_CANCELLED, user, reason, request)
+    was_paid = proc.status in (P.PAID, P.SUPPLIER_SHIPPED)
+    fields = []
+    if was_paid:
+        previous = {"supplier_order_number": proc.supplier_order_number,
+                    "supplier_tracking_number": proc.supplier_tracking_number,
+                    "payment_reference": proc.payment_reference,
+                    "paid_at": proc.paid_at.isoformat() if proc.paid_at else None}
+        proc.supplier_order_number = proc.supplier_tracking_number = proc.payment_reference = ""
+        proc.paid_at = proc.shipped_at = None
+        if proc.exception_flag == "parcel_lost":
+            proc.exception_flag = ""
+        fields = ["supplier_order_number", "supplier_tracking_number", "payment_reference", "paid_at", "shipped_at",
+                  "exception_flag"]
+        details = ", ".join(f"{k.replace('_', ' ')}: {v}" for k, v in previous.items() if v)
+        reason_note = f"{reason}{f' (cleared {details})' if details else ''}"
+    else:
+        reason_note = reason
+    _set_status(proc, P.SUPPLIER_CANCELLED, user, reason_note, request, fields)
     if was_paid:
         from apps.shipping import services as shipping
 
         shipping.withdraw_expected_parcel(proc.order, user, f"Supplier cancelled: {reason}")
+        intl = proc.order.international
+        intl.tracking_number = ""
+        intl.save(update_fields=["tracking_number"])
+        order = order_services._lock(proc.order)
+        if order.status in (InternationalStatus.PAID_SUPPLIER, InternationalStatus.IN_PRODUCTION,
+                            InternationalStatus.WAITING_TO_RECEIVE):
+            order_services.advance(order, InternationalStatus.SUPPLIER_CONFIRMED, user,
+                                   via_action="procurement-cancel",
+                                   note=f"Supplier {proc.supplier.name} cancelled: {reason} — select a new supplier",
+                                   request=request)
     return proc
 
 
@@ -171,11 +239,24 @@ def mark_received(proc: ProcurementOrder, user, request=None):
     proc = _lock(proc)
     if proc.status == P.RECEIVED_AT_CARGO:
         return proc
-    if proc.status != P.PAID:
-        raise WorkflowError("Goods can be received once the supplier has been paid.", conflict=True)
+    # `paid` stays receivable for goods expected before "supplier shipped" existed.
+    if proc.status not in (P.SUPPLIER_SHIPPED, P.PAID):
+        raise WorkflowError("Goods can be received once the supplier has shipped them.", conflict=True)
     proc.received_at = timezone.now()
     _set_status(proc, P.RECEIVED_AT_CARGO, user, "Received at the consolidation warehouse", request, ["received_at"])
     return proc
+
+
+def on_parcel_lost(order, user, reason: str):
+    """Shipping marked the supplier's parcel lost: flag the procurement so it can be followed up."""
+    proc = ProcurementOrder.objects.filter(order=order).first()
+    if proc is None or proc.status in (P.CANCELLED, P.RECEIVED_AT_CARGO):
+        return
+    proc = _lock(proc)
+    proc.exception_flag = "parcel_lost"
+    proc.save(update_fields=["exception_flag", "updated_at"])
+    ProcurementStatusHistory.objects.create(procurement=proc, from_status=proc.status, to_status=proc.status,
+                                            changed_by=user, note=f"Parcel lost: {reason}")
 
 
 def on_order_cancelled(order, user):

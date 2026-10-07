@@ -297,6 +297,10 @@ class ShopDetails(models.Model):
     customs_status = models.CharField(max_length=14, blank=True,
                                       help_text="included / estimated / not_included (empty: nothing imported)")
     customs_charges = models.JSONField(default=dict, blank=True, help_text="Breakdown quoted at checkout")
+    # The Shipping Engine asked for a manual quote for this address: the customer ordered without a delivery
+    # cost and can't pay until staff set it (orders.shop.set_delivery_fee). delivery_fee then holds only import_fee.
+    delivery_fee_pending = models.BooleanField(
+        default=False, help_text="Waiting for staff to set the delivery cost; the order can't be paid until then")
 
     def __str__(self) -> str:
         return f"{self._meta.verbose_name} #{self.pk}"

@@ -9,8 +9,8 @@ from rest_framework.views import APIView
 
 from apps.accounts.constants import Module
 from apps.accounts.permissions import HasModulePermission
-from apps.core.audit import record_audit
 from apps.catalog.models import Category
+from apps.core.audit import record_audit
 from apps.core.workflow import run
 from apps.orders.serializers import _person
 from apps.parties.models import Customer

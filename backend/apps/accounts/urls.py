@@ -1,6 +1,7 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
+from .reports import ReportsDashboardView
 from .views import (
     AuditLogViewSet,
     ChangePasswordView,
@@ -23,5 +24,6 @@ urlpatterns = [
     path("auth/logout/", LogoutView.as_view(), name="auth-logout"),
     path("auth/me/", MeView.as_view(), name="auth-me"),
     path("auth/change-password/", ChangePasswordView.as_view(), name="auth-change-password"),
+    path("reports/dashboard/", ReportsDashboardView.as_view(), name="reports-dashboard"),
     *router.urls,
 ]

@@ -349,7 +349,8 @@ def lifecycle(conv: Conversation) -> str:
         if s in ("delivered", "completed"):
             return "delivered"
         if s in ("shipping_to_destination", "clearance", "ready_for_collection", "shipped", "in_transit",
-                 "picked_up", "at_agiza_center", "arrived", "driver_assigned", "sent_to_consolidation"):
+                 "picked_up", "at_agiza_center", "arrived", "driver_assigned", "sent_to_consolidation",
+                 "waiting_to_receive"):
             return "shipping"
         from apps.orders.services import payment_summary
 

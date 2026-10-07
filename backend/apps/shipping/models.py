@@ -26,6 +26,7 @@ class ParcelStage(models.TextChoices):
     READY = "ready", "Ready for Shipment"
     IN_SHIPMENT = "in_shipment", "In Shipment"
     ARRIVED = "arrived", "Arrived"
+    LOST = "lost", "Lost"
     CANCELLED = "cancelled", "Cancelled"
 
 
@@ -59,14 +60,15 @@ class ShipmentStatus(models.TextChoices):
 
 
 S = ShipmentStatus
+# The milestones in order. Staff may jump forward to any later milestone (never back); the
+# skipped milestones' side-effects are applied in order (see services.transition).
+SHIPMENT_PATH = [S.CREATED, S.BOOKED, S.LOADED, S.EXPORT_CLEARED, S.SHIPPING_TO_DESTINATION, S.CLEARANCE,
+                 S.COMPLETED]
+# A shipment can be cancelled only before the cargo is loaded.
+CANCELLABLE_STATUSES = {S.CREATED, S.BOOKED}
 SHIPMENT_TRANSITIONS = {
-    S.CREATED: {S.BOOKED, S.CANCELLED},
-    S.BOOKED: {S.LOADED, S.CANCELLED},
-    S.LOADED: {S.EXPORT_CLEARED},
-    S.EXPORT_CLEARED: {S.SHIPPING_TO_DESTINATION},
-    S.SHIPPING_TO_DESTINATION: {S.CLEARANCE},
-    S.CLEARANCE: {S.COMPLETED},
-    S.COMPLETED: set(),
+    **{status: set(SHIPMENT_PATH[i + 1:]) | ({S.CANCELLED} if status in CANCELLABLE_STATUSES else set())
+       for i, status in enumerate(SHIPMENT_PATH)},
     S.CANCELLED: set(),
 }
 # Parcels can be added or removed only before the cargo is loaded.
@@ -135,6 +137,8 @@ class CargoParcel(TimeStampedModel):
                                     related_name="+")
     shipment = models.ForeignKey(Shipment, null=True, blank=True, on_delete=models.PROTECT, related_name="parcels")
     added_to_shipment_at = models.DateTimeField(null=True, blank=True)
+    lost_at = models.DateTimeField(null=True, blank=True)
+    lost_reason = models.TextField(blank=True)
 
     class Meta:
         ordering = ["-created_at", "-id"]

@@ -292,3 +292,52 @@ def add_proof(delivery: Delivery, *, user, photos=(), signature_name: str = "", 
     record_audit(action="update", request=request, actor=user, instance=delivery,
                  changes={"proof_photos": [None, len(photos)]})
     return delivery
+
+
+# --------------------------------------------------------------------------- #
+# Group actions (one customer's deliveries handled together)
+# --------------------------------------------------------------------------- #
+def _one_customer(deliveries) -> list[Delivery]:
+    deliveries = list(deliveries)
+    if not deliveries:
+        raise WorkflowError("Choose at least one delivery.", field="deliveries")
+    if len({d.order.customer_id for d in deliveries}) > 1:
+        raise WorkflowError("Choose deliveries of one customer only.", field="deliveries")
+    return deliveries
+
+
+@transaction.atomic
+def assign_driver_group(deliveries, driver, *, user, scheduled_at=None, note: str = "", request=None) -> list:
+    """One driver for all of a customer's selected deliveries (all or nothing)."""
+    _check_driver(driver)
+    return [assign_driver(d, driver, user=user, scheduled_at=scheduled_at, note=note, request=request)
+            for d in _one_customer(deliveries)]
+
+
+def _copies(files):
+    """Read each upload once so the same file can be stored on several deliveries."""
+    from django.core.files.base import ContentFile
+
+    out = []
+    for upload, ctype in files:
+        upload.seek(0)
+        out.append((upload.read(), upload.name, ctype))
+    return lambda: [(ContentFile(data, name=name), ctype) for data, name, ctype in out]
+
+
+@transaction.atomic
+def complete_group(deliveries, *, user, signature_name: str, notes: str = "", signature_image=None,
+                   signature_content_type: str = "", photos=(), completed_at=None, request=None) -> list:
+    """Deliver a customer's selected deliveries together with one proof (all or nothing).
+    Every delivery keeps its own copy of the signature and photos."""
+    deliveries = _one_customer(deliveries)
+    completed_at = completed_at or timezone.now()
+    photo_copies = _copies(photos)
+    signature_copy = _copies([(signature_image, signature_content_type)]) if signature_image else None
+    done = []
+    for d in deliveries:
+        sig = signature_copy()[0][0] if signature_copy else None
+        done.append(complete(d, user=user, signature_name=signature_name, notes=notes, signature_image=sig,
+                             signature_content_type=signature_content_type, photos=photo_copies(),
+                             completed_at=completed_at, request=request))
+    return done

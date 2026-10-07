@@ -20,6 +20,7 @@ from . import services
 from .models import CargoParcel, ParcelStage, Shipment, ShipmentDocument, ShipmentEvent, ShipmentStatus
 from .serializers import (
     DocumentSerializer,
+    MarkLostSerializer,
     ParcelSerializer,
     ParcelsSerializer,
     ParcelUpdateSerializer,
@@ -54,7 +55,7 @@ class ParcelFilter(django_filters.FilterSet):
 @extend_schema(tags=["shipping"])
 class ParcelViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.UpdateModelMixin,
                     viewsets.GenericViewSet):
-    """Goods of international orders at the consolidation warehouse (Waiting to Receive / Ready for Shipment)."""
+    """Goods of international orders at the consolidation warehouse (Waiting to Receive / Ready for Shipment / Lost)."""
 
     module = Module.SHIPPING
     permission_classes = [HasModulePermission]
@@ -96,6 +97,15 @@ class ParcelViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Upd
         s.is_valid(raise_exception=True)
         parcel = run(services.receive_parcel, self.get_object(), user=request.user, request=request,
                      **s.validated_data)
+        return self._respond(parcel)
+
+    @extend_schema(request=MarkLostSerializer)
+    @action(detail=True, methods=["post"])
+    def lost(self, request, pk=None):
+        s = MarkLostSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        parcel = run(services.mark_lost, self.get_object(), user=request.user, request=request,
+                     reason=s.validated_data["reason"])
         return self._respond(parcel)
 
 
@@ -254,6 +264,7 @@ class ShipmentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.C
         parcels = CargoParcel.objects.aggregate(
             ready=Count("id", filter=Q(stage=ParcelStage.READY)),
             waiting=Count("id", filter=Q(stage=ParcelStage.WAITING)),
+            lost=Count("id", filter=Q(stage=ParcelStage.LOST)),
         )
         return Response({**shipments, **parcels})
 

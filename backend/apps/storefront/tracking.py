@@ -27,7 +27,9 @@ STEPS = {
         ("delivered", "Delivered", {P.DELIVERED}),
     ],
     OrderType.INTERNATIONAL: [
-        ("placed", "Order placed", {I.PENDING_PAYMENT, I.ISSUE_PENDING_PAYMENT}),
+        # "Deliver for Me" orders start at Waiting to Receive (Agiza-sourced ones reach it later, after
+        # the placed date, so it never moves their "placed" date).
+        ("placed", "Order placed", {I.PENDING_PAYMENT, I.ISSUE_PENDING_PAYMENT, I.WAITING_TO_RECEIVE}),
         ("payment", "Payment confirmed", {PAYMENT}),
         ("processing", "Processing with supplier", {I.SUPPLIER_CONFIRMED, I.PAID_SUPPLIER, I.IN_PRODUCTION}),
         ("shipped_from_origin", "Shipped from origin", {I.SENT_TO_CONSOLIDATION}),
@@ -52,6 +54,18 @@ STEPS = {
         ("completed", "Completed", {Q.COMPLETED, Q.MAINTENANCE_REQUIRED}),
     ],
 }
+
+
+# "Deliver for Me": the customer bought the goods, so there's no supplier step — we wait for the parcel.
+DELIVER_FOR_ME_LABELS = {"processing": "Waiting for your parcel at our warehouse",
+                         "shipped_from_origin": "Received at our warehouse"}
+
+
+def _labels(order) -> dict:
+    if order.order_type != OrderType.INTERNATIONAL:
+        return {}
+    details = getattr(order, "international", None)
+    return DELIVER_FOR_ME_LABELS if details and details.service_type == "deliver_for_me" else {}
 
 
 def _payment_date(order):
@@ -79,9 +93,10 @@ def timeline(order) -> dict:
         reached[PAYMENT] = paid_at
 
     steps = []
+    labels = _labels(order)
     for key, label, statuses in STEPS[OrderType(order.order_type)]:
         dates = [reached[s] for s in statuses if s in reached]
-        steps.append({"key": key, "label": label, "at": min(dates) if dates else None})
+        steps.append({"key": key, "label": labels.get(key, label), "at": min(dates) if dates else None})
     # A later step having happened means earlier progress steps are done too (a status may be skipped).
     # Payment is the exception: it is completed only by real payments (pay-later orders ship unpaid).
     last_done = max((i for i, s in enumerate(steps) if s["at"] and s["key"] != "payment"), default=-1)

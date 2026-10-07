@@ -170,3 +170,40 @@ def test_store_settings_and_delivery_estimates(ecom, client_for):
     assert (est["min_days"], est["max_days"]) == (7 + 2 + 3, 12 + 4 + 5)
     assert ecom.get(f"{C}/delivery-estimate/?origin_country={china.id}&method=sea").json()["available"] is False
     assert StockItem.objects.count() == 0
+
+
+def _set_access(level, **modules):
+    from apps.accounts.models import RolePermission
+
+    for module, access in modules.items():
+        RolePermission.objects.update_or_create(staff_level=level, module=module, defaults={"access": access})
+
+
+def test_sliders_managed_through_settings_or_ecommerce(client_for):
+    # Settings manage alone (no e-commerce access) manages sliders end to end.
+    _set_access(StaffLevel.SALES, ecommerce="none", settings="manage")
+    settings_admin = client_for(StaffLevel.SALES)
+    made = settings_admin.post(f"{C}/sliders/", {"title": "Eid deals", "sort_order": 1}, format="json")
+    assert made.status_code == 201, made.json()
+    sid = made.json()["id"]
+    img = settings_admin.post(f"{C}/sliders/{sid}/image/",
+                              {"file": SimpleUploadedFile("b.png", PNG, content_type="image/png")}, format="multipart")
+    assert img.status_code == 200 and img.json()["has_image"] is True
+    assert settings_admin.patch(f"{C}/sliders/{sid}/", {"is_active": False}, format="json").status_code == 200
+    assert [s["title"] for s in settings_admin.get(f"{C}/sliders/").json()] == ["Eid deals"]
+    # The grant is limited to sliders.
+    assert settings_admin.post(f"{C}/categories/", {"name": "Toys"}, format="json").status_code == 403
+
+    # E-commerce access still works on its own.
+    _set_access(StaffLevel.FINANCE, ecommerce="manage", settings="none")
+    assert client_for(StaffLevel.FINANCE).delete(f"{C}/sliders/{sid}/").status_code == 204
+
+    # Settings view only reads; no related module → no access; drivers never.
+    _set_access(StaffLevel.DATA_ENTRY, ecommerce="none", settings="view")
+    viewer = client_for(StaffLevel.DATA_ENTRY)
+    assert viewer.get(f"{C}/sliders/").status_code == 200
+    assert viewer.post(f"{C}/sliders/", {"title": "x"}, format="json").status_code == 403
+    _set_access(StaffLevel.PROCUREMENT, ecommerce="none", settings="none", orders="none", warehouse="none")
+    assert client_for(StaffLevel.PROCUREMENT).get(f"{C}/sliders/").status_code == 403
+    _set_access(StaffLevel.DRIVER, settings="manage")
+    assert client_for(StaffLevel.DRIVER).get(f"{C}/sliders/").status_code == 403

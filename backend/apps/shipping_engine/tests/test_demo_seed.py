@@ -70,7 +70,7 @@ def test_full_demo_set_including_orders_loads_and_flushes(make_user):
     grace = Order.objects.get(item_details__startswith="Home Appliances - 2x")
     assert grace.status == "clearance" and grace.cargo.shipment.status == "clearance"
     assert list(OrderStatusHistory.objects.filter(order=grace).values_list("to_status", flat=True)) == [
-        "pending_payment", "supplier_confirmed", "paid_supplier", "sent_to_consolidation",
+        "pending_payment", "supplier_confirmed", "paid_supplier", "waiting_to_receive", "sent_to_consolidation",
         "shipping_to_destination", "clearance"]
     assert ProcurementOrder.objects.filter(status="received_at_cargo").exists()
     assert CargoParcel.objects.filter(stage="waiting").count() >= 5

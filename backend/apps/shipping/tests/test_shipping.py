@@ -4,10 +4,10 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.accounts.constants import StaffLevel
 from apps.locations.models import Country
-from apps.orders.models import OrderStatusHistory
+from apps.orders.models import Order, OrderStatusHistory
 from apps.orders.tests import flows
 from apps.procurement import services as procurement
-from apps.procurement.models import Supplier
+from apps.procurement.models import ProcurementOrder, Supplier
 from apps.shipping.models import CargoParcel
 from apps.shipping_engine.models import Carrier, ShippingMethod
 
@@ -30,7 +30,7 @@ def sea(db):
 
 @pytest.fixture
 def paid_order(ops, make_intl):
-    """An order whose supplier has been paid: goods are Waiting to Receive."""
+    """An order whose supplier has been paid and shipped: goods are Waiting to Receive."""
 
     def _make(iso="CN", **kw):
         order = make_intl(iso=iso, paid="2500000", **kw)
@@ -38,6 +38,7 @@ def paid_order(ops, make_intl):
                                                      defaults={"country": Country.objects.get(iso2=iso)})
         proc = procurement.select_supplier(order.procurement, supplier=supplier, user=ops.user, item_cost=100)
         procurement.mark_paid(proc, user=ops.user)
+        procurement.mark_shipped(proc, user=ops.user, supplier_tracking_number=f"TRK-{order.reference}")
         return order
 
     return _make
@@ -68,16 +69,76 @@ def test_receiving_goods_moves_order_to_consolidation(ops, paid_order):
     assert ops.get(f"{PARCELS}/?stage=ready").json()["count"] == 1
 
 
-def test_client_purchased_goods_received_before_payment_wait_for_confirmation(ops, make_intl):
-    order = make_intl(iso="AE", service="deliver_for_me")
+def test_deliver_for_me_orders_start_waiting_to_receive_and_ship_once_paid(ops, make_intl, carrier, sea, dar):
+    order = make_intl(iso="AE", service="deliver_for_me", tracking_number="DXB-9")
+    assert order.status == "waiting_to_receive" and order.department == "shipping"
+    assert not ProcurementOrder.objects.filter(order=order).exists()
+    waiting = ops.get(f"{PARCELS}/?stage=waiting").json()["results"]
+    assert [(p["order"]["reference"], p["supplier_tracking_number"]) for p in waiting] == [(order.reference, "DXB-9")]
+    assert "payment-pending" in waiting[0]["exception_flags"]
+    # Unpaid goods can be received...
     body = receive(ops, order).json()
-    assert body["stage"] == "ready" and body["order"]["status"] == "pending_payment"
+    assert body["stage"] == "ready" and body["order"]["status"] == "sent_to_consolidation"
     assert "payment-pending" in body["exception_flags"]
-    # Once the order is confirmed, it moves on by itself (goods are already at cargo).
+    # ...but can't be loaded into a shipment until the customer pays.
+    res = create(ops, [order], carrier, sea, dar)
+    assert res.status_code == 409 and "payment" in res.json()["error"]["message"]
     ops.post(f"/api/orders/international/{order.id}/payments/", {"amount": "2500000", "method": "cash"}, format="json")
-    res = ops.post(f"/api/orders/international/{order.id}/transition/", {"status": "supplier_confirmed"},
-                   format="json")
-    assert res.json()["status"] == "sent_to_consolidation"
+    assert "payment-pending" not in ops.get(f"{PARCELS}/{body['id']}/").json()["exception_flags"]
+    assert create(ops, [order], carrier, sea, dar).status_code == 201
+    statuses = list(OrderStatusHistory.objects.filter(order=order).values_list("to_status", flat=True))
+    assert statuses == ["waiting_to_receive", "sent_to_consolidation"]
+
+
+def test_deliver_for_me_order_can_be_cancelled_while_waiting(ops, make_intl):
+    order = make_intl(iso="AE", service="deliver_for_me")
+    res = ops.post(f"/api/orders/international/{order.id}/transition/", {"status": "cancelled"}, format="json")
+    assert res.status_code == 200, res.json()
+    assert CargoParcel.objects.get(order=order).stage == "cancelled"
+
+
+def test_marking_a_waiting_parcel_lost(ops, client_for, paid_order, make_intl):
+    order = paid_order()
+    parcel = CargoParcel.objects.get(order=order)
+    url = f"{PARCELS}/{parcel.id}/lost/"
+    assert client_for(StaffLevel.SALES).post(url, {"reason": "x"}, format="json").status_code == 403
+    assert ops.post(url, {"reason": "  "}, format="json").status_code == 400
+    res = ops.post(url, {"reason": "Courier lost the box"}, format="json")
+    assert res.status_code == 200, res.json()
+    body = res.json()
+    assert body["stage"] == "lost" and body["lost_reason"] == "Courier lost the box" and body["lost_at"]
+    assert body["order"]["status"] == "waiting_to_receive"  # the order keeps its status, with a note
+    note = OrderStatusHistory.objects.filter(order=order).last()
+    assert note.from_status == note.to_status == "waiting_to_receive" and "Courier lost the box" in note.note
+    proc = ProcurementOrder.objects.get(order=order)
+    assert proc.exception_flag == "parcel_lost" and proc.history.last().note == "Parcel lost: Courier lost the box"
+    # It leaves the waiting list and shows under Lost.
+    assert ops.get(f"{PARCELS}/?stage=waiting").json()["count"] == 0
+    assert ops.get(f"{PARCELS}/?stage=lost").json()["count"] == 1
+    stats = ops.get(f"{SHIP}/stats/").json()
+    assert stats["waiting"] == 0 and stats["lost"] == 1
+    assert ops.post(url, {"reason": "again"}, format="json").status_code == 409
+    # The supplier is cancelled and a new one ships: the same parcel is expected again.
+    procurement.cancel_supplier(proc, user=ops.user, reason="Lost in transit")
+    parcel.refresh_from_db()
+    assert parcel.stage == "cancelled"  # no longer listed as Lost: these goods won't come
+    assert ops.get(f"{PARCELS}/?stage=lost").json()["count"] == 0
+    proc.refresh_from_db()
+    procurement.select_supplier(proc, supplier=proc.supplier, user=ops.user)
+    procurement.mark_paid(proc, user=ops.user)
+    procurement.mark_shipped(proc, user=ops.user, supplier_tracking_number="NEW-1")
+    parcel.refresh_from_db()
+    assert parcel.stage == "waiting" and parcel.supplier_tracking_number == "NEW-1"
+    assert parcel.lost_at is None and parcel.lost_reason == ""  # the old loss doesn't follow the new goods
+    assert receive(ops, order).json()["order"]["status"] == "sent_to_consolidation"
+
+
+def test_a_lost_parcel_that_turns_up_can_still_be_received(ops, make_intl):
+    order = make_intl(iso="AE", service="deliver_for_me")
+    parcel = CargoParcel.objects.get(order=order)
+    ops.post(f"{PARCELS}/{parcel.id}/lost/", {"reason": "Not delivered by courier"}, format="json")
+    body = receive(ops, order).json()
+    assert body["stage"] == "ready" and body["order"]["status"] == "sent_to_consolidation"
 
 
 def test_create_shipment_validates_parcels(ops, paid_order, make_intl, carrier, sea, dar):
@@ -124,7 +185,6 @@ def test_milestones_move_orders_and_complete_creates_deliveries(ops, paid_order,
     order = paid_order()
     receive(ops, order)
     sid = create(ops, [order], carrier, sea, dar).json()["id"]
-    assert ops.post(f"{SHIP}/{sid}/transition/", {"status": "clearance"}, format="json").status_code == 409
     for step in flows.SHIPMENT_PATH:
         res = ops.post(f"{SHIP}/{sid}/transition/", {"status": step, "location": "Port"}, format="json")
         assert res.status_code == 200, (step, res.json())
@@ -202,3 +262,51 @@ def test_shipping_permissions(ops, client_for, paid_order, carrier, sea, dar):
     assert receive(sales, order).status_code == 403
     assert receive(client_for(StaffLevel.PROCUREMENT), order).status_code == 200  # shipping: edit
     assert client_for(StaffLevel.DRIVER).get(f"{SHIP}/").status_code == 403
+
+
+def test_shipment_status_can_jump_forward_applying_skipped_steps(ops, paid_order, carrier, sea, dar):
+    a, b = paid_order(), paid_order()
+    receive(ops, a)
+    receive(ops, b)
+    shipment = create(ops, [a, b], carrier, sea, dar).json()
+    sid = shipment["id"]
+    assert [t["value"] for t in shipment["allowed_transitions"]] == [
+        "booked", "loaded", "export_cleared", "shipping_to_destination", "clearance", "completed", "cancelled"]
+    # Created → Clearance in one go: departure and arrival recorded, orders walk every step.
+    res = ops.post(f"{SHIP}/{sid}/transition/", {"status": "clearance", "location": "Dar Port"}, format="json")
+    assert res.status_code == 200, res.json()
+    body = res.json()
+    assert body["status"] == "clearance" and body["departed_at"] and body["arrived_at"]
+    assert [t["value"] for t in body["allowed_transitions"]] == ["completed"]  # no going back, no cancelling
+    events = ops.get(f"{SHIP}/{sid}/events/").json()
+    assert [e["to_status"] for e in events if e["kind"] == "status"] == [
+        "created", "booked", "loaded", "export_cleared", "shipping_to_destination", "clearance"]
+    assert "also recorded" in events[-1]["description"] and events[-1]["location"] == "Dar Port"
+    assert [m["status"] for m in body["orders"][0]["timeline"]] == ["completed"] * 6 + ["pending"]
+    for order in (a, b):
+        statuses = list(OrderStatusHistory.objects.filter(order=order).values_list("to_status", flat=True))
+        assert statuses[-3:] == ["sent_to_consolidation", "shipping_to_destination", "clearance"]
+    # Backwards and late cancellation are refused.
+    for status in ("loaded", "created", "cancelled", "clearance"):
+        assert ops.post(f"{SHIP}/{sid}/transition/", {"status": status}, format="json").status_code == 409, status
+    res = ops.post(f"{SHIP}/{sid}/transition/", {"status": "completed"}, format="json")
+    assert res.json()["status"] == "completed" and res.json()["allowed_transitions"] == []
+    for order in (a, b):
+        assert Order.objects.get(pk=order.pk).status == "ready_for_collection"
+        assert CargoParcel.objects.get(order=order).stage == "arrived"
+        assert ops.get(f"/api/deliveries/?order={order.id}").json()["count"] == 1
+
+
+def test_shipment_can_jump_straight_to_ready_for_collection(ops, paid_order, carrier, sea, dar):
+    order = paid_order()
+    receive(ops, order)
+    sid = create(ops, [order], carrier, sea, dar).json()["id"]
+    ops.post(f"{SHIP}/{sid}/transition/", {"status": "loaded"}, format="json")
+    assert ops.post(f"{SHIP}/{sid}/transition/", {"status": "cancelled"}, format="json").status_code == 409
+    res = ops.post(f"{SHIP}/{sid}/transition/", {"status": "completed"}, format="json")
+    assert res.status_code == 200, res.json()
+    order.refresh_from_db()
+    assert order.status == "ready_for_collection" and order.department == "delivery"
+    statuses = list(OrderStatusHistory.objects.filter(order=order).values_list("to_status", flat=True))
+    assert statuses[-4:] == ["sent_to_consolidation", "shipping_to_destination", "clearance", "ready_for_collection"]
+    assert ops.get(f"/api/deliveries/?order={order.id}").json()["results"][0]["status"] == "pending"

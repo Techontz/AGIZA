@@ -6,9 +6,9 @@ quote into an international order, which the customer then tracks and pays.
 """
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from drf_spectacular.types import OpenApiTypes
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
@@ -17,15 +17,18 @@ from apps.chat import services as chat
 from apps.chat.models import Conversation, Message
 from apps.core.audit import record_audit
 from apps.core.pagination import StandardPagination
+from apps.core.uploads import IMAGE_TYPES, file_response, validate_upload
 from apps.core.workflow import run
 from apps.locations.models import Country
 from apps.quotes import services as quotes
-from apps.core.uploads import IMAGE_TYPES, file_response, validate_upload
 from apps.quotes.models import QuoteAttachment, QuoteRequest, QuoteStatusHistory, ServiceType
 from apps.tasks import services as tasks
 
 from ..serializers import ChatSendSerializer, QuoteCreateSerializer, QuoteRequestSerializer, ReplySerializer
 from .base import CustomerAPIView, WriteThrottleMixin
+
+# Photos and (multi-item quotations) each item's photos, order and origin, as the app shows them.
+QUOTE_PREFETCH = ("attachments", "items__attachments", "items__created_order", "items__origin_country")
 
 REQUEST_MARKER = {"buy_for_me": "[Buy for me]", "deliver_for_me": "[Deliver for me]",
                   "local_delivery": "[Local delivery]"}
@@ -65,7 +68,7 @@ def _description(data: dict) -> str:
 @extend_schema(tags=["app: requests"], request=QuoteCreateSerializer, responses=QuoteRequestSerializer)
 class QuoteListView(CustomerAPIView):
     def get(self, request):
-        qs = QuoteRequest.objects.filter(customer=self.customer).select_related("created_order").prefetch_related("attachments")
+        qs = QuoteRequest.objects.filter(customer=self.customer).select_related("created_order").prefetch_related(*QUOTE_PREFETCH)
         paginator = StandardPagination()
         page = paginator.paginate_queryset(qs, request, view=self)
         return paginator.get_paginated_response(QuoteRequestSerializer(page, many=True, context={"request": request}).data)
@@ -102,8 +105,9 @@ class QuoteListView(CustomerAPIView):
 
 class _QuoteView(CustomerAPIView):
     def get_quote(self, pk: int) -> QuoteRequest:
-        return get_object_or_404(QuoteRequest.objects.filter(customer=self.customer).select_related("created_order").prefetch_related("attachments"),
-                                 pk=pk)
+        quotes = (QuoteRequest.objects.filter(customer=self.customer)
+                  .select_related("created_order").prefetch_related(*QUOTE_PREFETCH))
+        return get_object_or_404(quotes, pk=pk)
 
 
 MAX_REQUEST_PHOTOS = 5

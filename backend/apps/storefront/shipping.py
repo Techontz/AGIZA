@@ -16,6 +16,11 @@ Imported items (shipped from outside the store's country) travel in two legs, ea
 by the Shipping Engine: `import_options` from the origin country to the store's city (the
 hub: air, sea…), then `delivery_options` from the hub to the customer, together with the
 local items. The customer chooses a method for each leg.
+
+When no method can be priced for the address and the engine needs a manual quote (status
+manual_quote: the shipping profile, the rule or the no-rule fallback says so; never "blocked"),
+those options are flagged `manual_quote`: the customer may still order, and staff set the
+delivery cost afterwards.
 """
 from __future__ import annotations
 
@@ -38,6 +43,7 @@ UNAVAILABLE_MESSAGES = {
     "blocked": "Not available for these items.",
     "no_rule": "Not available for this address.",
 }
+MANUAL_QUOTE_MESSAGE = "Delivery cost to be confirmed by AGIZA. Place the order now and pay once AGIZA sets it."
 
 
 @dataclass
@@ -223,7 +229,18 @@ def delivery_options(lines: list[Line], destination: City, *, currency: str) -> 
         logger.error("Delivery options unavailable: %s", exc.message)
         return []
     # Products limit the methods of the leg they travel on: imported items' methods are for the import leg.
-    return _price_options(groups, candidate_methods(local, with_local=True), destination, currency)
+    options = _price_options(groups, candidate_methods(local, with_local=True), destination, currency)
+    # A manual quote is offered only when nothing can be priced for the address.
+    return _offer_manual(options, allow=not any(o["available"] for o in options))
+
+
+def _offer_manual(options: list[dict], *, allow: bool) -> list[dict]:
+    """Keep (allow) or withdraw the "cost to be confirmed by AGIZA" offer on manual-quote options."""
+    if not allow:
+        for option in options:
+            if option["manual_quote"]:
+                option.update(manual_quote=False, message=UNAVAILABLE_MESSAGES["manual_quote"])
+    return options
 
 
 def import_options(lines: list[Line], *, currency: str) -> list[dict]:
@@ -240,7 +257,8 @@ def import_options(lines: list[Line], *, currency: str) -> list[dict]:
     except RateCalculationError as exc:
         logger.error("Import options unavailable: %s", exc.message)
         return []
-    options = _price_options(groups, candidate_methods(imported), hub, currency, skip_unrouted=True)
+    options = _offer_manual(_price_options(groups, candidate_methods(imported), hub, currency, skip_unrouted=True),
+                            allow=False)  # the import leg is always priced at checkout
     for option in options:
         option["shipments"] = [{**sh, "label": sh["label"].replace("Imported from", "From")} for sh in option["shipments"]]
     return options
@@ -255,11 +273,14 @@ def _price_options(groups: list[_Group], methods: list[ShippingMethod], destinat
         option = {"method_id": method.pk, "code": method.code, "name": method.name, "category": method.category,
                   "description": method.description, "available": False, "cost": None, "currency": currency,
                   "estimated_delivery": method.estimated_delivery or None, "carrier": None, "message": "",
-                  "eta_min_days": None, "eta_max_days": None, "shipments": []}
-        total, rule_ids, carriers, shipments = Decimal("0"), [], set(), []
+                  "eta_min_days": None, "eta_max_days": None, "shipments": [], "manual_quote": False}
+        total, rule_ids, carriers, shipments, manual = Decimal("0"), [], set(), [], False
         try:
             for group in groups:
                 result = _price_group(calculator, method, group, destination)
+                if result["status"] == "manual_quote":
+                    manual = True  # the other shipments must still be deliverable with this method
+                    continue
                 if result["status"] != "priced":
                     raise RateCalculationError(UNAVAILABLE_MESSAGES.get(result["status"], result["message"]),
                                                code=f"unpriced:{result['status']}")
@@ -282,6 +303,10 @@ def _price_options(groups: list[_Group], methods: list[ShippingMethod], destinat
                 option["message"] = "Delivery pricing is being updated. Please try again later."
             options.append(option)
             continue
+        if manual:  # orderable, but the whole delivery cost is set by staff afterwards
+            option.update(manual_quote=True, message=MANUAL_QUOTE_MESSAGE)
+            options.append(option)
+            continue
         rules = list(ShippingRule.objects.filter(pk__in=rule_ids).values_list("eta_min_days", "eta_max_days"))
         mins = [r[0] for r in rules if r[0] is not None]
         maxes = [r[1] for r in rules if r[1] is not None]
@@ -291,7 +316,8 @@ def _price_options(groups: list[_Group], methods: list[ShippingMethod], destinat
                       estimated_delivery=eta if eta != "—" else option["estimated_delivery"], shipments=shipments,
                       eta_min_days=eta_min, eta_max_days=eta_max)
         options.append(option)
-    options.sort(key=lambda o: (not o["available"], o["cost"] if o["cost"] is not None else 0, o["name"]))
+    options.sort(key=lambda o: (not o["available"], not o["manual_quote"], o["cost"] if o["cost"] is not None else 0,
+                                o["name"]))
     return options
 
 

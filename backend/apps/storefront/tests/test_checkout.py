@@ -155,14 +155,15 @@ def test_heavier_carts_are_priced_per_kg(app, shop, home):
     assert body["shipping_fee"] == "6400.00"
 
 
-def test_destinations_needing_a_manual_quote_cannot_check_out(app, shop, account):
+def test_destinations_needing_a_manual_quote_check_out_with_the_cost_to_be_confirmed(app, shop, account):
     mwanza = Address.objects.create(customer=account.customer, line1="Rock City Mall", city=shop.mwanza)
     add(app, shop.variant)
     body = app.post(f"{APP}/checkout/preview/", {"address": mwanza.pk}, format="json").json()
     bus = next(o for o in body["shipping_options"] if o["code"] == "BUS")
-    assert bus["available"] is False and "custom quote" in bus["message"]
-    assert body["can_place_order"] is False and body["total"] is None
-    assert place(app, mwanza, shop.bus).status_code == 409
+    assert bus["available"] is False and bus["manual_quote"] is True and "confirmed by AGIZA" in bus["message"]
+    assert body["selected_shipping_method"] == shop.bus.pk and body["delivery_fee_pending"] is True
+    assert body["can_place_order"] is True and body["total"] == "850000.00" and body["shipping_fee"] is None
+    assert place(app, mwanza, shop.bus).status_code == 201  # more in test_manual_delivery_and_requests.py
 
 
 def test_place_order_creates_app_order_reserves_stock_and_clears_cart(app, shop, home, client_for):

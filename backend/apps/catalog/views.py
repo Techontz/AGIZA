@@ -13,8 +13,8 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.constants import Module
-from apps.accounts.permissions import HasModulePermission
+from apps.accounts.constants import Module, StaffLevel
+from apps.accounts.permissions import HasModulePermission, has_access
 from apps.core.audit import AuditedViewSetMixin, record_audit
 from apps.core.exceptions import ConflictError
 from apps.core.uploads import IMAGE_TYPES, file_response, validate_upload
@@ -101,10 +101,22 @@ class BrandViewSet(CatalogViewSet):
         return Response(BrandSerializer(self.get_queryset().get(pk=brand.pk)).data)
 
 
+class SliderPermission(HasModulePermission):
+    """Sliders are managed from Settings too: Settings access grants the same level as E-commerce access."""
+
+    def has_permission(self, request, view) -> bool:
+        if super().has_permission(request, view):
+            return True
+        user = request.user
+        return bool(user and user.is_authenticated and user.staff_level != StaffLevel.DRIVER
+                    and has_access(user, Module.SETTINGS, self.required_access(request, view)))
+
+
 @extend_schema(tags=["catalog"])
 class MobileSliderViewSet(CatalogViewSet):
-    """Home-screen banners of the customer app."""
+    """Home-screen banners of the customer app (managed under Settings or E-commerce)."""
 
+    permission_classes = [SliderPermission]
     serializer_class = MobileSliderSerializer
     filterset_fields = ["is_active"]
     search_fields = ["title"]

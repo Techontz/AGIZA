@@ -277,6 +277,11 @@ def test_chat_rooms_keep_a_conversation_per_quotation_apart_from_general_support
 
 
 def test_out_of_stock_product_request_tells_staff_which_product(app, shop):
+    from apps.inventory.models import StockItem
+
+    StockItem.objects.filter(variant=shop.variant).update(quantity=0)  # sold out, and "Pata Bei" allowed
+    shop.product.pata_bei = True
+    shop.product.save(update_fields=["pata_bei"])
     res = app.post(f"{APP}/requests/", {"request_type": "buy_for_me", "item_name": shop.product.name,
                                         "product": shop.product.pk, "details": "Black, 128GB"}, format="json")
     assert res.status_code == 201, res.json()

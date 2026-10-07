@@ -6,6 +6,7 @@ from apps.accounts.models import User
 from apps.catalog.models import ProductVariant
 from apps.locations.models import City, Country
 from apps.parties.models import Customer
+from apps.shipping_engine.models import ShippingMethod
 
 from .models import (
     Classification,
@@ -411,6 +412,7 @@ class ShopOrderSerializer(OrderSerializer):
             "import_fee": _dec(d.import_fee),
             "prepayment_required": d.prepayment_required,
             "payment_due_at": d.payment_due_at,
+            "delivery_fee_pending": d.delivery_fee_pending,
             "customs_fee": _dec(d.customs_fee),
             "customs_status": d.customs_status,
             "customs_charges": d.customs_charges or None,
@@ -457,6 +459,16 @@ class ShipSerializer(serializers.Serializer):
 
 class CancelSerializer(serializers.Serializer):
     reason = serializers.CharField()
+
+
+class DeliveryFeeSerializer(serializers.Serializer):
+    """Staff set the delivery cost of an order placed while it needed a manual quote."""
+
+    delivery_fee = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0"))
+    shipping_method = serializers.PrimaryKeyRelatedField(
+        queryset=ShippingMethod.objects.all(), required=False, allow_null=True, default=None)
+    estimated_delivery = serializers.CharField(max_length=60, required=False, allow_blank=True, default="")
+    note = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
 
 
 class ShopNotesSerializer(serializers.Serializer):

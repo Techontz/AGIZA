@@ -43,7 +43,7 @@ class ProcurementSerializer(serializers.ModelSerializer):
         fields = ["id", "order", "origin", "status", "status_display", "supplier", "supplier_order_number",
                   "supplier_tracking_number", "operator", "quantity", "unit_cost", "item_cost", "currency",
                   "payment_reference", "exception_flag", "exception_flag_display", "expected_at_cargo", "paid_at",
-                  "received_at", "notes", "actions", "created_at", "updated_at"]
+                  "shipped_at", "received_at", "notes", "actions", "created_at", "updated_at"]
 
     def get_order(self, obj) -> dict:
         o = obj.order
@@ -75,7 +75,8 @@ class ProcurementSerializer(serializers.ModelSerializer):
             "pending_sourcing": ["select_supplier"],
             "supplier_cancelled": ["select_supplier"],
             "supplier_selected": ["select_supplier", "mark_paid", "cancel_supplier"],
-            "paid": ["cancel_supplier"],
+            "paid": ["mark_shipped", "cancel_supplier"],
+            "supplier_shipped": ["cancel_supplier"],
         }.get(obj.status, [])
 
 
@@ -106,6 +107,13 @@ class MarkPaidSerializer(serializers.Serializer):
     payment_reference = serializers.CharField(max_length=80, required=False, allow_blank=True, default="")
     paid_at = serializers.DateTimeField(required=False)
     supplier_tracking_number = serializers.CharField(max_length=80, required=False, allow_blank=True)
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class MarkShippedSerializer(serializers.Serializer):
+    supplier_tracking_number = serializers.CharField(max_length=80)
+    shipped_at = serializers.DateTimeField(required=False)
+    expected_at_cargo = serializers.DateField(required=False, allow_null=True)
     note = serializers.CharField(required=False, allow_blank=True, default="")
 
 

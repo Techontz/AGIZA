@@ -17,3 +17,8 @@ CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"
 import tempfile  # noqa: E402
 
 MEDIA_ROOT = Path(tempfile.mkdtemp(prefix="agiza-test-media-"))  # noqa: F405
+
+# Several test runs on one machine at once (e.g. parallel work) each need their own test database,
+# or they flush and lock each other's tables: TEST_DB_NAME=test_agiza_a pytest ...
+if env("TEST_DB_NAME", default=""):  # noqa: F405
+    DATABASES["default"]["TEST"] = {**DATABASES["default"].get("TEST", {}), "NAME": env("TEST_DB_NAME")}  # noqa: F405

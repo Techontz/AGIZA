@@ -4,7 +4,8 @@ Procurement: sourcing the goods of international orders from suppliers.
 One ProcurementOrder follows each Agiza-sourced international order
 (Full Service, Local Purchase, Marketplace). Its status only changes through
 `apps.procurement.services`, which also moves the international order
-(Supplier Confirmed → Paid Supplier) and hands paid goods to Shipping.
+(Supplier Confirmed → Paid Supplier → Waiting to Receive) and hands shipped goods
+to Shipping.
 """
 from decimal import Decimal
 
@@ -47,6 +48,7 @@ class ProcurementStatus(models.TextChoices):
     PENDING_SOURCING = "pending_sourcing", "Pending Sourcing"
     SUPPLIER_SELECTED = "supplier_selected", "Supplier Selected"
     PAID = "paid", "Paid"
+    SUPPLIER_SHIPPED = "supplier_shipped", "Supplier Shipped"
     SUPPLIER_CANCELLED = "supplier_cancelled", "Supplier Canceled"
     RECEIVED_AT_CARGO = "received_at_cargo", "Received at Cargo"
     CANCELLED = "cancelled", "Cancelled"
@@ -57,6 +59,7 @@ class ExceptionFlag(models.TextChoices):
     SUPPLIER_DELAY = "supplier_delay", "Supplier Delay"
     QUALITY_CONCERN = "quality_concern", "Quality Concern"
     STOCK_UNAVAILABLE = "stock_unavailable", "Stock Unavailable"
+    PARCEL_LOST = "parcel_lost", "Parcel Lost"
 
 
 class ProcurementOrder(TimeStampedModel):
@@ -77,6 +80,7 @@ class ProcurementOrder(TimeStampedModel):
     exception_flag = models.CharField(max_length=20, choices=ExceptionFlag.choices, blank=True)
     expected_at_cargo = models.DateField(null=True, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
+    shipped_at = models.DateTimeField(null=True, blank=True, help_text="When the supplier shipped the goods")
     received_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
 

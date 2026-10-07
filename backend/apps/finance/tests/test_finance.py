@@ -146,3 +146,90 @@ def test_installment_plan_approval_and_allocation(ops, make_intl, client_for):
     assert ops.get(f"{F}/installment-plans/{plan['id']}/").json()["status"] == "completed"
     wallets = ops.get(f"{F}/wallets/").json()["results"]
     assert wallets[0]["total_due"] == "0.00"
+
+
+# --------------------------------------------------------------------------- #
+# Profit & Loss
+# --------------------------------------------------------------------------- #
+@pytest.fixture
+def pl_orders(ops, make_intl, buyer):
+    from apps.orders import services as order_services
+    from apps.orders.models import Order
+    from apps.parties.models import Customer
+
+    a = make_intl(total="2500000", item_cost=D("1800000"), shipping_cost=D("200000"))  # profit 500k
+    b = make_intl(total="1000000", item_cost=D("700000"), shipping_cost=D("100000"))
+    b.purchase_cost = D("900000")  # manual override → profit 0
+    b.save(update_fields=["purchase_cost"])
+    other = Customer.objects.create(full_name="Baraka Said", phone="+255712000077")
+    equip = order_services.create_order(
+        "equipment", customer=other, item_details="Solar inverter", user=ops.user, total_amount=D("400000"),
+        details={"service_type": "installation", "equipment": "Solar inverter"})
+    equip.shipping_cost = D("50000")
+    equip.save(update_fields=["shipping_cost"])
+    old = make_intl(total="300000", item_cost=D("100000"), shipping_cost=D("0"))
+    Order.objects.filter(pk=old.pk).update(created_at=timezone.now() - timedelta(days=60))
+    cancelled = make_intl(total="9999999")
+    Order.objects.filter(pk=cancelled.pk).update(status="cancelled")
+    unpriced = make_intl(total="1")
+    Order.objects.filter(pk=unpriced.pk).update(total_amount=None)
+    return {"a": a, "b": b, "equip": equip, "old": old, "other": other}
+
+
+def test_profit_loss_totals_breakdown_and_rows(ops, pl_orders):
+    body = ops.get(f"{F}/profit-loss/").json()
+    # a + b + equip + old; cancelled and unpriced orders are left out
+    assert body["totals"] == {"orders": 4, "revenue": "4200000.00", "purchase_cost": "2800000.00",
+                              "shipping_cost": "350000.00", "profit": "1050000.00", "margin": "25.0"}
+    by_type = {t["order_type"]: t for t in body["by_type"]}
+    assert by_type["equipment"]["profit"] == "350000.00" and by_type["equipment"]["orders"] == 1
+    assert by_type["international"]["revenue"] == "3800000.00" and by_type["international"]["profit"] == "700000.00"
+    assert body["count"] == 4 and body["page"] == 1
+    row = next(r for r in body["results"] if r["reference"] == pl_orders["b"].reference)
+    assert row["total"] == "1000000.00" and row["purchase_cost"] == "900000.00" and row["shipping_cost"] == "100000.00"
+    assert row["profit"] == "0.00" and row["margin"] == "0.0"
+    assert row["purchase_cost_set"] is True and row["shipping_cost_set"] is False
+    assert row["customer"]["full_name"] == "Fatuma Hassan" and row["order_type"] == "international"
+    equip = next(r for r in body["results"] if r["order_type"] == "equipment")
+    assert equip["purchase_cost"] == "0.00" and equip["profit"] == "350000.00" and equip["margin"] == "87.5"
+
+
+def test_profit_loss_filters(ops, pl_orders):
+    today = timezone.localdate()
+    recent = ops.get(f"{F}/profit-loss/?date_from={(today - timedelta(days=7)).isoformat()}"
+                     f"&date_to={today.isoformat()}").json()
+    assert recent["totals"]["orders"] == 3 and recent["totals"]["revenue"] == "3900000.00"
+    past = ops.get(f"{F}/profit-loss/?date_to={(today - timedelta(days=30)).isoformat()}").json()
+    assert [r["reference"] for r in past["results"]] == [pl_orders["old"].reference]
+    assert ops.get(f"{F}/profit-loss/?order_type=equipment").json()["totals"]["profit"] == "350000.00"
+    by_customer = ops.get(f"{F}/profit-loss/?customer={pl_orders['other'].id}").json()
+    assert by_customer["totals"]["orders"] == 1
+    searched = ops.get(f"{F}/profit-loss/?search={pl_orders['a'].reference}").json()
+    assert searched["count"] == 1 and searched["totals"]["profit"] == "500000.00"
+    empty = ops.get(f"{F}/profit-loss/?order_type=shop").json()
+    assert empty["totals"] == {"orders": 0, "revenue": "0.00", "purchase_cost": "0.00", "shipping_cost": "0.00",
+                               "profit": "0.00", "margin": None}
+    assert empty["by_type"] == [] and empty["results"] == []
+
+
+def test_profit_loss_csv_export(ops, pl_orders):
+    today = timezone.localdate().isoformat()
+    for url in (f"{F}/profit-loss/?format=csv&order_type=international&date_from=2020-01-01&date_to={today}",
+                f"{F}/profit-loss/export/?order_type=international&date_from=2020-01-01&date_to={today}"):
+        res = ops.get(url)
+        assert res.status_code == 200, res.content
+        assert res["Content-Type"].startswith("text/csv")
+        assert f'filename="profit-loss-2020-01-01-{today}.csv"' in res["Content-Disposition"]
+        lines = res.content.decode().strip().splitlines()
+        assert lines[0].startswith("Reference,Date,Customer")
+        assert len(lines) == 1 + 3 + 1  # header, 3 international orders, totals row
+        assert lines[-1].startswith("TOTAL,,3 orders") and ",700000.00," in lines[-1]
+    assert 'filename="profit-loss-all-' in ops.get(f"{F}/profit-loss/export/")["Content-Disposition"]
+
+
+def test_profit_loss_permissions(client_for, pl_orders):
+    assert client_for(StaffLevel.DATA_ENTRY).get(f"{F}/profit-loss/").status_code == 403  # finance: none
+    assert client_for(StaffLevel.DATA_ENTRY).get(f"{F}/profit-loss/export/").status_code == 403
+    assert client_for(StaffLevel.DATA_ENTRY).get(f"{F}/profit-loss/?format=csv").status_code == 403
+    assert client_for(StaffLevel.SALES).get(f"{F}/profit-loss/").status_code == 200  # finance: view
+    assert client_for(StaffLevel.FINANCE).get(f"{F}/profit-loss/export/").status_code == 200

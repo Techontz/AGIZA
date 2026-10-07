@@ -11,7 +11,7 @@ from apps.core.workflow import WorkflowError
 from apps.orders import services as order_services
 from apps.orders.workflows import EquipmentStatus, ExpressStatus, InternationalStatus, OrderType
 
-from .models import QUOTE_TRANSITIONS, QuoteRequest, QuoteStatus, QuoteStatusHistory, ServiceType
+from .models import QUOTE_TRANSITIONS, QuoteItem, QuoteRequest, QuoteStatus, QuoteStatusHistory, ServiceType
 
 # Service type -> (order type, status of the new order). The customer has
 # already accepted the price, so the order starts past its quoting stage.
@@ -42,9 +42,42 @@ def _move(quote: QuoteRequest, to_status: str, user, note: str = "", request=Non
     return quote
 
 
+def _price_items(quote: QuoteRequest, prices: list[dict] | None) -> Decimal:
+    """Price every item of a multi-item quotation; returns the total (the quotation's amount)."""
+    items = {it.id: it for it in QuoteItem.objects.select_for_update().filter(quote=quote)}
+    given = {p["id"]: p for p in prices or []}
+    if set(given) - set(items):
+        raise WorkflowError("Some priced items don't belong to this quotation.", field="items")
+    missing = [it.name for it in items.values() if it.id not in given]
+    if missing:
+        raise WorkflowError(f"Price every item: {', '.join(missing)}.", field="items")
+    total = Decimal("0")
+    for item_id, item in items.items():
+        p = given[item_id]
+        unit_price, amount = p.get("unit_price"), p.get("amount")
+        if not amount:
+            if not unit_price or unit_price <= 0:
+                raise WorkflowError(f"Enter a price for {item.name}.", field="items")
+            amount = unit_price * item.quantity
+        if amount <= 0:
+            raise WorkflowError(f"The price of {item.name} must be greater than zero.", field="items")
+        item.unit_price, item.amount, item.price_notes = unit_price or None, amount, p.get("price_notes", "")
+        item.save(update_fields=["unit_price", "amount", "price_notes", "updated_at"])
+        total += amount
+    return total
+
+
 @transaction.atomic
-def respond(quote: QuoteRequest, *, amount: Decimal, estimated_delivery, notes: str, user, request=None) -> QuoteRequest:
+def respond(quote: QuoteRequest, *, amount: Decimal | None, estimated_delivery, notes: str, user, request=None,
+            item_prices: list[dict] | None = None) -> QuoteRequest:
+    """Send the quotation. Multi-item quotations are priced per item (`item_prices`); their total is the amount."""
     quote = _lock(quote)
+    if QuoteStatus.WAITING_REPLY not in QUOTE_TRANSITIONS[QuoteStatus(quote.status)]:
+        _move(quote, QuoteStatus.WAITING_REPLY, user)  # raises the usual "Cannot move …" conflict
+    if quote.items.exists():
+        amount = _price_items(quote, item_prices)
+    elif item_prices:
+        raise WorkflowError("This quotation has no item lines; enter the quoted amount.", field="items")
     if amount is None or amount <= 0:
         raise WorkflowError("Quoted amount must be greater than zero.", field="quoted_amount")
     quote.quoted_amount = amount
@@ -82,38 +115,7 @@ def cancel(quote: QuoteRequest, *, user, note: str = "", request=None) -> QuoteR
     return quote
 
 
-@transaction.atomic
-def approve(quote: QuoteRequest, *, user, order_details: dict, request=None):
-    """Approve an answered quotation and create its order — all or nothing."""
-    quote = _lock(quote)
-    if quote.status != QuoteStatus.ANSWERED:
-        raise WorkflowError("Only quotations the customer has accepted (Answered) can be approved.", conflict=True)
-    order_type, status = APPROVAL_TARGET[ServiceType(quote.service_type)]
-    item_details = order_details.pop("item_details", "") or quote.description[:255]
-    order_fields = {}
-    if "installment_plan" in order_details:
-        order_fields["installment_plan"] = order_details.pop("installment_plan")
-    order = order_services.create_order(
-        order_type,
-        customer=quote.customer,
-        item_details=item_details,
-        details=order_details,
-        user=user,
-        status=status,
-        note=f"Created from quotation {quote.reference}",
-        request=request,
-        total_amount=quote.quoted_amount,
-        currency=quote.currency,
-        notes=quote.response_notes,
-        source_quote=quote,
-        **order_fields,
-    )
-    # The quotation's photos (the customer's and AGIZA's) travel with the order (same stored files).
-    from apps.orders.models import OrderAttachment
-
-    for photo in quote.attachments.all():
-        OrderAttachment.objects.create(order=order, file=photo.file.name, content_type=photo.content_type,
-                                       caption="AGIZA quotation photo" if photo.from_agiza else "Customer photo")
+def _estimate_delivery(order, quote: QuoteRequest, order_type: str):
     if order_type == OrderType.EXPRESS:
         details = order.express
         # An app request says "Package size: Medium": that's the size the customer selected.
@@ -131,8 +133,94 @@ def approve(quote: QuoteRequest, *, user, order_details: dict, request=None):
     elif order_type == OrderType.INTERNATIONAL and quote.estimated_delivery:
         order.international.estimated_delivery = quote.estimated_delivery
         order.international.save(update_fields=["estimated_delivery"])
+
+
+def _copy_photos(order, photos):
+    # The quotation's photos (the customer's and AGIZA's) travel with the order (same stored files).
+    from apps.orders.models import OrderAttachment
+
+    for photo in photos:
+        OrderAttachment.objects.create(order=order, file=photo.file.name, content_type=photo.content_type,
+                                       caption="AGIZA quotation photo" if photo.from_agiza else "Customer photo")
+
+
+def _item_order_details(item: QuoteItem, order_type: str, order_details: dict) -> dict:
+    """The shared approval details, adjusted for one item line."""
+    details = dict(order_details)
+    if order_type == OrderType.INTERNATIONAL:
+        if item.origin_country_id:
+            details["source_country"] = item.origin_country
+        if item.service:
+            details["service_type"] = item.service
+        if item.tracking_number:
+            details["tracking_number"] = item.tracking_number
+        if not details.get("source_country"):
+            raise WorkflowError(f"Choose the source origin for {item.name}.", field="source_country")
+    elif order_type == OrderType.EQUIPMENT:
+        details["equipment"] = item.name[:160]
+    return details
+
+
+def _item_notes(quote: QuoteRequest, item: QuoteItem) -> str:
+    parts = [
+        f"Item {item.position + 1} of quotation {quote.reference}: {item.label}",
+        f"Category: {item.category}" if item.category else "",
+        f"Link: {item.link}" if item.link else "",
+        item.notes,
+        f"Price: {item.price_notes}" if item.price_notes else "",
+        quote.response_notes,
+    ]
+    return "\n".join(p for p in parts if p)
+
+
+@transaction.atomic
+def approve_orders(quote: QuoteRequest, *, user, order_details: dict, request=None) -> list:
+    """Approve an answered quotation and create its order(s) — all or nothing.
+    A multi-item quotation becomes one order per item; the first one is linked as the quote's source order."""
+    quote = _lock(quote)
+    if quote.status != QuoteStatus.ANSWERED:
+        raise WorkflowError("Only quotations the customer has accepted (Answered) can be approved.", conflict=True)
+    order_type, status = APPROVAL_TARGET[ServiceType(quote.service_type)]
+    item_details = order_details.pop("item_details", "") or quote.description[:255]
+    order_fields = {}
+    if "installment_plan" in order_details:
+        order_fields["installment_plan"] = order_details.pop("installment_plan")
+    items = list(quote.items.select_related("origin_country").prefetch_related("attachments"))
+    photos = list(quote.attachments.all())
+    orders = []
+    if not items:
+        order = order_services.create_order(
+            order_type, customer=quote.customer, item_details=item_details, details=order_details, user=user,
+            status=status, note=f"Created from quotation {quote.reference}", request=request,
+            total_amount=quote.quoted_amount, currency=quote.currency, notes=quote.response_notes,
+            source_quote=quote, **order_fields,
+        )
+        _copy_photos(order, photos)
+        _estimate_delivery(order, quote, order_type)
+        orders.append(order)
+    else:
+        shared = [p for p in photos if not p.item_id]  # e.g. AGIZA's photos for the whole quotation
+        for i, item in enumerate(items):
+            order = order_services.create_order(
+                order_type, customer=quote.customer, item_details=item.label[:255],
+                details=_item_order_details(item, order_type, order_details), user=user, status=status,
+                note=f"Created from quotation {quote.reference} (item {i + 1} of {len(items)})", request=request,
+                total_amount=item.amount, currency=quote.currency, notes=_item_notes(quote, item),
+                source_quote=quote if i == 0 else None, **order_fields,
+            )
+            _copy_photos(order, [*item.attachments.all(), *shared])
+            _estimate_delivery(order, quote, order_type)
+            item.created_order = order
+            item.save(update_fields=["created_order", "updated_at"])
+            orders.append(order)
     quote.approved_by = user
     quote.approved_at = timezone.now()
-    _move(quote, QuoteStatus.APPROVED, user, f"Order {order.reference} created", request,
+    refs = ", ".join(o.reference for o in orders)
+    _move(quote, QuoteStatus.APPROVED, user, f"Order{'s' if len(orders) > 1 else ''} {refs} created", request,
           extra_fields=("approved_by", "approved_at"))
-    return order
+    return orders
+
+
+def approve(quote: QuoteRequest, *, user, order_details: dict, request=None):
+    """Approve an answered quotation; returns its (first) order. See `approve_orders`."""
+    return approve_orders(quote, user=user, order_details=order_details, request=request)[0]

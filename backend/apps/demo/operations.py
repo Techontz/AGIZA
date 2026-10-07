@@ -252,7 +252,7 @@ def seed(stdout=None) -> Seeder:
             track(orders.record_payment(order, amount=due, method="bank_transfer", user=actor,
                                         reference=f"BNK-{order.reference}"))
 
-    def buy(order, supplier_name, tracking="", flag=""):
+    def buy(order, supplier_name, tracking="", flag="", shipped=True):
         proc = order.procurement
         procurement.select_supplier(proc, supplier=suppliers[supplier_name], user=actor,
                                     item_cost=order.international.item_cost or (order.total_amount * D("0.7")),
@@ -261,8 +261,10 @@ def seed(stdout=None) -> Seeder:
             ProcurementOrder.objects.filter(pk=proc.pk).update(exception_flag=flag)
         proc.refresh_from_db()
         order.refresh_from_db()
-        procurement.mark_paid(proc, user=actor, payment_reference=f"TT-{order.reference}",
-                              supplier_tracking_number=tracking)
+        procurement.mark_paid(proc, user=actor, payment_reference=f"TT-{order.reference}")
+        if shipped:  # the parcel is expected at cargo once the supplier ships (tracking number mandatory)
+            proc.refresh_from_db()
+            procurement.mark_shipped(proc, user=actor, supplier_tracking_number=tracking or f"TRK-{order.reference}")
         return proc
 
     def receive(order, shipper, method, weight, cbm, packages=1, destination=None, estimated=False, cargo_type=None):
@@ -306,7 +308,8 @@ def seed(stdout=None) -> Seeder:
     # ---- The design's international orders ---------------------------------
     for (cust, items, _iso, target, *_rest) in INTERNATIONAL:
         order = Order.objects.filter(order_type="international", item_details=items).first()
-        if order is None or order.status not in ("pending_payment", "issue_pending_payment"):
+        # "Deliver for Me" orders start at Waiting to Receive.
+        if order is None or order.status not in ("pending_payment", "issue_pending_payment", "waiting_to_receive"):
             s.existing += 1
             continue
         if order.international.service_type != "deliver_for_me" and \
@@ -328,13 +331,12 @@ def seed(stdout=None) -> Seeder:
             continue
         if order.international.service_type == "deliver_for_me":
             pay_in_full(order)
-            orders.transition(order, "supplier_confirmed", actor, "Customer confirmed the supplier order")
         else:
             if target == "paid_supplier":  # installment plan approved: pay the supplier now
                 order.refresh_from_db()
             else:
                 pay_in_full(order)
-            buy(order, supplier, tracking)
+            buy(order, supplier, tracking, shipped=target not in ("paid_supplier", "in_production"))
         order.refresh_from_db()
         if target == "in_production":
             orders.transition(order, "in_production", actor, "Supplier started production")
@@ -376,7 +378,6 @@ def seed(stdout=None) -> Seeder:
         if service == "deliver_for_me":
             if not extra.get("unpaid"):
                 pay_in_full(order)
-                orders.transition(order, "supplier_confirmed", actor, "Customer confirmed the supplier order")
         else:
             pay_in_full(order)
             order.refresh_from_db()

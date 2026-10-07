@@ -2,7 +2,6 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from apps.core.workflow import allowed_next
 from apps.locations.models import City, Warehouse
 from apps.orders.serializers import _dec, _person
 from apps.orders.services import payment_summary, prefetched_net_paid
@@ -11,6 +10,7 @@ from apps.shipping_engine.models import Carrier, ShippingMethod
 
 from . import services
 from .models import (
+    SHIPMENT_PATH,
     SHIPMENT_TRANSITIONS,
     CargoParcel,
     CargoType,
@@ -66,7 +66,8 @@ class ParcelSerializer(serializers.ModelSerializer):
         fields = ["id", "order", "origin", "stage", "stage_display", "source", "source_display", "shipper",
                   "shipping_method", "warehouse", "destination", "supplier_tracking_number", "item_name", "description",
                   "packages_quantity", "estimated_arrival", "cargo_type", "cargo_type_display", "weight_kg", "cbm",
-                  "weight_type", "received_at", "exception_flags", "image", "shipment", "updated_at"]
+                  "weight_type", "received_at", "lost_at", "lost_reason", "exception_flags", "image", "shipment",
+                  "updated_at"]
 
     def get_order(self, obj) -> dict:
         o = obj.order
@@ -125,6 +126,10 @@ class ParcelUpdateSerializer(serializers.Serializer):
     cbm = serializers.DecimalField(max_digits=10, decimal_places=4, min_value=Decimal("0"), required=False,
                                    allow_null=True)
     weight_type = serializers.ChoiceField(choices=WeightType.choices, required=False)
+
+
+class MarkLostSerializer(serializers.Serializer):
+    reason = serializers.CharField()
 
 
 class ReceiveSerializer(serializers.Serializer):
@@ -232,7 +237,11 @@ class ShipmentSerializer(serializers.ModelSerializer):
         ]
 
     def get_allowed_transitions(self, obj) -> list[dict]:
-        return allowed_next(obj.status, transitions=SHIPMENT_TRANSITIONS, choices=ShipmentStatus)
+        """Every later milestone (in order; skipped ones are applied too), then Cancelled while still open."""
+        labels = dict(ShipmentStatus.choices)
+        allowed = SHIPMENT_TRANSITIONS.get(obj.status, set())
+        order = [*SHIPMENT_PATH, ShipmentStatus.CANCELLED]
+        return [{"value": str(s), "label": labels[s]} for s in order if s in allowed]
 
 
 class ShipmentCreateSerializer(serializers.Serializer):

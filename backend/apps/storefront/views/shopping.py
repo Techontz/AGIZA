@@ -195,7 +195,8 @@ class PlaceOrderView(CustomerAPIView):
                 raise ConflictError(exc.message)
             raise ValidationError({exc.field or "non_field_errors": [exc.message]})
         payment = None
-        if created and order.shop.payment_preference == PaymentPreference.MOBILE_MONEY:
+        if (created and order.shop.payment_preference == PaymentPreference.MOBILE_MONEY
+                and not order.shop.delivery_fee_pending):  # pending delivery cost: paid once AGIZA sets it
             payment = start_payment(order, request.user.phone)
         body = {"order": order_detail_payload(_reload(order), request), "created": created, "payment": payment}
         return Response(body, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
@@ -215,8 +216,14 @@ def _reload(order: Order) -> Order:
     return customer_orders(order.customer).get(pk=order.pk)
 
 
+DELIVERY_FEE_PENDING_MESSAGE = ("AGIZA is confirming the delivery cost of this order. We'll notify you when "
+                                "it's set, then you can pay.")
+
+
 def start_payment(order: Order, phone: str) -> dict:
     """Open a mobile-money checkout. A failure never undoes the order: the customer can retry from it."""
+    if order.order_type == "shop" and getattr(order, "shop", None) and order.shop.delivery_fee_pending:
+        return {"status": "failed", "message": DELIVERY_FEE_PENDING_MESSAGE, "checkout_url": None}
     try:
         gateway = payments.start_checkout(order, phone=phone)
     except WorkflowError as exc:

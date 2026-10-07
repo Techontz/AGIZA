@@ -33,6 +33,7 @@ def test_international_full_workflow_moves_departments(admin, new_intl):
         assert order["status"] == stage
         departments[stage] = order["department"]
     assert departments["paid_supplier"] == "procurement"
+    assert departments["waiting_to_receive"] == "shipping"
     assert departments["shipping_to_destination"] == "shipping"
     assert departments["ready_for_collection"] == "delivery"
     statuses = list(OrderStatusHistory.objects.filter(order_id=order["id"]).values_list("to_status", flat=True))
@@ -41,7 +42,7 @@ def test_international_full_workflow_moves_departments(admin, new_intl):
 
 def test_procurement_and_shipping_stages_cannot_be_set_by_hand(admin, new_intl):
     order = new_intl()
-    for stage in ("paid_supplier", "sent_to_consolidation", "shipping_to_destination", "clearance",
+    for stage in ("paid_supplier", "waiting_to_receive", "sent_to_consolidation", "shipping_to_destination", "clearance",
                   "ready_for_collection"):
         assert move(admin, INTL, order["id"], stage).status_code in (400, 409), stage
     detail = admin.get(f"{INTL}/{order['id']}/").json()

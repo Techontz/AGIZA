@@ -171,12 +171,13 @@ class ProductCardSerializer(serializers.ModelSerializer):
     rating = serializers.SerializerMethodField()
     rating_count = serializers.SerializerMethodField()
     ships_from = serializers.SerializerMethodField()
+    can_request = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
         fields = ["id", "name", "price", "price_max", "compare_at_price", "image", "brand", "category",
                   "condition", "featured", "ofa_kali", "in_stock", "available", "labels", "vendor", "created_at", "rating",
-                  "rating_count", "ships_from"]
+                  "rating_count", "ships_from", "can_request"]
 
     def get_ships_from(self, product) -> str | None:
         """The country an imported product ships from (e.g. "China"); null for products held in Tanzania."""
@@ -215,8 +216,33 @@ class ProductCardSerializer(serializers.ModelSerializer):
         stock = self.context.get("stock", {})
         return sum(max(stock.get(v.pk, 0), 0) for v in getattr(product, "shop_variants", []))
 
+    def get_can_request(self, product) -> bool:
+        """Out of stock (nothing to buy now; imported products are always orderable) and staff allow
+        "Pata Bei" requests for it: the customer can ask AGIZA to source it (Intake & Quotes)."""
+        return bool(product.pata_bei) and self.get_available(product) == 0
+
     def get_labels(self, product) -> list[dict]:
         return [{"name": lb.name, "color": lb.color} for lb in product.labels.all() if lb.visible]
+
+
+def product_requestable(product) -> bool:
+    """
+    Whether a customer may ask AGIZA for this shop product (the out-of-stock "Request" button):
+    shown in the shop, "Pata Bei" allowed by staff, and out of stock now. Same rule as
+    ProductCardSerializer.can_request: imported products are bought abroad, so never out of stock.
+    """
+    from .catalog import available_by_variant, visible_products
+    from .shipping import is_imported, store_hub
+
+    product = visible_products().filter(pk=product.pk).first()
+    if product is None or not product.pata_bei:
+        return False
+    if product.status != "active":
+        return True
+    if is_imported(product, store_hub()):
+        return False
+    stock = available_by_variant(v.pk for v in product.shop_variants)
+    return not any(stock.get(v.pk, 0) > 0 for v in product.shop_variants)
 
 
 class VariantSerializer(serializers.ModelSerializer):
@@ -436,6 +462,9 @@ def quote_payload(quote, request, *, payment_methods: list[dict] | None = None) 
     shipping_fee is the whole delivery charge: import_fee (abroad → Tanzania, for imported items)
     plus delivery_fee (to the customer's address). total = subtotal + shipping_fee + customs_fee;
     customs estimates (customs.estimate) are shown but not charged. Everything is computed here.
+    delivery_fee_pending: the chosen option needs a manual quote (option.manual_quote): delivery_fee and
+    shipping_fee are null, total is everything but the delivery, and the order can't be paid until AGIZA
+    sets the delivery cost.
     """
     return {
         "cart": cart_payload(quote.summary, request),
@@ -447,6 +476,7 @@ def quote_payload(quote, request, *, payment_methods: list[dict] | None = None) 
         "import_fee": money(quote.import_fee),
         "delivery_fee": money(quote.delivery_fee),
         "shipping_fee": money(quote.shipping_fee),
+        "delivery_fee_pending": quote.delivery_fee_pending,
         "total": money(quote.total),
         "currency": quote.summary["currency"],
         "estimated_delivery": quote.estimated_delivery or None,
@@ -481,11 +511,17 @@ class OrderCardSerializer(serializers.ModelSerializer):
     total = serializers.DecimalField(source="total_amount", max_digits=14, decimal_places=2, allow_null=True)
     payment_status = serializers.SerializerMethodField()
     image = serializers.SerializerMethodField()
+    delivery_fee_pending = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = ["reference", "type", "type_display", "status", "status_display", "group", "item_details",
-                  "total", "currency", "payment_status", "image", "created_at"]
+                  "total", "currency", "payment_status", "image", "created_at", "delivery_fee_pending"]
+
+    def get_delivery_fee_pending(self, order) -> bool:
+        """Waiting for AGIZA to set the delivery cost (manual quote): the order can't be paid yet."""
+        details = getattr(order, "shop", None) if order.order_type == OrderType.SHOP else None
+        return bool(details and details.delivery_fee_pending and order.status != "cancelled")
 
     def get_status_display(self, order) -> str:
         return status_label(order.order_type, order.status)
@@ -511,12 +547,20 @@ class QuoteRequestSerializer(serializers.ModelSerializer):
     order = serializers.SerializerMethodField()
     can_reply = serializers.SerializerMethodField()
     photos = serializers.SerializerMethodField()
+    # Multi-item quotations (staff intake): one line per item, priced once AGIZA sends the quotation.
+    items = serializers.SerializerMethodField()
 
     class Meta:
         model = QuoteRequest
         fields = ["id", "reference", "service_type", "description", "origin", "destination", "status",
                   "status_display", "requested_at", "quoted_amount", "currency", "estimated_delivery",
-                  "response_notes", "responded_at", "customer_replied_at", "order", "can_reply", "photos"]
+                  "response_notes", "responded_at", "customer_replied_at", "order", "can_reply", "photos",
+                  "items"]
+
+    def get_items(self, quote) -> list[dict]:
+        from apps.quotes.serializers import app_item_lines
+
+        return app_item_lines(quote)
 
     def get_photos(self, quote) -> list[dict]:
         request = self.context.get("request")
@@ -567,6 +611,12 @@ class QuoteCreateSerializer(serializers.Serializer):
     SHIPPING_METHODS = {"air": "Air freight", "sea": "Sea freight"}
     shipping_method = serializers.ChoiceField(choices=list(SHIPPING_METHODS), required=False, allow_blank=True)
     details = serializers.CharField(max_length=2000, required=False, allow_blank=True)
+
+    def validate_product(self, product):
+        if product is not None and not product_requestable(product):
+            raise serializers.ValidationError("This product can't be requested: it is in stock or AGIZA "
+                                              "doesn't take requests for it.")
+        return product
 
     def validate(self, attrs):
         if attrs["request_type"] == "local_delivery" and not attrs.get("destination_city"):

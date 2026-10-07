@@ -4,6 +4,7 @@ import pytest
 from apps.accounts.constants import StaffLevel
 from apps.accounts.models import AuditLog
 from apps.locations.models import Country
+from apps.orders.models import OrderStatusHistory
 from apps.procurement.models import ProcurementOrder, Supplier
 from apps.shipping.models import CargoParcel
 
@@ -83,7 +84,7 @@ def test_installment_plan_approved_allows_supplier_payment(ops, make_intl, suppl
     assert res.json()["status"] == "paid" and res.json()["order"]["status"] == "paid_supplier"
 
 
-def test_mark_paid_moves_order_and_expects_goods_at_cargo(ops, make_intl, supplier):
+def test_mark_paid_then_shipped_expects_goods_at_cargo(ops, make_intl, supplier):
     order = make_intl(paid="2500000")
     pid = proc_of(order).id
     assert ops.post(f"{PROC}/{pid}/mark-paid/", {}, format="json").status_code == 409  # no supplier yet
@@ -91,30 +92,96 @@ def test_mark_paid_moves_order_and_expects_goods_at_cargo(ops, make_intl, suppli
     res = ops.post(f"{PROC}/{pid}/mark-paid/", {}, format="json")
     assert res.status_code == 400 and "item cost" in res.json()["error"]["message"]
     ops.patch(f"{PROC}/{pid}/", {"item_cost": "1800000", "expected_at_cargo": "2026-10-10"}, format="json")
-    body = ops.post(f"{PROC}/{pid}/mark-paid/", {"supplier_tracking_number": "SZ-2026"}, format="json").json()
+    assert ops.post(f"{PROC}/{pid}/mark-shipped/", {"supplier_tracking_number": "SZ-1"},
+                    format="json").status_code == 409  # not paid yet
+    body = ops.post(f"{PROC}/{pid}/mark-paid/", {"payment_reference": "TT-1"}, format="json").json()
     assert body["order"]["status"] == "paid_supplier" and body["paid_at"]
+    assert body["actions"] == ["mark_shipped", "cancel_supplier"]
+    # Paid isn't shipped: nothing is expected at cargo yet.
+    assert not CargoParcel.objects.filter(order=order).exists()
+    # The supplier's tracking number is mandatory to mark the goods shipped.
+    assert ops.post(f"{PROC}/{pid}/mark-shipped/", {}, format="json").status_code == 400
+    res = ops.post(f"{PROC}/{pid}/mark-shipped/", {"supplier_tracking_number": "  "}, format="json")
+    assert res.status_code == 400
+    body = ops.post(f"{PROC}/{pid}/mark-shipped/", {"supplier_tracking_number": "SZ-2026"}, format="json").json()
+    assert body["status"] == "supplier_shipped" and body["shipped_at"] and body["actions"] == ["cancel_supplier"]
+    assert body["order"]["status"] == "waiting_to_receive" and body["supplier_tracking_number"] == "SZ-2026"
+    order.refresh_from_db()
+    assert order.department == "shipping" and order.international.tracking_number == "SZ-2026"
     parcel = CargoParcel.objects.get(order=order)
     assert parcel.stage == "waiting" and parcel.source == "agiza_procured"
     assert str(parcel.estimated_arrival) == "2026-10-10" and parcel.supplier_tracking_number == "SZ-2026"
+    # A corrected tracking number follows the expected parcel.
+    ops.patch(f"{PROC}/{pid}/", {"supplier_tracking_number": "SZ-2026-B"}, format="json")
+    assert CargoParcel.objects.get(order=order).supplier_tracking_number == "SZ-2026-B"
     # Costs are locked once paid; the supplier can no longer be swapped.
     assert ops.patch(f"{PROC}/{pid}/", {"item_cost": "1"}, format="json").status_code == 409
     assert ops.post(f"{PROC}/{pid}/select-supplier/", {"supplier": supplier.id}, format="json").status_code == 409
+    assert ops.post(f"{PROC}/{pid}/mark-shipped/", {"supplier_tracking_number": "X"},
+                    format="json").status_code == 409  # already shipped
     history = ops.get(f"{PROC}/{pid}/history/").json()
-    assert [h["to_status"] for h in history] == ["pending_sourcing", "supplier_selected", "paid"]
+    assert [h["to_status"] for h in history] == ["pending_sourcing", "supplier_selected", "paid", "supplier_shipped"]
 
 
-def test_supplier_cancellation_withdraws_expected_goods(ops, make_intl, supplier):
+def test_supplier_cancellation_after_shipping_goes_back_to_supplier_selection(ops, make_intl, supplier):
+    order = make_intl(paid="2500000")
+    pid = proc_of(order).id
+    ops.post(f"{PROC}/{pid}/select-supplier/", {"supplier": supplier.id, "item_cost": "100",
+                                                "supplier_order_number": "PO-1"}, format="json")
+    ops.post(f"{PROC}/{pid}/mark-paid/", {"payment_reference": "TT-1"}, format="json")
+    ops.post(f"{PROC}/{pid}/mark-shipped/", {"supplier_tracking_number": "SZ-1"}, format="json")
+    assert ops.post(f"{PROC}/{pid}/cancel-supplier/", {"reason": " "}, format="json").status_code == 400
+    body = ops.post(f"{PROC}/{pid}/cancel-supplier/", {"reason": "Failed to ship"}, format="json").json()
+    assert body["status"] == "supplier_cancelled" and body["actions"] == ["select_supplier"]
+    # The order is back at supplier selection, and that supplier order's details are cleared...
+    assert body["order"]["status"] == "supplier_confirmed"
+    assert (body["supplier_order_number"], body["supplier_tracking_number"], body["payment_reference"],
+            body["paid_at"], body["shipped_at"]) == ("", "", "", None, None)
+    assert CargoParcel.objects.get(order=order).stage == "cancelled"
+    order.refresh_from_db()
+    assert order.department == "procurement" and order.international.tracking_number == ""
+    # ...but kept in the history.
+    note = ops.get(f"{PROC}/{pid}/history/").json()[-1]["note"]
+    assert "Failed to ship" in note and "TT-1" in note and "SZ-1" in note
+    assert OrderStatusHistory.objects.filter(order=order, from_status="waiting_to_receive",
+                                             to_status="supplier_confirmed").exists()
+    # A new supplier can be selected, paid and shipped again.
+    other = Supplier.objects.create(name="Guangzhou Supplies", country=supplier.country)
+    assert ops.post(f"{PROC}/{pid}/select-supplier/", {"supplier": other.id}, format="json").json()["status"] == \
+        "supplier_selected"
+    res = ops.post(f"{PROC}/{pid}/mark-paid/", {"payment_reference": "TT-2"}, format="json")
+    assert res.status_code == 200, res.json()
+    assert res.json()["order"]["status"] == "paid_supplier"
+    body = ops.post(f"{PROC}/{pid}/mark-shipped/", {"supplier_tracking_number": "GZ-2"}, format="json").json()
+    assert body["status"] == "supplier_shipped" and body["order"]["status"] == "waiting_to_receive"
+    parcel = CargoParcel.objects.get(order=order)
+    assert parcel.stage == "waiting" and parcel.supplier_tracking_number == "GZ-2"
+
+
+def test_supplier_cancellation_after_payment_and_production(ops, make_intl, supplier):
     order = make_intl(paid="2500000")
     pid = proc_of(order).id
     ops.post(f"{PROC}/{pid}/select-supplier/", {"supplier": supplier.id, "item_cost": "100"}, format="json")
     ops.post(f"{PROC}/{pid}/mark-paid/", {}, format="json")
-    assert ops.post(f"{PROC}/{pid}/cancel-supplier/", {"reason": " "}, format="json").status_code == 400
+    move = f"/api/orders/international/{order.id}/transition/"
+    assert ops.post(move, {"status": "in_production"}, format="json").status_code == 200
+    # Going back to Supplier Confirmed is only possible by cancelling the supplier.
+    assert ops.post(move, {"status": "supplier_confirmed"}, format="json").status_code == 409
+    statuses = {t["value"] for t in ops.get(f"/api/orders/international/{order.id}/").json()["allowed_transitions"]}
+    assert "supplier_confirmed" not in statuses
     body = ops.post(f"{PROC}/{pid}/cancel-supplier/", {"reason": "Out of stock"}, format="json").json()
-    assert body["status"] == "supplier_cancelled" and body["actions"] == ["select_supplier"]
-    assert CargoParcel.objects.get(order=order).stage == "cancelled"
-    other = Supplier.objects.create(name="Guangzhou Supplies", country=supplier.country)
-    assert ops.post(f"{PROC}/{pid}/select-supplier/", {"supplier": other.id}, format="json").json()["status"] == \
-        "supplier_selected"
+    assert body["order"]["status"] == "supplier_confirmed" and body["paid_at"] is None
+    ops.post(f"{PROC}/{pid}/select-supplier/", {"supplier": supplier.id}, format="json")
+    assert ops.post(f"{PROC}/{pid}/mark-paid/", {}, format="json").status_code == 200
+
+
+def test_supplier_cancellation_before_payment_keeps_order_status(ops, make_intl, supplier):
+    order = make_intl(paid="2500000")
+    pid = proc_of(order).id
+    ops.post(f"{PROC}/{pid}/select-supplier/", {"supplier": supplier.id, "item_cost": "100"}, format="json")
+    body = ops.post(f"{PROC}/{pid}/cancel-supplier/", {"reason": "No reply"}, format="json").json()
+    assert body["status"] == "supplier_cancelled" and body["order"]["status"] == "supplier_confirmed"
+    assert not CargoParcel.objects.filter(order=order).exists()
 
 
 def test_order_cancellation_cancels_procurement(ops, make_intl):
@@ -137,8 +204,8 @@ def test_procurement_list_filters_stats_and_permissions(ops, client_for, make_in
     assert ops.get(f"{PROC}/?exception=any").json()["count"] == 1
     assert ops.get(f"{PROC}/?operator={ops.user.id}").json()["count"] == 1
     stats = ops.get(f"{PROC}/stats/").json()
-    assert stats == {"total": 2, "pending_sourcing": 1, "paid": 0, "received_at_cargo": 0, "with_exceptions": 1,
-                     "total_value": "1800000.00"}
+    assert stats == {"total": 2, "pending_sourcing": 1, "paid": 0, "shipped": 0, "received_at_cargo": 0,
+                     "with_exceptions": 1, "total_value": "1800000.00"}
     sales = client_for(StaffLevel.SALES)  # view only
     assert sales.get(f"{PROC}/").status_code == 200
     assert sales.post(f"{PROC}/{proc_of(a).id}/mark-paid/", {}, format="json").status_code == 403

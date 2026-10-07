@@ -99,8 +99,10 @@ def test_bus_delivery_upcountry_and_a_manual_quote_route(app, imported, account)
     fill(app, [(imported.cable_variant, 1)])
     quote = preview(app, mwanza)
     bus = next(o for o in quote["shipping_options"] if o["code"] == "BUS")
-    assert bus["available"] is False and "custom quote" in bus["message"]  # the fixture's Dar → Mwanza rule is manual
-    assert quote["can_place_order"] is False
+    # The fixture's Dar → Mwanza rule is manual: nothing can be priced, so the order may be placed and
+    # AGIZA confirms the delivery cost before the customer pays.
+    assert bus["manual_quote"] is True and "confirmed by AGIZA" in bus["message"]
+    assert quote["can_place_order"] is True and quote["delivery_fee_pending"] is True
     ShippingRule.objects.filter(method=imported.bus).update(pricing_model="per_kg", rate=D("1200"))
     assert options(preview(app, mwanza))["BUS"]["cost"] == "600.00"  # 0.1 kg rounded up to 0.5 kg × 1,200
 

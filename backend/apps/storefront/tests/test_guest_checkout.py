@@ -36,8 +36,9 @@ def test_guest_preview_prices_the_browser_cart_for_the_city(web, shop):
     body = preview(web, shop, shipping_method=shop.rider.pk).json()
     assert body["subtotal"] == "1700000.00" and body["shipping_fee"] == "3000.00" and body["total"] == "1703000.00"
     assert body["can_place_order"] is True and body["cart"]["item_count"] == 2
-    mwanza = preview(web, shop, city=shop.mwanza).json()  # manual quote only: can't check out
-    assert mwanza["can_place_order"] is False and mwanza["total"] is None
+    mwanza = preview(web, shop, city=shop.mwanza).json()  # manual quote only: delivery cost set by AGIZA later
+    assert mwanza["can_place_order"] is True and mwanza["delivery_fee_pending"] is True
+    assert mwanza["shipping_fee"] is None and mwanza["total"] == "1700000.00"
 
 
 def test_guest_checkout_is_website_only(api, shop):

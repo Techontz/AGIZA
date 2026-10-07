@@ -1,5 +1,5 @@
 import django_filters
-from django.db.models import Count, Q
+from django.db.models import Count, Max, Prefetch, Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -20,17 +20,22 @@ from apps.core.dates import local_day_bounds
 from apps.core.exceptions import ConflictError
 from apps.core.uploads import IMAGE_TYPES, file_response, validate_upload
 from apps.core.workflow import run
+from apps.orders.models import OrderItem
 
 from . import pickups, services
 from .models import CLOSED, Delivery, DeliveryPhoto, DeliveryProof, DeliveryStatus, PickupTask
 from .serializers import (
     AssignDriverSerializer,
+    BulkAssignDriverSerializer,
+    BulkCompleteSerializer,
     CompleteSerializer,
     DeliveryCreateSerializer,
     DeliveryEventSerializer,
     DeliverySerializer,
     DeliveryTransitionSerializer,
     DeliveryUpdateSerializer,
+    driver_payload,
+    stock_bins,
 )
 
 D = DeliveryStatus
@@ -62,11 +67,12 @@ class DeliveryFilter(django_filters.FilterSet):
     driver = django_filters.NumberFilter(field_name="driver_id")
     source = django_filters.ChoiceFilter(choices=[(k, k) for k in SOURCE_TYPES], method="filter_source")
     order = django_filters.NumberFilter(field_name="order_id")
+    customer = django_filters.NumberFilter(field_name="order__customer_id")
     exception = django_filters.CharFilter(method="filter_exception")
 
     class Meta:
         model = Delivery
-        fields = ["tab", "status", "driver", "source", "order", "delivery_type", "exception"]
+        fields = ["tab", "status", "driver", "source", "order", "customer", "delivery_type", "exception"]
 
     def filter_tab(self, qs, name, value):
         return qs.filter(status__in=COMPLETED_TAB) if value == "completed" else qs.exclude(status__in=COMPLETED_TAB)
@@ -95,15 +101,108 @@ class DeliveryViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.C
 
     def get_queryset(self):
         qs = (
-            Delivery.objects.select_related("order", "order__customer", "driver", "destination_city",
-                                            "pickup_warehouse", "proof", "proof__recorded_by")
-            .prefetch_related("photos")
+            Delivery.objects.select_related("order", "order__customer", "order__cargo__warehouse", "driver",
+                                            "destination_city", "pickup_warehouse", "proof", "proof__recorded_by")
+            .prefetch_related("photos", Prefetch("order__items", queryset=OrderItem.objects.select_related(
+                "warehouse", "variant__product")))
             .order_by("-updated_at", "-id")
         )
         return scoped(qs, self.request.user)
 
+    def _rows(self, deliveries) -> list[dict]:
+        deliveries = list(deliveries)
+        return DeliverySerializer(deliveries, many=True, context={"bins": stock_bins(deliveries)}).data
+
     def _respond(self, delivery, code=status.HTTP_200_OK):
         return Response(DeliverySerializer(self.get_queryset().get(pk=delivery.pk)).data, status=code)
+
+    def list(self, request, *args, **kwargs):
+        qs = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(qs)
+        if page is None:
+            return Response(self._rows(qs))
+        return self.get_paginated_response(self._rows(page))
+
+    @extend_schema(responses=OpenApiTypes.OBJECT)
+    @action(detail=False, url_path="by-customer")
+    def by_customer(self, request):
+        """The same list, one row per customer: their deliveries, drivers and statuses together."""
+        qs = self.filter_queryset(self.get_queryset())
+        groups = (qs.order_by().values("order__customer_id")
+                  .annotate(last=Max("updated_at"), n=Count("id")).order_by("-last", "-order__customer_id"))
+        page = self.paginate_queryset(groups)
+        rows = page if page is not None else list(groups)
+        ids = [g["order__customer_id"] for g in rows]
+        by_customer: dict[int, list] = {i: [] for i in ids}
+        deliveries = list(qs.filter(order__customer_id__in=ids))
+        for d in deliveries:
+            by_customer[d.order.customer_id].append(d)
+        bins = stock_bins(deliveries)
+        labels = dict(D.choices)
+        result = []
+        for cid in ids:
+            items = by_customer[cid]
+            first = items[0]
+            c = first.order.customer
+            statuses: dict[str, int] = {}
+            drivers = {}
+            for d in items:
+                statuses[d.status] = statuses.get(d.status, 0) + 1
+                if d.driver_id:
+                    drivers[d.driver_id] = driver_payload(d.driver)
+            city = first.destination_city.name if first.destination_city_id else ""
+            result.append({
+                "customer": {"id": c.id, "full_name": c.full_name, "phone": c.phone},
+                "destination": ", ".join(p for p in (first.delivery_address, first.destination_area, city) if p),
+                "count": len(items),
+                "statuses": [{"status": k, "status_display": labels.get(k, k), "count": v}
+                             for k, v in statuses.items()],
+                "drivers": list(drivers.values()),
+                "deliveries": DeliverySerializer(items, many=True, context={"bins": bins}).data,
+            })
+        if page is None:
+            return Response(result)
+        return self.get_paginated_response(result)
+
+    def _selected(self, request, ids):
+        ids = sorted({int(i) for i in ids if str(i).strip().isdigit()})
+        if not ids:
+            raise ValidationError({"deliveries": ["Choose at least one delivery."]})
+        found = list(self.get_queryset().filter(pk__in=ids).order_by("id"))
+        if len(found) != len(ids):
+            raise Http404
+        return found
+
+    @extend_schema(request=BulkAssignDriverSerializer, responses=DeliverySerializer(many=True))
+    @action(detail=False, methods=["post"], url_path="bulk-assign-driver")
+    def bulk_assign_driver(self, request):
+        """One driver for several deliveries of the same customer."""
+        no_drivers(request.user, "assign drivers")
+        s = BulkAssignDriverSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        data = s.validated_data
+        deliveries = self._selected(request, data["deliveries"])
+        done = run(services.assign_driver_group, deliveries, data["driver"], user=request.user,
+                   scheduled_at=data.get("scheduled_at"), note=data["note"], request=request)
+        return Response(self._rows(self.get_queryset().filter(pk__in=[d.pk for d in done]).order_by("id")))
+
+    @extend_schema(request={"multipart/form-data": BulkCompleteSerializer}, responses=DeliverySerializer(many=True))
+    @action(detail=False, methods=["post"], url_path="bulk-complete",
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
+    def bulk_complete(self, request):
+        """Deliver several deliveries of the same customer with one proof (recipient, signature, photos)."""
+        ids = request.data.getlist("deliveries") if hasattr(request.data, "getlist") else \
+            request.data.get("deliveries", [])
+        s = CompleteSerializer(data={k: v for k, v in request.data.items()
+                                     if k not in ("photos", "signature_image", "deliveries")})
+        s.is_valid(raise_exception=True)
+        deliveries = self._selected(request, ids if isinstance(ids, list) else [ids])
+        signature, sig_type, photos = self._files(request)
+        done = run(services.complete_group, deliveries, user=request.user, request=request,
+                   signature_name=s.validated_data["signature_name"], notes=s.validated_data["notes"],
+                   completed_at=s.validated_data.get("completed_at"), signature_image=signature,
+                   signature_content_type=sig_type, photos=photos)
+        return Response(self._rows(self.get_queryset().filter(pk__in=[d.pk for d in done]).order_by("id")))
 
     @extend_schema(request=DeliveryCreateSerializer, responses={201: DeliverySerializer})
     def create(self, request, *args, **kwargs):
@@ -217,7 +316,8 @@ class DeliveryViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.C
     @action(detail=False)
     def drivers(self, request):
         qs = User.objects.filter(is_active=True, staff_level=StaffLevel.DRIVER).order_by("full_name")
-        return Response([{"id": u.id, "full_name": u.full_name, "staff_level": u.staff_level} for u in qs])
+        return Response([{"id": u.id, "full_name": u.full_name, "phone": u.phone, "staff_level": u.staff_level}
+                         for u in qs])
 
 
 class _ProofFileView(APIView):

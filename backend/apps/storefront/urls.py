@@ -74,6 +74,8 @@ urlpatterns = [
     path("orders/<str:reference>/pay/", orders.OrderPayView.as_view(), name="order-pay"),
     path("orders/<str:reference>/check-payment/", orders.OrderPaymentCheckView.as_view(), name="order-check-payment"),
     path("orders/<str:reference>/returns/", engagement.OrderReturnsView.as_view(), name="order-returns"),
+    path("orders/<str:reference>/delivery-photos/<int:photo_id>/", orders.OrderDeliveryPhotoView.as_view(),
+         name="order-delivery-photo"),
     # Returns, reviews, saved products, notifications
     path("returns/", engagement.ReturnListView.as_view(), name="returns"),
     path("returns/<str:reference>/", engagement.ReturnDetailView.as_view(), name="return"),
