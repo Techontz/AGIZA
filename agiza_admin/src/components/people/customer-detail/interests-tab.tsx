@@ -1,7 +1,8 @@
 "use client";
 
-import { DollarSign, Plus, RefreshCw, Tag as TagIcon, Trash2, TrendingUp } from "lucide-react";
-import { useId, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { DollarSign, Plus, RefreshCw, Smartphone, Tag as TagIcon, Trash2, TrendingUp } from "lucide-react";
+import { useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import {
   type CustomerProfile,
   type CustomerTagLink,
 } from "@/lib/api/services/crm";
+import { catalogApi, catalogKeys } from "@/lib/api/services/catalog";
 import { formatDate } from "@/lib/format";
 
 import { num, SpendBars } from "./shared";
@@ -27,7 +29,7 @@ type Pending = { kind: "tag"; item: CustomerTagLink } | { kind: "interest"; item
 /** Design: Tags (manual add/remove), Detected Interests (confidence bars), Category Spend Breakdown. */
 export function InterestsTab({ profile, canEdit }: { profile: CustomerProfile; canEdit: boolean }) {
   const customerId = profile.customer.id;
-  const ids = { tag: useId(), label: useId(), conf: useId() };
+  const ids = { tag: useId(), label: useId(), conf: useId(), home: useId() };
   // Refresh the profile, the tag list / campaign chips, and any People list showing tags.
   const invalidate = [crmKeys.all, ["customers"], ["people"]];
 
@@ -37,6 +39,27 @@ export function InterestsTab({ profile, canEdit }: { profile: CustomerProfile; c
   const [confidence, setConfidence] = useState("50");
   const [interestError, setInterestError] = useState("");
   const [pending, setPending] = useState<Pending>(null);
+  const [homeCategory, setHomeCategory] = useState("");
+
+  const categories = useQuery({
+    queryKey: catalogKeys.categories,
+    queryFn: ({ signal }) => catalogApi.categories.list(signal),
+    enabled: canEdit,
+    staleTime: 5 * 60_000,
+  });
+  // Top-level categories, each followed by its subcategories.
+  const categoryGroups = useMemo(() => {
+    const rows = (categories.data ?? []).filter((c) => c.is_active);
+    return rows
+      .filter((c) => c.parent === null)
+      .map((top) => ({ top, subs: rows.filter((c) => c.parent === top.id) }));
+  }, [categories.data]);
+
+  const addHomeInterest = useApiMutation((category: number) => crmApi.addInterest(customerId, { category }), {
+    invalidate,
+    success: "Category added to the app home",
+    onSuccess: () => setHomeCategory(""),
+  });
 
   const addTag = useApiMutation((name: string) => crmApi.addTag(customerId, name), {
     invalidate,
@@ -107,7 +130,10 @@ export function InterestsTab({ profile, canEdit }: { profile: CustomerProfile; c
     addInterest.mutate({ label: clean, confidence: conf });
   };
 
-  const { tags, interests, category_spend } = profile;
+  const { tags, category_spend } = profile;
+  // Staff-chosen categories drive the app home ("For you"); the rest are labels for campaigns.
+  const homeInterests = profile.interests.filter((it) => it.source === "manual" && it.category);
+  const interests = profile.interests.filter((it) => !(it.source === "manual" && it.category));
   const totalSpent = num(profile.kpis.total_spent);
 
   return (
@@ -191,6 +217,82 @@ export function InterestsTab({ profile, canEdit }: { profile: CustomerProfile; c
                   </button>
                 )}
               </div>
+            ))
+          )}
+        </div>
+      </section>
+
+      {/* App home categories */}
+      <section aria-labelledby={`${ids.home}-h`}>
+        <div className="flex flex-wrap items-center gap-2 mb-1">
+          <Smartphone className="size-4 text-gray-600" />
+          <h3 id={`${ids.home}-h`} className="font-semibold text-gray-900">
+            App home categories
+          </h3>
+        </div>
+        <p className="text-xs text-gray-500 mb-3">
+          The AGIZA app shows this customer products from these categories and subcategories under “For you”.
+        </p>
+        {canEdit && (
+          <div className="flex gap-2 mb-3">
+            <label htmlFor={ids.home} className="sr-only">
+              Category or subcategory
+            </label>
+            <select
+              id={ids.home}
+              value={homeCategory}
+              onChange={(e) => setHomeCategory(e.target.value)}
+              disabled={categories.isLoading}
+              className={`flex-1 min-w-0 ${inputCls}`}
+            >
+              <option value="">{categories.isLoading ? "Loading categories…" : "Choose category or subcategory…"}</option>
+              {categoryGroups.map(({ top, subs }) => (
+                <optgroup key={top.id} label={top.name}>
+                  <option value={top.id}>{top.name} (whole category)</option>
+                  {subs.map((sub) => (
+                    <option key={sub.id} value={sub.id}>
+                      {top.name} › {sub.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <Button
+              onClick={() => homeCategory && addHomeInterest.mutate(Number(homeCategory))}
+              disabled={!homeCategory}
+              loading={addHomeInterest.isPending}
+              className="text-sm gap-1.5"
+            >
+              {!addHomeInterest.isPending && <Plus className="size-4" />}Add
+            </Button>
+          </div>
+        )}
+        {categories.isError && (
+          <p className="text-xs text-red-600 mb-2" role="alert">
+            {errorText(categories.error)}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {homeInterests.length === 0 ? (
+            <p className="text-sm text-gray-400 italic">None yet. The app home shows featured products only.</p>
+          ) : (
+            homeInterests.map((it) => (
+              <span
+                key={it.id}
+                className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-800 rounded-full pl-3 pr-1 py-1 text-xs font-medium"
+              >
+                {it.category_name}
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => setPending({ kind: "interest", item: it })}
+                    className="p-0.5 hover:bg-blue-100 rounded-full"
+                    aria-label={`Remove ${it.category_name}`}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                )}
+              </span>
             ))
           )}
         </div>
@@ -330,7 +432,9 @@ export function InterestsTab({ profile, canEdit }: { profile: CustomerProfile; c
           pending && (
             <>
               Remove {pending.kind === "tag" ? "the tag" : "the interest"}{" "}
-              <span className="font-semibold">“{pending.kind === "tag" ? pending.item.name : pending.item.label}”</span>{" "}
+              <span className="font-semibold">
+                “{pending.kind === "tag" ? pending.item.name : (pending.item.category_name ?? pending.item.label)}”
+              </span>{" "}
               from {profile.customer.full_name}? Campaign audiences using it will no longer include this customer.
             </>
           )

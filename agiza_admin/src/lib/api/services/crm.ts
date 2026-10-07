@@ -66,6 +66,9 @@ export interface CustomerTagLink {
 export interface CustomerInterest {
   id: number;
   label: string;
+  /** Catalog category/subcategory staff chose; the app's home shows the customer its products. */
+  category?: number | null;
+  category_name?: string | null;
   confidence: number;
   source: InterestSource;
   updated_at?: string;
@@ -171,7 +174,7 @@ export const crmApi = {
     api.delete<CustomerTagLink[]>(`customers/${customerId}/tags/?link=${linkId}`),
 
   interests: (customerId: number) => api.get<CustomerInterest[]>(`customers/${customerId}/interests/`),
-  addInterest: (customerId: number, data: { label: string; confidence: number }) =>
+  addInterest: (customerId: number, data: { category: number } | { label: string; confidence: number }) =>
     api.post<CustomerInterest[]>(`customers/${customerId}/interests/`, data),
   removeInterest: (customerId: number, id: number) =>
     api.delete<CustomerInterest[]>(`customers/${customerId}/interests/?id=${id}`),

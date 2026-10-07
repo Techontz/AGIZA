@@ -28,6 +28,8 @@ export interface Conversation {
   customer: { id: number; reference: string; full_name: string; phone: string } | null;
   order: { id: number; reference: string; order_type: OrderKind } | null;
   quote: { id: number; reference: string; status: string } | null;
+  /** Set when the customer opened this chat from a return in the app. */
+  return_request?: { id: number; reference: string } | null;
   status: "open" | "archived";
   response_status: ResponseStatus;
   department: string;

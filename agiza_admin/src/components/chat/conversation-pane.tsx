@@ -178,7 +178,7 @@ export function ConversationPane({
   };
 
   const paymentReminder = () => {
-    const ref = conv.order?.reference ?? conv.quote?.reference;
+    const ref = conv.order?.reference ?? conv.quote?.reference ?? conv.return_request?.reference;
     const name = conv.customer?.full_name ?? conv.contact_name;
     setInternal(false);
     setDraft(

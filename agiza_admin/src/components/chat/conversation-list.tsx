@@ -236,10 +236,10 @@ function ConversationItem({ conv, selected, onSelect }: { conv: Conversation; se
             )}
           </div>
 
-          {(conv.order || conv.quote) && (
+          {(conv.order || conv.quote || conv.return_request) && (
             <div className="mb-1.5">
               <span className="text-xs font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">
-                {conv.order?.reference ?? conv.quote?.reference}
+                {conv.order?.reference ?? conv.quote?.reference ?? conv.return_request?.reference}
               </span>
             </div>
           )}

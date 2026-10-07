@@ -125,10 +125,10 @@ export function IntakeView() {
                         <td className="px-6 py-4"><ServiceTypeBadge type={q.service_type} /></td>
                         <td className="px-6 py-4"><div className="text-gray-900 max-w-xs">{q.description}</div></td>
                         <td className="px-6 py-4">
-                          {q.origin && q.destination ? (
+                          {q.origin || q.destination ? (
                             <div className="text-sm text-gray-900">
-                              <div className="font-medium">{q.origin}</div>
-                              <div className="text-gray-500">→ {q.destination}</div>
+                              <div className="font-medium">{q.origin || "Origin TBD"}</div>
+                              <div className="text-gray-500">→ {q.destination || "—"}</div>
                             </div>
                           ) : (
                             <span className="text-gray-400">—</span>

@@ -1,15 +1,16 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Globe, Wrench, Zap } from "lucide-react";
+import { Globe, ImagePlus, Wrench, X, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Modal } from "@/components/ui/modal";
 import { useCities, useCountries } from "@/components/shipping-engine/hooks";
 import { cn } from "@/lib/cn";
+import { fileSrc } from "@/lib/api/files";
 import { quotesApi, type Customer, type Quote } from "@/lib/api/services/orders";
 import { formatDate, formatTSh } from "@/lib/format";
 
@@ -34,6 +35,101 @@ export function ServiceTypeBadge({ type }: { type: string }) {
 
 const label = "block text-sm font-semibold text-gray-700 mb-2";
 
+function PhotoStrip({ title, photos }: { title: string; photos: Quote["photos"] }) {
+  if (!photos.length) return null;
+  return (
+    <div>
+      <p className="text-sm font-semibold text-gray-700 mb-1">{title}</p>
+      <div className="flex flex-wrap gap-2">
+        {photos.map((photo) => (
+          <a key={photo.id} href={fileSrc(photo.url)} target="_blank" rel="noreferrer" className="block">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={fileSrc(photo.url)} alt={title} className="size-20 rounded-lg object-cover border border-gray-200" />
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const MAX_AGIZA_PHOTOS = 5;
+
+/** Photos staff send with the quotation: ones already attached (removable) plus new files to upload on send. */
+function QuotePhotoPicker({
+  quote,
+  files,
+  onFiles,
+}: {
+  quote: Quote;
+  files: File[];
+  onFiles: (files: File[]) => void;
+}) {
+  const [removed, setRemoved] = useState<number[]>([]);
+  const attached = (quote.photos ?? []).filter((p) => p.from_agiza && !removed.includes(p.id));
+  const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
+  useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews]);
+  const remove = useOrderMutation((photoId: number) => quotesApi.removePhoto(quote.id, photoId), {
+    success: "Photo removed",
+    onSuccess: (q) => setRemoved((r) => [...r, ...attached.filter((p) => !q.photos.some((x) => x.id === p.id)).map((p) => p.id)]),
+  });
+  const room = MAX_AGIZA_PHOTOS - attached.length - files.length;
+
+  return (
+    <div>
+      <p className={label}>Photos for the customer (optional)</p>
+      <p className="text-xs text-gray-500 -mt-1 mb-2">The customer sees these with the quotation in the app, e.g. the exact item you found.</p>
+      <div className="flex flex-wrap gap-2">
+        {attached.map((photo) => (
+          <div key={photo.id} className="relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={fileSrc(photo.url)} alt="Attached photo" className="size-20 rounded-lg object-cover border border-gray-200" />
+            <button
+              type="button"
+              onClick={() => remove.mutate(photo.id)}
+              disabled={remove.isPending}
+              className="absolute -top-2 -right-2 bg-white border border-gray-300 rounded-full p-0.5 shadow hover:bg-gray-100"
+              aria-label="Remove attached photo"
+            >
+              <X className="size-3.5 text-gray-600" />
+            </button>
+          </div>
+        ))}
+        {files.map((file, i) => (
+          <div key={previews[i]} className="relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={previews[i]} alt={file.name} className="size-20 rounded-lg object-cover border border-blue-300" />
+            <button
+              type="button"
+              onClick={() => onFiles(files.filter((_, j) => j !== i))}
+              className="absolute -top-2 -right-2 bg-white border border-gray-300 rounded-full p-0.5 shadow hover:bg-gray-100"
+              aria-label={`Don't send ${file.name}`}
+            >
+              <X className="size-3.5 text-gray-600" />
+            </button>
+          </div>
+        ))}
+        {room > 0 && (
+          <label className="size-20 rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-1 text-xs text-gray-500 cursor-pointer hover:border-blue-400 hover:text-blue-600">
+            <ImagePlus className="size-5" />
+            Add photo
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              className="sr-only"
+              onChange={(e) => {
+                const chosen = Array.from(e.target.files ?? []).slice(0, room);
+                onFiles([...files, ...chosen]);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function QuoteSummary({ quote }: { quote: Quote }) {
   return (
     <>
@@ -51,8 +147,10 @@ function QuoteSummary({ quote }: { quote: Quote }) {
       </div>
       <div>
         <p className="text-sm font-semibold text-gray-700 mb-1">Description</p>
-        <p className="text-gray-900">{quote.description}</p>
+        <p className="text-gray-900 whitespace-pre-line">{quote.description}</p>
       </div>
+      <PhotoStrip title="Customer Photos" photos={quote.photos?.filter((p) => !p.from_agiza) ?? []} />
+      <PhotoStrip title="AGIZA Photos (sent with the quotation)" photos={quote.photos?.filter((p) => p.from_agiza) ?? []} />
     </>
   );
 }
@@ -62,17 +160,31 @@ export function RespondDialog({ quote, onClose }: { quote: Quote | null; onClose
   const [amount, setAmount] = useState("");
   const [eta, setEta] = useState("");
   const [notes, setNotes] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (quote) {
       setAmount(quote.quoted_amount ? String(Number(quote.quoted_amount)) : "");
       setEta(quote.estimated_delivery ?? "");
       setNotes(quote.response_notes ?? "");
+      setFiles([]);
       setError(null);
     }
   }, [quote]);
   const send = useOrderMutation(
-    () => quotesApi.respond(quote!.id, { quoted_amount: amount, estimated_delivery: eta || null, response_notes: notes }),
+    async () => {
+      // Photos go up first so the customer's notification arrives with them already attached.
+      for (const [i, file] of files.entries()) {
+        try {
+          await quotesApi.addPhoto(quote!.id, file);
+        } catch (e) {
+          setFiles(files.slice(i));
+          throw e;
+        }
+      }
+      setFiles([]);
+      return quotesApi.respond(quote!.id, { quoted_amount: amount, estimated_delivery: eta || null, response_notes: notes });
+    },
     { success: "Quotation sent to customer", onSuccess: onClose, onError: (e) => setError(errorText(e)) },
   );
   if (!quote) return null;
@@ -92,6 +204,7 @@ export function RespondDialog({ quote, onClose }: { quote: Quote | null; onClose
           <label className={label} htmlFor="q-notes">Response Notes</label>
           <Textarea id="q-notes" rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Add any additional notes or terms..." />
         </div>
+        <QuotePhotoPicker quote={quote} files={files} onFiles={setFiles} />
         {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
         <div className="flex gap-3 pt-4">
           <button
@@ -131,10 +244,13 @@ export function ApproveDialog({ quote, onClose }: { quote: Quote | null; onClose
         pickup_address: defaults.data.pickup_address,
         delivery_address: defaults.data.delivery_address,
         source_country: defaults.data.source_country ? String(defaults.data.source_country) : "",
-        pickup_city: cities.data?.find((c) => c.name === defaults.data.pickup_address)?.id.toString() ?? "",
-        delivery_city: cities.data?.find((c) => c.name === defaults.data.delivery_address)?.id.toString() ?? "",
+        // App requests name the cities in origin/destination; the addresses may hold a street too.
+        pickup_city:
+          cities.data?.find((c) => c.name === defaults.data.pickup_address || c.name === quote?.origin)?.id.toString() ?? "",
+        delivery_city:
+          cities.data?.find((c) => c.name === defaults.data.delivery_address || c.name === quote?.destination)?.id.toString() ?? "",
         priority: "standard",
-        package_size: "",
+        package_size: defaults.data.package_size ?? "",
         order_class: "simple",
         service_type: defaults.data.service_type ?? (quote?.service_type === "equipment" ? "installation" : "full_service"),
         equipment: "",
@@ -143,7 +259,7 @@ export function ApproveDialog({ quote, onClose }: { quote: Quote | null; onClose
       });
       setError(null);
     }
-  }, [defaults.data, cities.data, quote?.service_type]);
+  }, [defaults.data, cities.data, quote?.service_type, quote?.origin, quote?.destination]);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setV((p) => ({ ...p, [k]: e.target.value }));
   const num = (k: string) => (v[k] ? Number(v[k]) : null);
 

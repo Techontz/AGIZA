@@ -234,12 +234,26 @@ export interface ProductStats {
 
 /* ------------------------------------------------------------------ keys */
 
+/** A banner on the customer app's home screen. */
+export interface MobileSlider {
+  id: number;
+  title: string;
+  link: string;
+  is_active: boolean;
+  sort_order: number;
+  has_image: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export type MobileSliderInput = Pick<MobileSlider, "title" | "link" | "is_active" | "sort_order">;
+
 export const catalogKeys = {
   all: ["catalog"] as const,
   productStats: ["catalog", "products", "stats"] as const,
   categories: ["catalog", "categories"] as const,
   brands: ["catalog", "brands"] as const,
   labels: ["catalog", "labels"] as const,
+  sliders: ["catalog", "sliders"] as const,
   options: ["catalog", "options"] as const,
   vendors: ["catalog", "vendors"] as const,
   vendorList: (query: object) => ["catalog", "vendors", query] as const,
@@ -275,6 +289,17 @@ export const catalogApi = {
     },
   },
 
+  sliders: {
+    list: (signal?: AbortSignal) => api.get<MobileSlider[]>("catalog/sliders", undefined, signal),
+    create: (body: MobileSliderInput) => api.post<MobileSlider>("catalog/sliders", body),
+    update: (id: number, body: Partial<MobileSliderInput>) => api.patch<MobileSlider>(`catalog/sliders/${id}`, body),
+    remove: (id: number) => api.delete(`catalog/sliders/${id}`),
+    uploadImage: (id: number, file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return api.post<MobileSlider>(`catalog/sliders/${id}/image`, form);
+    },
+  },
   labels: {
     list: (signal?: AbortSignal) => api.get<Label[]>("catalog/labels", undefined, signal),
     create: (body: LabelInput) => api.post<Label>("catalog/labels", body),

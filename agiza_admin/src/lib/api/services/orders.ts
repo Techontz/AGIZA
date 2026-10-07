@@ -166,6 +166,9 @@ export interface Quote {
   customer_replied_at: string | null;
   approved_at: string | null;
   created_order: { id: number; reference: string; order_type: string } | null;
+  /** Photos the customer added in the app (served through the authenticated proxy). */
+  /** `from_agiza`: attached by staff to the quotation (the customer sees it); otherwise the customer's own. */
+  photos: { id: number; url: string; from_agiza?: boolean }[];
 }
 
 export interface Customer extends CustomerRef {
@@ -241,10 +244,18 @@ export const quotesApi = {
       delivery_address: string;
       source_country: number | null;
       service_type: string | null;
+      package_size: "" | "small" | "medium" | "large";
     }>(
       `quotes/${id}/approval-defaults`,
     ),
   cancel: (id: number, note = "") => api.post<Quote>(`quotes/${id}/cancel`, { note }),
+  /** Attach a photo to AGIZA's answer (multipart `file`, images only, max 5). */
+  addPhoto: (id: number, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post<Quote>(`quotes/${id}/photos`, form);
+  },
+  removePhoto: (id: number, photoId: number) => api.delete<Quote>(`quotes/${id}/photos/${photoId}`),
 };
 
 export const customersApi = {
