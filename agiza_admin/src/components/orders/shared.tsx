@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, User, UserPlus, X } from "lucide-react";
+import { Phone, Plus, Search, User, UserPlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -352,7 +352,14 @@ export function CustomerPicker({
         <div className="flex items-center gap-2 min-w-0">
           <User className="size-4 text-gray-400" />
           <span className="font-medium text-gray-900 truncate">{value.full_name}</span>
-          <span className="text-xs text-gray-500">{value.phone || value.email}</span>
+          {value.phone ? (
+            <span className="inline-flex items-center gap-1 text-sm font-medium text-gray-700 whitespace-nowrap">
+              <Phone className="size-3.5 text-gray-400" />
+              {value.phone}
+            </span>
+          ) : (
+            <span className="text-xs text-gray-500">{value.email || "No phone on file"}</span>
+          )}
         </div>
         <button type="button" onClick={() => onChange(null)} className="p-1 rounded hover:bg-gray-200" aria-label="Change customer">
           <X className="size-4 text-gray-500" />
@@ -364,10 +371,12 @@ export function CustomerPicker({
   if (creating) {
     return (
       <div className="border border-gray-200 rounded-lg p-3 space-y-3 bg-gray-50">
+        <p className="text-sm font-semibold text-gray-700">Register a new customer</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} aria-label="New customer name" />
-          <Input placeholder="Phone, e.g. +255 712 000 000" value={phone} onChange={(e) => setPhone(e.target.value)} aria-label="New customer phone" />
+          <Input type="tel" placeholder="Phone, e.g. +255 712 000 000" value={phone} onChange={(e) => setPhone(e.target.value)} aria-label="New customer phone" />
         </div>
+        <p className="text-xs text-gray-500">The phone number is how we reach the customer and link them to the AGIZA app.</p>
         <div className="flex gap-2">
           <Button size="sm" onClick={() => create.mutate()} loading={create.isPending} disabled={!name.trim() || !phone.trim()}>
             <UserPlus className="size-4" /> Register customer
@@ -402,7 +411,7 @@ export function CustomerPicker({
             results.data.results.map((c) => (
               <button key={c.id} type="button" onClick={() => onChange(c)} className="w-full text-left px-3 py-2 hover:bg-gray-50">
                 <span className="text-sm font-medium text-gray-900">{c.full_name}</span>
-                <span className="text-xs text-gray-500 ml-2">{c.phone || c.email}</span>
+                <span className="text-sm text-gray-600 ml-2">{c.phone || c.email}</span>
               </button>
             ))
           ) : (
@@ -414,11 +423,13 @@ export function CustomerPicker({
         type="button"
         onClick={() => {
           setCreating(true);
-          setName(search);
+          // Searched by phone? Start the new customer with that number.
+          if (/^\+?[\d\s-]{6,}$/.test(search.trim())) setPhone(search.trim());
+          else setName(search);
         }}
         className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800"
       >
-        <Plus className="size-4" /> New customer
+        <Plus className="size-4" /> New customer (name + phone)
       </button>
     </div>
   );

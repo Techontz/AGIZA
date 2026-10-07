@@ -36,6 +36,21 @@ export interface DeliveryProof {
   photos: DeliveryPhoto[];
 }
 
+/** The driver carrying a delivery (phone so staff can call them). */
+export interface DriverRef extends PersonRef {
+  phone: string;
+}
+
+/** A line being delivered: shop lines carry SKU and bin; other orders have one line without them. */
+export interface DeliveryItem {
+  product_name: string;
+  variant_name: string;
+  sku: string;
+  quantity: number;
+  warehouse: string;
+  bin_code: string;
+}
+
 export interface Delivery {
   id: number;
   reference: string;
@@ -47,7 +62,7 @@ export interface Delivery {
   delivery_type_display: string;
   status: DeliveryStatus;
   status_display: string;
-  driver: PersonRef | null;
+  driver: DriverRef | null;
   scheduled_at: string | null;
   pickup_point: string;
   pickup_warehouse: { id: number; name: string } | null;
@@ -62,9 +77,20 @@ export interface Delivery {
   notes: string;
   delivered_at: string | null;
   proof: DeliveryProof | null;
+  items: DeliveryItem[];
   allowed_transitions: Transition[];
   created_at: string;
   updated_at: string;
+}
+
+/** One customer's deliveries shown together (GET deliveries/by-customer). */
+export interface DeliveryGroup {
+  customer: { id: number; full_name: string; phone: string };
+  destination: string;
+  count: number;
+  statuses: { status: DeliveryStatus; status_display: string; count: number }[];
+  drivers: DriverRef[];
+  deliveries: Delivery[];
 }
 
 export interface DeliveryEvent {
@@ -149,6 +175,8 @@ const base = "deliveries";
 
 export const deliveriesApi = {
   list: (query: QueryParams, signal?: AbortSignal) => api.get<Paginated<Delivery>>(base, query, signal),
+  /** Same filters as `list` (plus `customer`), one row per customer. */
+  byCustomer: (query: QueryParams, signal?: AbortSignal) => api.get<Paginated<DeliveryGroup>>(`${base}/by-customer`, query, signal),
   get: (id: number) => api.get<Delivery>(`${base}/${id}`),
   stats: () => api.get<DeliveryStats>(`${base}/stats`),
   drivers: () => api.get<Assignee[]>(`${base}/drivers`),
@@ -157,6 +185,11 @@ export const deliveriesApi = {
     api.patch<Delivery>(`${base}/${id}`, data),
   assignDriver: (id: number, data: { driver: number; scheduled_at?: string | null; note?: string }) =>
     api.post<Delivery>(`${base}/${id}/assign-driver`, data),
+  /** One driver for several deliveries of the same customer. */
+  bulkAssignDriver: (data: { deliveries: number[]; driver: number; scheduled_at?: string | null; note?: string }) =>
+    api.post<Delivery[]>(`${base}/bulk-assign-driver`, data),
+  /** Multipart: deliveries (repeated ids, one customer), signature_name, notes?, completed_at?, signature_image?, photos (max 6). */
+  bulkComplete: (form: FormData) => api.post<Delivery[]>(`${base}/bulk-complete`, form),
   transition: (id: number, data: DeliveryTransitionInput) => api.post<Delivery>(`${base}/${id}/transition`, data),
   /** Multipart: signature_name, notes?, completed_at?, signature_image?, photos (repeated, max 6). */
   complete: (id: number, form: FormData) => api.post<Delivery>(`${base}/${id}/complete`, form),
@@ -176,6 +209,7 @@ export const deliveriesApi = {
 export const deliveryKeys = {
   all: ["deliveries"] as const,
   list: (query: object) => ["deliveries", "list", query] as const,
+  groups: (query: object) => ["deliveries", "groups", query] as const,
   stats: ["deliveries", "stats"] as const,
   drivers: ["deliveries", "drivers"] as const,
   events: (id: number) => ["deliveries", "events", id] as const,

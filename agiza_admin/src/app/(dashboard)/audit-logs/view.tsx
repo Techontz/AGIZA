@@ -1,14 +1,17 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { BarChart3, ScrollText } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { AuditLogTable } from "@/components/audit/audit-log-table";
+import { ReportsDashboardTab } from "@/components/reports/reports-dashboard";
 import { Card } from "@/components/ui/card";
 import { Input, SearchInput, Select } from "@/components/ui/form";
 import { PageContainer, PageHeader } from "@/components/ui/page";
 import { Pagination } from "@/components/ui/pagination";
 import { ErrorState } from "@/components/ui/states";
+import { UnderlineTabs } from "@/components/ui/tabs";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useUrlFilters } from "@/hooks/use-url-filters";
 import { queryKeys } from "@/lib/api/query-keys";
@@ -29,8 +32,32 @@ const ACTIONS = [
 
 const PAGE_SIZE = 20;
 
+type Tab = "dashboard" | "audit";
+
+/** Reporting page: the Dashboard (default) and the Audit Trail. */
 export function AuditLogsView() {
   const meta = pageMeta["/audit-logs"];
+  const [f, setF] = useUrlFilters({ tab: "dashboard" });
+  const tab: Tab = f.tab === "audit" ? "audit" : "dashboard";
+
+  return (
+    <PageContainer>
+      <PageHeader title={meta.title} description={meta.description} />
+      <UnderlineTabs<Tab>
+        className="mb-6"
+        value={tab}
+        onChange={(t) => setF({ tab: t })}
+        options={[
+          { value: "dashboard", label: <><BarChart3 className="size-4" />Dashboard</> },
+          { value: "audit", label: <><ScrollText className="size-4" />Audit Trail</> },
+        ]}
+      />
+      {tab === "dashboard" ? <ReportsDashboardTab /> : <AuditTrailTab />}
+    </PageContainer>
+  );
+}
+
+function AuditTrailTab() {
   const [filters, setFilters] = useUrlFilters({
     search: "",
     action: "all",
@@ -65,9 +92,7 @@ export function AuditLogsView() {
   const entities = useQuery({ queryKey: ["audit-log-entities"], queryFn: auditEntitiesService.list, staleTime: 5 * 60_000 });
 
   return (
-    <PageContainer>
-      <PageHeader title={meta.title} description={meta.description} />
-
+    <>
       {/* Controls */}
       <Card className="p-6 mb-6">
         <div className="flex flex-col lg:flex-row gap-4 lg:items-center justify-between">
@@ -144,6 +169,6 @@ export function AuditLogsView() {
           )}
         </Card>
       )}
-    </PageContainer>
+    </>
   );
 }

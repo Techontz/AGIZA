@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Ban, CreditCard, ExternalLink, MapPin, Package2, Pencil, PlayCircle, Truck } from "lucide-react";
+import { AlertTriangle, Ban, CreditCard, ExternalLink, MapPin, Package2, Pencil, PlayCircle, Receipt, Truck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -20,7 +20,7 @@ import { formatDateTime, formatTSh } from "@/lib/format";
 import { OrderSellers } from "./sellers-block";
 import { SHOP_INVALIDATE } from "./shared";
 
-type Action = "process" | "ship" | "cancel" | "pay" | null;
+type Action = "process" | "ship" | "cancel" | "pay" | "fee" | null;
 
 const box = "bg-white p-4 rounded border border-gray-200";
 
@@ -49,7 +49,8 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
   });
 
   const canProcess = canEdit && o.allowed_transitions.some((t) => t.value === "processing");
-  const canShip = canEdit && o.status === "processing";
+  const feePending = o.details.delivery_fee_pending && o.status !== "cancelled";
+  const canShip = canEdit && o.status === "processing" && !feePending;
   const canCancel = canManage && (o.status === "pending" || o.status === "processing");
   const due = o.payment.due !== null ? Number(o.payment.due) : null;
   const canRecord = canPay && o.status !== "cancelled" && (due === null || due > 0);
@@ -57,6 +58,24 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
 
   return (
     <div className="space-y-6">
+      {feePending && (
+        <div className="flex flex-wrap items-start gap-3 rounded-lg border border-orange-300 bg-orange-50 p-4" role="alert">
+          <AlertTriangle className="size-5 flex-shrink-0 text-orange-600 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-orange-900">Needs manual delivery cost</p>
+            <p className="text-sm text-orange-900 mt-1">
+              The Shipping Engine couldn&apos;t price delivery to {o.details.full_address || "this address"}
+              {o.details.shipping_method && ` by ${o.details.shipping_method.name}`}. The customer placed the order without it and
+              can&apos;t pay until you set the delivery cost. They are notified when you do.
+            </p>
+          </div>
+          {canEdit && (
+            <Button size="sm" onClick={() => setAction("fee")}>
+              <Receipt className="size-4" /> Set Delivery Cost
+            </Button>
+          )}
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
           <h4 className="font-semibold text-gray-900 mb-3">Order Items</h4>
@@ -124,7 +143,15 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
             <h4 className="font-semibold text-gray-900 mb-2">Order Summary</h4>
             <div className={`${box} space-y-2`}>
               <Row label="Subtotal:">{formatTSh(o.details.subtotal)}</Row>
-              <Row label="Delivery fee:">{formatTSh(o.details.delivery_fee)}</Row>
+              <Row label="Delivery fee:">
+                {feePending ? (
+                  <span className="text-orange-700 font-medium">
+                    To be set{Number(o.details.delivery_fee) > 0 && ` (+ ${formatTSh(o.details.delivery_fee)} import shipping)`}
+                  </span>
+                ) : (
+                  formatTSh(o.details.delivery_fee)
+                )}
+              </Row>
               <Row label="Total:" strong>
                 {formatTSh(o.total_amount)}
               </Row>
@@ -234,6 +261,7 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
       <ProcessDialog order={o} open={action === "process"} onClose={close} />
       <ShipDialog order={o} open={action === "ship"} onClose={close} />
       <CancelDialog order={o} open={action === "cancel"} onClose={close} />
+      <DeliveryFeeDialog order={o} open={action === "fee"} onClose={close} />
       <PaymentDialog open={action === "pay"} onClose={close} due={o.payment.due} pending={pay.isPending} onSubmit={(data) => pay.mutate(data)} />
     </div>
   );
@@ -465,5 +493,98 @@ function CancelDialog({ order: o, open, onClose }: { order: ShopOrder; open: boo
         <FormAlert error={error} shown={["reason"]} />
       </div>
     </ConfirmDialog>
+  );
+}
+
+function DeliveryFeeDialog({ order: o, open, onClose }: { order: ShopOrder; open: boolean; onClose: () => void }) {
+  const methods = useQuery({ queryKey: shopOrderKeys.methods, queryFn: shopOrdersApi.methods, enabled: open, staleTime: 60_000 });
+  const [fee, setFee] = useState("");
+  const [method, setMethod] = useState("");
+  const [eta, setEta] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<unknown>(null);
+  const [local, setLocal] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (open) {
+      setFee("");
+      setMethod(o.details.shipping_method ? String(o.details.shipping_method.id) : "");
+      setEta(o.details.estimated_delivery);
+      setNote("");
+      setError(null);
+      setLocal({});
+    }
+  }, [open, o.details.shipping_method, o.details.estimated_delivery]);
+  const save = useApiMutation(
+    () =>
+      shopOrdersApi.setDeliveryFee(o.id, {
+        delivery_fee: fee.trim(),
+        shipping_method: method ? Number(method) : null,
+        estimated_delivery: eta.trim(),
+        note: note.trim(),
+      }),
+    {
+      invalidate: SHOP_INVALIDATE,
+      success: (r) => `Delivery cost set on ${r.reference} — the customer can now pay`,
+      onSuccess: onClose,
+      onError: setError,
+    },
+  );
+  const amount = Number(fee);
+  const submit = () => {
+    if (!fee.trim() || Number.isNaN(amount) || amount < 0) return setLocal({ delivery_fee: "Enter the delivery cost (0 or more)." });
+    setLocal({});
+    save.mutate(undefined);
+  };
+  const fe = mergedErrors(error, local);
+  const newTotal = Number(o.total_amount ?? 0) + (Number.isNaN(amount) ? 0 : amount);
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Set Delivery Cost — ${o.reference}`}
+      size="lg"
+      footer={
+        <>
+          <Button className="flex-1" onClick={submit} loading={save.isPending}>
+            <Receipt className="size-4" /> Set Cost &amp; Notify Customer
+          </Button>
+          <Button variant="muted" onClick={onClose} disabled={save.isPending}>
+            Cancel
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-gray-600">
+          Delivery to <span className="font-medium text-gray-900">{o.details.full_address}</span>. The amount is added to the order total and the
+          customer is told they can pay.
+        </p>
+        <Field label="Delivery cost (TSh)" required htmlFor={`fee-amount-${o.id}`} error={fe.delivery_fee}>
+          <Input id={`fee-amount-${o.id}`} type="number" min="0" step="0.01" inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} />
+        </Field>
+        <Field label="Delivery method" htmlFor={`fee-method-${o.id}`} error={fe.shipping_method} hint="Optional — keeps the customer's choice if unchanged.">
+          <Select id={`fee-method-${o.id}`} value={method} onChange={(e) => setMethod(e.target.value)} disabled={methods.isPending}>
+            <option value="">{methods.isPending ? "Loading methods…" : "No change"}</option>
+            {methods.data?.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {methods.isError && <p className="text-xs text-red-600">Couldn&apos;t load delivery methods: {errorText(methods.error)}</p>}
+        <Field label="Estimated delivery" htmlFor={`fee-eta-${o.id}`} error={fe.estimated_delivery} hint='Optional, e.g. "2–3 days"'>
+          <Input id={`fee-eta-${o.id}`} maxLength={60} value={eta} onChange={(e) => setEta(e.target.value)} />
+        </Field>
+        <Field label="Note for the history (optional)" htmlFor={`fee-note-${o.id}`} error={fe.note}>
+          <Textarea id={`fee-note-${o.id}`} rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Bus cargo to Mwanza, quoted by the carrier" />
+        </Field>
+        <div className="flex justify-between rounded border border-gray-200 bg-gray-50 p-3 text-sm">
+          <span className="text-gray-600">New order total</span>
+          <span className="font-semibold text-gray-900">{formatTSh(newTotal)}</span>
+        </div>
+        <FormAlert error={error} shown={["delivery_fee", "shipping_method", "estimated_delivery", "note"]} />
+      </div>
+    </Modal>
   );
 }

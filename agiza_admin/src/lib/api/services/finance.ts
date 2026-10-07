@@ -1,4 +1,4 @@
-import { api, type QueryParams } from "../client";
+import { api, buildQuery, type QueryParams } from "../client";
 import type { Paginated } from "../types";
 import type { PersonRef } from "./orders";
 
@@ -196,10 +196,50 @@ export interface InstallmentPlan {
   created_at: string;
 }
 
+/** Totals of the Profit & Loss report (margin = profit / revenue, %; null when revenue is 0). */
+export interface ProfitLossFigures {
+  orders: number;
+  revenue: string;
+  purchase_cost: string;
+  shipping_cost: string;
+  profit: string;
+  margin: Money;
+}
+
+export interface ProfitLossRow {
+  id: number;
+  reference: string;
+  date: string;
+  customer: { id: number; reference: string; full_name: string };
+  order_type: OrderType;
+  order_type_display: string;
+  status: string;
+  status_display: string;
+  item_details: string;
+  total: string;
+  purchase_cost: string;
+  shipping_cost: string;
+  profit: string;
+  margin: Money;
+  purchase_cost_set: boolean;
+  shipping_cost_set: boolean;
+}
+
+export interface ProfitLossReport extends Paginated<ProfitLossRow> {
+  totals: ProfitLossFigures;
+  by_type: (ProfitLossFigures & { order_type: OrderType; order_type_display: string })[];
+}
+
 /* ---------------------------------------------------------------- service */
 
 export const financeApi = {
   stats: () => api.get<FinanceStats>("finance/stats"),
+
+  profitLoss: {
+    get: (query: QueryParams, signal?: AbortSignal) => api.get<ProfitLossReport>("finance/profit-loss", query, signal),
+    /** Same-origin proxy URL of the CSV export (same filters as the report). */
+    csvUrl: (query: QueryParams) => `/api/proxy/finance/profit-loss/export/${buildQuery(query)}`,
+  },
 
   orderPayments: {
     list: (query: QueryParams, signal?: AbortSignal) =>
@@ -266,6 +306,7 @@ export const financeApi = {
 export const financeKeys = {
   all: ["finance"] as const,
   stats: ["finance", "stats"] as const,
+  profitLoss: (query: object) => ["finance", "profit-loss", query] as const,
   orderPayments: (query: object) => ["finance", "order-payments", query] as const,
   receipt: (id: number) => ["finance", "receipt", id] as const,
   ledger: (query: object) => ["finance", "payments", query] as const,

@@ -1,10 +1,11 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { CheckCircle2, ChevronDown, ChevronUp, Clock, MapPin, Plus, Store, Truck, User, Warehouse, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronUp, Clock, List, MapPin, Plus, Store, Truck, User, Users, Warehouse, XCircle } from "lucide-react";
 import React, { useEffect, useState } from "react";
 
 import { useDeliveryAccess } from "@/components/deliveries/access";
+import { CustomerGroups } from "@/components/deliveries/customer-groups";
 import { DeliveryExceptionBadge, DeliveryStatusBadge, DeliveryTypeBadge, OrderSourceBadge } from "@/components/deliveries/badges";
 import { NewDeliveryDialog } from "@/components/deliveries/new-delivery-dialog";
 import { PickupsPanel } from "@/components/deliveries/pickups";
@@ -59,6 +60,8 @@ export function DeliveriesView() {
   const { canManage, isDriver } = useDeliveryAccess();
   const [f, setF] = useUrlFilters({
     view: "deliveries",
+    // "clients": one row per customer (default); "list": one row per delivery.
+    layout: "clients",
     tab: "pending",
     search: "",
     driver: "all",
@@ -75,6 +78,7 @@ export function DeliveriesView() {
     popen: "",
   });
   const view = f.view === "pickups" ? "pickups" : "deliveries";
+  const layout = f.layout === "list" ? "list" : "clients";
   const [search, setSearch] = useState(f.search);
   const [creating, setCreating] = useState(false);
   const debounced = useDebouncedValue(search);
@@ -88,7 +92,7 @@ export function DeliveriesView() {
     queryKey: deliveryKeys.list(query),
     queryFn: ({ signal }) => deliveriesApi.list(query, signal),
     placeholderData: keepPreviousData,
-    enabled: view === "deliveries",
+    enabled: view === "deliveries" && layout === "list",
   });
   const stats = useQuery({ queryKey: deliveryKeys.stats, queryFn: deliveriesApi.stats });
   const drivers = useQuery({ queryKey: deliveryKeys.drivers, queryFn: deliveriesApi.drivers, enabled: !isDriver, staleTime: 60_000 });
@@ -141,7 +145,7 @@ export function DeliveriesView() {
           )}
 
           <Card className="p-6 mb-6">
-            <div className="mb-4">
+            <div className="mb-4 flex flex-col sm:flex-row gap-3 sm:items-center justify-between">
               <PillTabs<Tab>
                 value={tab}
                 onChange={(t) => setF({ tab: t, status: "all", open: "" })}
@@ -150,6 +154,28 @@ export function DeliveriesView() {
                   { value: "completed", label: `Completed/Failed (${s?.completed ?? "…"})` },
                 ]}
               />
+              <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1" role="group" aria-label="Group deliveries">
+                {(
+                  [
+                    ["clients", "By Client", Users],
+                    ["list", "All Deliveries", List],
+                  ] as const
+                ).map(([value, label, Icon]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={layout === value}
+                    onClick={() => setF({ layout: value, page: "1", open: "" })}
+                    className={
+                      layout === value
+                        ? "inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white"
+                        : "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                    }
+                  >
+                    <Icon className="size-4" /> {label}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between pt-4 border-t border-gray-200">
               <SearchInput
@@ -187,7 +213,14 @@ export function DeliveriesView() {
             </div>
           </Card>
 
-          {list.isError && !list.data ? (
+          {layout === "clients" ? (
+            <CustomerGroups
+              query={query}
+              openId={expanded}
+              setOpen={(id) => setF({ open: id ? String(id) : "" })}
+              onPageChange={(p) => setF({ page: String(p), open: "" })}
+            />
+          ) : list.isError && !list.data ? (
             <ErrorState message={errorText(list.error)} onRetry={() => list.refetch()} />
           ) : !list.isPending && rows.length === 0 ? (
             <Card className="p-12 text-center">
@@ -241,7 +274,7 @@ export function DeliveriesView() {
         </>
       )}
 
-      <NewDeliveryDialog open={creating} onClose={() => setCreating(false)} onCreated={(d) => setF({ tab: "pending", status: "all", search: "", open: String(d.id) })} />
+      <NewDeliveryDialog open={creating} onClose={() => setCreating(false)} onCreated={(d) => setF({ tab: "pending", status: "all", search: "", layout: "list", open: String(d.id) })} />
     </PageContainer>
   );
 }
@@ -294,7 +327,18 @@ function Row({ delivery: d, open, toggle }: { delivery: Delivery; open: boolean;
           <DeliveryTypeBadge type={d.delivery_type} label={d.delivery_type_display} />
         </td>
         <td className="px-6 py-4">
-          {d.driver ? <div className="text-gray-900 whitespace-nowrap">{d.driver.full_name}</div> : <span className="text-sm text-gray-500 italic">Unassigned</span>}
+          {d.driver ? (
+            <div className="whitespace-nowrap">
+              <div className="text-gray-900">{d.driver.full_name}</div>
+              {d.driver.phone && (
+                <a href={`tel:${d.driver.phone}`} className="text-xs text-gray-600 hover:text-blue-700">
+                  {d.driver.phone}
+                </a>
+              )}
+            </div>
+          ) : (
+            <span className="text-sm text-gray-500 italic">Unassigned</span>
+          )}
         </td>
         <td className="px-6 py-4">
           <DeliveryStatusBadge delivery={d} />

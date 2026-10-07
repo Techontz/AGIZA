@@ -165,10 +165,49 @@ export interface Quote {
   responded_at: string | null;
   customer_replied_at: string | null;
   approved_at: string | null;
-  created_order: { id: number; reference: string; order_type: string } | null;
+  /** The (first) order the quotation became; see `created_orders` for multi-item quotations. */
+  created_order: QuoteOrderRef | null;
+  /** Every order created on approval: one per item for a multi-item quotation. */
+  created_orders?: QuoteOrderRef[];
   /** Photos the customer added in the app (served through the authenticated proxy). */
   /** `from_agiza`: attached by staff to the quotation (the customer sees it); otherwise the customer's own. */
-  photos: { id: number; url: string; from_agiza?: boolean }[];
+  /** `item`: the item line the photo belongs to (multi-item quotations). */
+  photos: QuotePhoto[];
+  /** "Several items, one quotation" lines; empty for a single-description quotation. */
+  items?: QuoteItem[];
+}
+
+export interface QuoteOrderRef {
+  id: number;
+  reference: string;
+  order_type: string;
+}
+
+export interface QuotePhoto {
+  id: number;
+  url: string;
+  from_agiza?: boolean;
+  item?: number | null;
+}
+
+export interface QuoteItem {
+  id: number;
+  position: number;
+  name: string;
+  quantity: number;
+  link: string;
+  category: string;
+  notes: string;
+  service: "" | "full_service" | "deliver_for_me";
+  service_display: string;
+  tracking_number: string;
+  origin_country: number | null;
+  origin_country_name: string | null;
+  unit_price: string | null;
+  amount: string | null;
+  price_notes: string;
+  photos: QuotePhoto[];
+  created_order: QuoteOrderRef | null;
 }
 
 export interface Customer extends CustomerRef {
@@ -245,14 +284,21 @@ export const quotesApi = {
       source_country: number | null;
       service_type: string | null;
       package_size: "" | "small" | "medium" | "large";
+      item_count?: number;
     }>(
       `quotes/${id}/approval-defaults`,
     ),
   cancel: (id: number, note = "") => api.post<Quote>(`quotes/${id}/cancel`, { note }),
-  /** Attach a photo to AGIZA's answer (multipart `file`, images only, max 5). */
-  addPhoto: (id: number, file: File) => {
+  /**
+   * Attach a photo (multipart `file`, images only). By default it's part of AGIZA's answer (max 5).
+   * `customerPhoto`: a photo of the customer's item that staff add at intake (max 5 per item / quotation);
+   * `item`: the item line it belongs to (implies a customer photo).
+   */
+  addPhoto: (id: number, file: File, opts: { customerPhoto?: boolean; item?: number } = {}) => {
     const form = new FormData();
     form.append("file", file);
+    if (opts.customerPhoto) form.append("customer_photo", "true");
+    if (opts.item) form.append("item", String(opts.item));
     return api.post<Quote>(`quotes/${id}/photos`, form);
   },
   removePhoto: (id: number, photoId: number) => api.delete<Quote>(`quotes/${id}/photos/${photoId}`),

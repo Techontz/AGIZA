@@ -468,3 +468,151 @@ export function AddProofDialog({ delivery, open, onClose }: { delivery: Delivery
     </Modal>
   );
 }
+
+/* ------------------------------------------- group actions (one customer) */
+
+const refs = (deliveries: Delivery[]) => deliveries.map((d) => d.reference).join(", ");
+
+/** One driver for several deliveries of the same customer. */
+export function BulkAssignDriverDialog({ deliveries, open, onClose }: { deliveries: Delivery[]; open: boolean; onClose: () => void }) {
+  const drivers = useQuery({ queryKey: deliveryKeys.drivers, queryFn: deliveriesApi.drivers, enabled: open, staleTime: 60_000 });
+  const [driver, setDriver] = useState("");
+  const [scheduled, setScheduled] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<unknown>(null);
+  const [local, setLocal] = useState<Record<string, string>>({});
+  const current = deliveries.find((d) => d.driver)?.driver?.id;
+  useEffect(() => {
+    if (open) {
+      setDriver(current ? String(current) : "");
+      setScheduled("");
+      setNote("");
+      setError(null);
+      setLocal({});
+    }
+  }, [open, current]);
+
+  const assign = useApiMutation(
+    () => deliveriesApi.bulkAssignDriver({ deliveries: deliveries.map((d) => d.id), driver: Number(driver), scheduled_at: fromLocalInput(scheduled), note }),
+    {
+      invalidate: INVALIDATE,
+      success: (rows) => `${rows.length} deliveries assigned to ${rows[0]?.driver?.full_name ?? "the driver"}`,
+      onSuccess: onClose,
+      onError: setError,
+    },
+  );
+  const submit = () => {
+    if (!driver) return setLocal({ driver: "Choose a driver." });
+    setLocal({});
+    assign.mutate(undefined);
+  };
+  const fe = mergedErrors(error, local);
+  const customer = deliveries[0]?.customer.full_name ?? "";
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Assign Driver — ${customer}`} size="lg" footer={footer(`Assign ${deliveries.length} Deliveries`, submit, onClose, assign.isPending)}>
+      <div className="space-y-4">
+        <p className="text-sm text-gray-600">
+          One driver takes all of {customer}&apos;s selected deliveries: <strong>{refs(deliveries)}</strong>.
+        </p>
+        <Field label="Driver" required htmlFor="bd-driver" error={fe.driver}>
+          <Select id="bd-driver" value={driver} onChange={(e) => setDriver(e.target.value)} disabled={drivers.isPending}>
+            <option value="">{drivers.isPending ? "Loading drivers…" : "Select a driver"}</option>
+            {drivers.data?.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.full_name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Scheduled date & time" htmlFor="bd-sched" error={fe.scheduled_at} hint="Optional — keeps the current schedules when empty.">
+          <Input id="bd-sched" type="datetime-local" value={scheduled} onChange={(e) => setScheduled(e.target.value)} />
+        </Field>
+        <Field label="Note (optional)" htmlFor="bd-note" error={fe.note}>
+          <Textarea id="bd-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Instructions for the driver..." />
+        </Field>
+        <FormAlert error={error} shown={["driver", "scheduled_at", "note"]} />
+      </div>
+    </Modal>
+  );
+}
+
+/** Deliver several deliveries of the same customer with one proof (recipient, signature, photos). */
+export function BulkCompleteDialog({ deliveries, open, onClose }: { deliveries: Delivery[]; open: boolean; onClose: () => void }) {
+  const first = deliveries[0];
+  const [name, setName] = useState("");
+  const [completedAt, setCompletedAt] = useState("");
+  const [notes, setNotes] = useState("");
+  const [signature, setSignature] = useState<File | null>(null);
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [error, setError] = useState<unknown>(null);
+  const [local, setLocal] = useState<Record<string, string>>({});
+  const defaultName = first ? first.recipient_name || first.customer.full_name : "";
+  useEffect(() => {
+    if (open) {
+      setName(defaultName);
+      setCompletedAt(toLocalInput(new Date().toISOString()));
+      setNotes("");
+      setSignature(null);
+      setPhotos([]);
+      setError(null);
+      setLocal({});
+    }
+  }, [open, defaultName]);
+
+  const complete = useApiMutation(
+    () => {
+      const form = new FormData();
+      deliveries.forEach((d) => form.append("deliveries", String(d.id)));
+      form.append("signature_name", name.trim());
+      form.append("notes", notes);
+      const at = fromLocalInput(completedAt);
+      if (at) form.append("completed_at", at);
+      if (signature) form.append("signature_image", signature);
+      photos.forEach((p) => form.append("photos", p));
+      return deliveriesApi.bulkComplete(form);
+    },
+    {
+      invalidate: INVALIDATE,
+      success: (rows) => `${rows.length} deliveries delivered — proof of delivery saved on each`,
+      onSuccess: onClose,
+      onError: setError,
+    },
+  );
+  const submit = () => {
+    if (!name.trim()) return setLocal({ signature_name: "Enter the name of the person who received the delivery." });
+    if (completedAt && new Date(completedAt).getTime() > Date.now() + 60_000) return setLocal({ completed_at: "The completion time can't be in the future." });
+    setLocal({});
+    complete.mutate(undefined);
+  };
+  const fe = mergedErrors(error, local);
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Complete ${deliveries.length} Deliveries — ${first?.customer.full_name ?? ""}`} footer={footer("Confirm Delivered", submit, onClose, complete.isPending, "success")}>
+      <div className="space-y-4">
+        <p className="text-sm text-gray-600">
+          One proof of delivery is saved on each of <strong>{refs(deliveries)}</strong>.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Received by (signature name)" required htmlFor="bc-name" error={fe.signature_name}>
+            <Input id="bc-name" value={name} onChange={(e) => setName(e.target.value)} invalid={Boolean(fe.signature_name)} />
+          </Field>
+          <Field label="Completed at" htmlFor="bc-at" error={fe.completed_at}>
+            <Input id="bc-at" type="datetime-local" value={completedAt} onChange={(e) => setCompletedAt(e.target.value)} />
+          </Field>
+        </div>
+        <Field label="Signature image (optional)" htmlFor="dc-signature">
+          <SignaturePicker file={signature} onChange={setSignature} error={fe.signature_image} />
+        </Field>
+        <Field label="Notes" htmlFor="bc-notes" error={fe.notes}>
+          <Textarea id="bc-notes" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. All parcels handed to the customer at the door." />
+        </Field>
+        <div>
+          <p className="block text-sm font-medium text-gray-700 mb-2">Delivery photos (up to {MAX_PHOTOS})</p>
+          <PhotoPicker files={photos} onChange={setPhotos} max={MAX_PHOTOS} error={fe.photos} />
+        </div>
+        <FormAlert error={error} shown={["signature_name", "completed_at", "signature_image", "notes", "photos", "deliveries"]} />
+      </div>
+    </Modal>
+  );
+}

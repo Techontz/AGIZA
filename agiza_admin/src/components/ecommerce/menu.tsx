@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ChevronRight,
   DollarSign,
-  ImageIcon,
   Flag,
   Package,
   Percent,
@@ -42,8 +41,7 @@ export type Section =
   | "reviews"
   | "options"
   | "labels"
-  | "brands"
-  | "sliders";
+  | "brands";
 
 interface MenuItem {
   title: string;
@@ -85,8 +83,6 @@ const MENU: MenuItem[] = [
     border: "hover:border-rose-500", tile: "bg-rose-100 group-hover:bg-rose-200", iconColor: "text-rose-600", chevron: "group-hover:text-rose-600" },
   { title: "Brands", description: "Add and manage product brands with logos and descriptions", icon: DollarSign, section: "brands",
     border: "hover:border-yellow-500", tile: "bg-yellow-100 group-hover:bg-yellow-200", iconColor: "text-yellow-600", chevron: "group-hover:text-yellow-600" },
-  { title: "App Home Sliders", description: "Banners at the top of the AGIZA customer app's home screen", icon: ImageIcon, section: "sliders",
-    border: "hover:border-fuchsia-500", tile: "bg-fuchsia-100 group-hover:bg-fuchsia-200", iconColor: "text-fuchsia-600", chevron: "group-hover:text-fuchsia-600" },
 ];
 
 export function EcommerceMenu({ onOpen }: { onOpen: (section: Section) => void }) {

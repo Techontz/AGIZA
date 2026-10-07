@@ -18,7 +18,10 @@ import {
 } from "@/lib/api/services/shipping";
 import { formatDate } from "@/lib/format";
 
-import { ALERT_OPTIONS, FormErrorBox, localToIso, useFormErrors, useShippingMutation } from "./shared";
+import { ALERT_OPTIONS, FormErrorBox, localToIso, shipmentStatusLabel, useFormErrors, useShippingMutation } from "./shared";
+
+/** Backend label, except Completed which the team calls "Ready for collection". */
+const optionLabel = (o: { value: ShipmentStatus; label: string }) => (o.value === "completed" ? shipmentStatusLabel(o.value) : o.label);
 
 function Footer({ formId, label, pending, disabled, onClose, variant = "primary" }: {
   formId: string;
@@ -42,15 +45,17 @@ function Footer({ formId, label, pending, disabled, onClose, variant = "primary"
 
 /* ---------------------------------------------------------- update status */
 
+/** Any later milestone can be chosen (never an earlier one); the skipped ones are recorded too, in order. */
 export function StatusDialog({ shipment, onClose }: { shipment: Shipment; onClose: () => void }) {
   const options = shipment.allowed_transitions.filter((t) => t.value !== "cancelled");
   const [status, setStatus] = useState<ShipmentStatus | "">(options[0]?.value ?? "");
   const [note, setNote] = useState("");
   const [location, setLocation] = useState("");
   const [when, setWhen] = useState("");
+  const skipped = options.slice(0, Math.max(0, options.findIndex((o) => o.value === status)));
   const { errors, onError, reset } = useFormErrors();
   const m = useShippingMutation((d: TransitionInput) => shippingApi.shipments.transition(shipment.id, d), {
-    success: (s) => `${s.cargo_id} is now ${s.status_display}`,
+    success: (s) => `${s.cargo_id} is now ${s.status === "completed" ? shipmentStatusLabel(s.status) : s.status_display}`,
     onSuccess: onClose,
     onError,
   });
@@ -73,10 +78,16 @@ export function StatusDialog({ shipment, onClose }: { shipment: Shipment; onClos
         <Field label="New Status" required htmlFor="st-status" error={errors.status}>
           <Select id="st-status" value={status} onChange={(e) => setStatus(e.target.value as ShipmentStatus)}>
             {options.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <option key={o.value} value={o.value}>{optionLabel(o)}</option>
             ))}
           </Select>
         </Field>
+        {skipped.length > 0 && (
+          <p className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-900">
+            Skipped milestones are recorded too, in order: {skipped.map(optionLabel).join(" → ")}. The orders on board move along
+            with them. Statuses can&apos;t be moved back afterwards.
+          </p>
+        )}
         <Field label="Location" htmlFor="st-loc" error={errors.location}>
           <Input id="st-loc" maxLength={150} placeholder="e.g. Guangzhou Port" value={location} onChange={(e) => setLocation(e.target.value)} />
         </Field>

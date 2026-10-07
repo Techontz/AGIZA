@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronUp, Package2, PackageCheck, Paperclip } from "lucide-react";
+import { ChevronDown, ChevronUp, Package2, PackageCheck, PackageX, Paperclip } from "lucide-react";
 import Link from "next/link";
 import React, { useEffect, useRef } from "react";
 
@@ -129,22 +129,31 @@ export function ReadyTable({
   );
 }
 
-/* -------------------------------------------------------- Waiting to Receive */
+/* ---------------------------------------------- Waiting to Receive / Lost */
 
+/** Waiting to Receive (Received / Mark lost), or the Lost list (a parcel that turns up can still be received). */
 export function WaitingTable({
   rows,
   loading,
   canEdit,
   onReceive,
+  onLost,
+  lost = false,
   footer,
 }: {
   rows: Parcel[];
   loading: boolean;
   canEdit: boolean;
   onReceive: (p: Parcel) => void;
+  onLost?: (p: Parcel) => void;
+  lost?: boolean;
   footer?: React.ReactNode;
 }) {
-  const headers = ["Order ID", "Supplier Tracking #", "Origin", "Shipper", "Order Type", "Source", "Item Name", "Description", "Packages Quantity", "Estimated Arrival", ...(canEdit ? ["Actions"] : [])];
+  const headers = [
+    "Order ID", "Supplier Tracking #", "Origin", "Shipper", "Order Type", "Source", "Item Name", "Description", "Packages Quantity",
+    ...(lost ? ["Lost On", "Reason"] : ["Estimated Arrival"]),
+    ...(canEdit ? ["Actions"] : []),
+  ];
   return (
     <Card className="overflow-hidden">
       <div className="overflow-x-auto">
@@ -194,17 +203,38 @@ export function WaitingTable({
                     <div className="max-w-xs line-clamp-2" title={p.description}>{p.description || <span className="text-gray-400">—</span>}</div>
                   </td>
                   <td className={cn(td, "text-gray-900 text-sm")}>{p.packages_quantity}</td>
-                  <td className={cn(td, "text-gray-900 text-sm whitespace-nowrap")}>{formatDate(p.estimated_arrival)}</td>
+                  {lost ? (
+                    <>
+                      <td className={cn(td, "text-gray-900 text-sm whitespace-nowrap")}>{formatDate(p.lost_at)}</td>
+                      <td className={cn(td, "text-red-700 text-sm")}>
+                        <div className="max-w-xs line-clamp-2" title={p.lost_reason}>{p.lost_reason || "—"}</div>
+                      </td>
+                    </>
+                  ) : (
+                    <td className={cn(td, "text-gray-900 text-sm whitespace-nowrap")}>{formatDate(p.estimated_arrival)}</td>
+                  )}
                   {canEdit && (
                     <td className={td}>
-                      <button
-                        type="button"
-                        onClick={() => onReceive(p)}
-                        className="text-green-600 hover:text-green-800 font-medium text-sm flex items-center gap-1 whitespace-nowrap"
-                      >
-                        <PackageCheck className="size-4" />
-                        Receive
-                      </button>
+                      <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onReceive(p)}
+                          className="text-green-600 hover:text-green-800 font-medium text-sm flex items-center gap-1 whitespace-nowrap"
+                        >
+                          <PackageCheck className="size-4" />
+                          {lost ? "Received after all" : "Received"}
+                        </button>
+                        {!lost && onLost && (
+                          <button
+                            type="button"
+                            onClick={() => onLost(p)}
+                            className="text-red-600 hover:text-red-800 font-medium text-sm flex items-center gap-1 whitespace-nowrap"
+                          >
+                            <PackageX className="size-4" />
+                            Mark lost
+                          </button>
+                        )}
+                      </div>
                     </td>
                   )}
                 </tr>

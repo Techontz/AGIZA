@@ -1,7 +1,7 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Building2, CheckCircle2, Clock, DollarSign, ShoppingCart, User } from "lucide-react";
+import { Building2, CheckCircle2, Clock, DollarSign, ShoppingCart, Truck, User } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { ExceptionBadge, ProcurementOriginBadge, ProcurementStatusBadge } from "@/components/procurement/badges";
@@ -27,6 +27,7 @@ const STATUS_OPTIONS: [string, string][] = [
   ["pending_sourcing", "Pending Sourcing"],
   ["supplier_selected", "Supplier Selected"],
   ["paid", "Paid"],
+  ["supplier_shipped", "Supplier Shipped"],
   ["supplier_cancelled", "Supplier Canceled"],
   ["received_at_cargo", "Received at Cargo"],
 ];
@@ -68,10 +69,11 @@ export function ProcurementView() {
         }
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-6 mb-8">
         <StatCard label="Total Orders" value={s?.total} icon={ShoppingCart} tone="blue" loading={!s} />
         <StatCard label="Pending Sourcing" value={s?.pending_sourcing} icon={Clock} tone="yellow" loading={!s} />
         <StatCard label="Paid" value={s?.paid} icon={CheckCircle2} tone="green" loading={!s} />
+        <StatCard label="Supplier Shipped" value={s?.shipped} icon={Truck} tone="blue" loading={!s} />
         <StatCard label="At Cargo" value={s?.received_at_cargo} icon={ShoppingCart} tone="purple" loading={!s} />
         <StatCard label="Total Value" value={millions(s?.total_value)} icon={DollarSign} tone="indigo" loading={!s} compactValue />
       </div>

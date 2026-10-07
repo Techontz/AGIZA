@@ -5,7 +5,6 @@ import { useCallback } from "react";
 import { BrandsSection } from "@/components/ecommerce/brands-section";
 import { CategoriesSection } from "@/components/ecommerce/categories-section";
 import { LabelsSection } from "@/components/ecommerce/labels-section";
-import { SlidersSection } from "@/components/ecommerce/sliders-section";
 import { MarketplaceSettingsSection } from "@/components/ecommerce/marketplace-settings-section";
 import { EcommerceMenu, type Section } from "@/components/ecommerce/menu";
 import { OptionsSection } from "@/components/ecommerce/options-section";
@@ -29,7 +28,6 @@ const SECTIONS: Record<Section, { title: string; description: string }> = {
   options: { title: "Product Options", description: "Global option sets applied to product variations" },
   labels: { title: "Product Labels", description: "Create labels to highlight products in the store" },
   brands: { title: "Brands", description: "Manage product brands displayed on the store" },
-  sliders: { title: "App Home Sliders", description: "Banners at the top of the AGIZA customer app's home screen" },
 };
 
 const isSection = (v: string): v is Section => v in SECTIONS;
@@ -101,7 +99,6 @@ export function EcommerceView() {
           {section === "options" && <OptionsSection />}
           {section === "labels" && <LabelsSection />}
           {section === "brands" && <BrandsSection />}
-          {section === "sliders" && <SlidersSection />}
         </>
       )}
     </PageContainer>

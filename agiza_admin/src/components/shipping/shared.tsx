@@ -43,9 +43,14 @@ export const STATUS_OPTIONS: [ShipmentStatus, string][] = [
   ["export_cleared", "Export Cleared"],
   ["shipping_to_destination", "In Transit"],
   ["clearance", "Clearance"],
-  ["completed", "Completed"],
+  ["completed", "Ready for collection"],
   ["cancelled", "Cancelled"],
 ];
+
+/** UI label of a shipment status: a completed shipment's goods are ready for collection. */
+export function shipmentStatusLabel(status: ShipmentStatus, fallback?: string): string {
+  return STATUS_OPTIONS.find(([v]) => v === status)?.[1] ?? fallback ?? status;
+}
 
 export const ALERT_OPTIONS: [Exclude<ShipmentAlert, "">, string][] = [
   ["customs_hold", "Customs Hold"],
@@ -74,7 +79,7 @@ export const METHOD_LABEL: Record<MethodType, string> = { "air-cargo": "Air Carg
 const pill = "inline-flex w-fit items-center gap-1 px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap";
 
 export function ShipmentStatusBadge({ status, label }: { status: ShipmentStatus; label: string }) {
-  return <span className={cn(pill, STATUS_STYLE[status])}>{label}</span>;
+  return <span className={cn(pill, STATUS_STYLE[status])}>{status === "completed" ? shipmentStatusLabel(status) : label}</span>;
 }
 
 export function AlertBadge({ alert, label }: { alert: ShipmentAlert; label: string }) {

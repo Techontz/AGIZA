@@ -21,6 +21,7 @@ import {
   Ship,
   ShoppingCart,
   Store,
+  TrendingUp,
   Truck,
   Users,
   Wallet,
@@ -80,6 +81,7 @@ export const navigation: NavItem[] = [
       { id: "invoices", label: "Create Invoice", icon: FileText, href: "/finance/invoices", module: "finance" },
       { id: "payments", label: "Order Payments", icon: FileText, href: "/finance/payments", module: "finance" },
       { id: "wallets", label: "Wallets & Installments", icon: Wallet, href: "/finance/wallets", module: "finance" },
+      { id: "profit-loss", label: "Profit & Loss", icon: TrendingUp, href: "/finance/profit-loss", module: "finance" },
     ],
   },
   { id: "warehouse", label: "Warehouse & Pick Up Points", icon: Warehouse, href: "/warehouse", module: "warehouse" },
@@ -123,6 +125,7 @@ export const pageMeta: Record<string, { title: string; description: string; icon
   "/finance/invoices": { title: "Finance Management", description: "Track payments, invoices, and customer wallets", icon: FileText, module: "finance" },
   "/finance/payments": { title: "Finance Management", description: "Track payments, invoices, and customer wallets", icon: FileText, module: "finance" },
   "/finance/wallets": { title: "Finance Management", description: "Track payments, invoices, and customer wallets", icon: Wallet, module: "finance" },
+  "/finance/profit-loss": { title: "Profit & Loss", description: "Revenue, purchase and shipping costs, and profit per order", icon: TrendingUp, module: "finance" },
   "/warehouse": { title: "Warehouse & Pick Up Points", description: "Manage consolidation hubs, fulfillment centers, pickup points, and shop floors", icon: Warehouse, module: "warehouse" },
   "/shipping-engine/overview": { title: "Shipping Engine", description: "Manage shipping rules, zones, routes, carriers, and pricing logic", icon: Zap, module: "shipping_engine" },
   "/shipping-engine/routes": { title: "Routes", description: "Manage directional shipping routes. Each direction is treated independently.", icon: ArrowRight, module: "shipping_engine" },
@@ -135,8 +138,8 @@ export const pageMeta: Record<string, { title: string; description: string; icon
   "/shipping-engine/test-rate": { title: "Test Shipping Rate", description: "Enter a shipment scenario to see which rule the engine selects — and why. Use this to debug incorrect shipping calculations without a developer.", icon: FlaskConical, module: "shipping_engine" },
   "/shipping-engine/methods": { title: "Shipping Methods", description: "Manage the available shipping methods that can be assigned to routes, zones, and rules.", icon: List, module: "shipping_engine" },
   "/shipping-engine/settings": { title: "Shipping Engine Settings", description: "Configure global defaults and engine behavior", icon: Settings, module: "shipping_engine" },
-  "/audit-logs": { title: "Reporting & Audit Logs", description: "View detailed reports, analytics, and audit trails for all platform activities", icon: BarChart, module: "audit_logs" },
-  "/settings": { title: "Settings", description: "Configure tag rules and system settings", icon: Settings, module: "settings" },
+  "/audit-logs": { title: "Reporting & Audit Logs", description: "Clients and orders at a glance, compared with the previous period, plus the audit trail of every platform activity", icon: BarChart, module: "audit_logs" },
+  "/settings": { title: "Settings", description: "Configure tag rules, role permissions, mobile app home sliders and chat settings", icon: Settings, module: "settings" },
 };
 
 /** First page the user is allowed to see (used after login). */

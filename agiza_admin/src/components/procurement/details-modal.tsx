@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, DollarSign, Edit2, Truck, XCircle } from "lucide-react";
+import { CheckCircle2, DollarSign, Edit2, PackageCheck, Truck, XCircle } from "lucide-react";
 import { useState } from "react";
 
 import { StatusHistoryList } from "@/components/orders/shared";
@@ -12,7 +12,13 @@ import { procurementApi, procurementKeys, type ProcurementOrder } from "@/lib/ap
 import { formatDate, formatDateTime, formatTSh } from "@/lib/format";
 
 import { ExceptionBadge, ProcurementOriginBadge, ProcurementStatusBadge } from "./badges";
-import { CancelSupplierDialog, EditProcurementDialog, MarkPaidDialog, SelectSupplierDialog } from "./workflow-dialogs";
+import {
+  CancelSupplierDialog,
+  EditProcurementDialog,
+  MarkPaidDialog,
+  MarkShippedDialog,
+  SelectSupplierDialog,
+} from "./workflow-dialogs";
 
 function Info({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -28,7 +34,7 @@ export function ProcurementDetailsModal({ proc, onClose }: { proc: ProcurementOr
   const { data: me } = useMe();
   const canEdit = can(me, "procurement", "edit");
   const history = useQuery({ queryKey: procurementKeys.history(proc.id), queryFn: () => procurementApi.history(proc.id) });
-  const [dialog, setDialog] = useState<null | "select" | "paid" | "cancel" | "edit">(null);
+  const [dialog, setDialog] = useState<null | "select" | "paid" | "shipped" | "cancel" | "edit">(null);
   const close = () => setDialog(null);
   const has = (a: ProcurementOrder["actions"][number]) => proc.actions.includes(a);
   const editable = proc.status !== "cancelled";
@@ -51,6 +57,11 @@ export function ProcurementDetailsModal({ proc, onClose }: { proc: ProcurementOr
               {has("mark_paid") && (
                 <Button variant="success" onClick={() => setDialog("paid")}>
                   <CheckCircle2 className="size-4" /> Mark Supplier Paid
+                </Button>
+              )}
+              {has("mark_shipped") && (
+                <Button variant="success" onClick={() => setDialog("shipped")}>
+                  <PackageCheck className="size-4" /> Supplier Shipped
                 </Button>
               )}
               {has("cancel_supplier") && (
@@ -95,6 +106,12 @@ export function ProcurementDetailsModal({ proc, onClose }: { proc: ProcurementOr
               <p className="mt-4 p-3 bg-green-100 rounded-lg text-sm text-green-900">
                 <strong>Supplier paid</strong> {formatDateTime(proc.paid_at)}
                 {proc.payment_reference && <> · Ref <span className="font-mono">{proc.payment_reference}</span></>}
+              </p>
+            )}
+            {proc.shipped_at && (
+              <p className="mt-2 p-3 bg-teal-100 rounded-lg text-sm text-teal-900">
+                <strong>Supplier shipped</strong> {formatDateTime(proc.shipped_at)}
+                {proc.supplier_tracking_number && <> · Tracking <span className="font-mono">{proc.supplier_tracking_number}</span></>}
               </p>
             )}
           </div>
@@ -145,6 +162,7 @@ export function ProcurementDetailsModal({ proc, onClose }: { proc: ProcurementOr
 
       <SelectSupplierDialog proc={proc} open={dialog === "select"} onClose={close} />
       <MarkPaidDialog proc={proc} open={dialog === "paid"} onClose={close} />
+      <MarkShippedDialog proc={proc} open={dialog === "shipped"} onClose={close} />
       <CancelSupplierDialog proc={proc} open={dialog === "cancel"} onClose={close} />
       <EditProcurementDialog proc={proc} open={dialog === "edit"} onClose={close} />
     </>

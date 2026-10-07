@@ -23,7 +23,7 @@ const th = "px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tr
 const select = "w-auto bg-white";
 const STATUS_OPTIONS = [
   ["pending_payment", "Pending Payment"], ["issue_pending_payment", "Issue - Pending Payment"],
-  ["supplier_confirmed", "Supplier Confirmed"], ["paid_supplier", "Paid Supplier"], ["in_production", "In Production"],
+  ["supplier_confirmed", "Supplier Confirmed"], ["paid_supplier", "Paid Supplier"], ["in_production", "In Production"], ["waiting_to_receive", "Waiting to Receive"],
   ["sent_to_consolidation", "Sent to Consolidation"], ["shipping_to_destination", "Shipping"], ["clearance", "Clearance"],
   ["ready_for_collection", "Ready for Collection"], ["completed", "Completed"],
 ];

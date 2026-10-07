@@ -4,6 +4,7 @@ import { PackageCheck } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Modal } from "@/components/ui/modal";
 import { shippingApi, type CargoType, type Parcel, type ReceiveInput, type WeightType } from "@/lib/api/services/shipping";
@@ -162,5 +163,56 @@ export function ReceiveModal({ parcel, onClose }: { parcel: Parcel; onClose: () 
         </Field>
       </form>
     </Modal>
+  );
+}
+
+/** The expected goods never arrived: they leave Waiting to Receive (shown under Lost). A reason is required. */
+export function MarkLostModal({ parcel, onClose }: { parcel: Parcel; onClose: () => void }) {
+  const [reason, setReason] = useState("");
+  const { errors, onError, reset } = useFormErrors();
+  const lost = useShippingMutation((r: string) => shippingApi.parcels.markLost(parcel.id, r), {
+    success: `${parcel.order.reference} marked lost`,
+    onSuccess: onClose,
+    onError,
+  });
+  const [missing, setMissing] = useState(false);
+  return (
+    <ConfirmDialog
+      open
+      onClose={onClose}
+      title="Mark Parcel Lost"
+      tone="danger"
+      confirmLabel="Mark as Lost"
+      pending={lost.isPending}
+      onConfirm={() => {
+        reset();
+        if (!reason.trim()) return setMissing(true);
+        lost.mutate(reason.trim());
+      }}
+      message={
+        <p className="text-sm">
+          {parcel.order.reference} · {parcel.item_name}
+          {parcel.supplier_tracking_number && <> · Tracking {parcel.supplier_tracking_number}</>}. The parcel leaves Waiting to
+          Receive and the order gets a note
+          {parcel.source === "agiza_procured" ? "; Procurement sees a Parcel Lost exception to follow up with the supplier" : ""}.
+        </p>
+      }
+    >
+      <div className="mt-4">
+        <FormErrorBox errors={errors} fields={["reason"]} />
+        <Field label="Reason" required htmlFor="lost-reason" error={errors.reason ?? (missing ? "Give the reason the parcel is lost." : undefined)}>
+          <Textarea
+            id="lost-reason"
+            rows={3}
+            value={reason}
+            onChange={(e) => {
+              setReason(e.target.value);
+              setMissing(false);
+            }}
+            placeholder="e.g. Courier confirmed the box was lost, damaged beyond use"
+          />
+        </Field>
+      </div>
+    </ConfirmDialog>
   );
 }

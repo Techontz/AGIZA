@@ -10,11 +10,13 @@ import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
 import { fileSrc } from "@/lib/api/files";
 import { catalogApi, catalogKeys, type MobileSlider } from "@/lib/api/services/catalog";
 
-import { DeleteDialog, IconSwitch, miniInput, miniLabel, useCatalogAccess, useCatalogMutation, type Errors } from "./shared";
+import { DeleteDialog, IconSwitch, miniInput, miniLabel, useCatalogMutation, type Errors } from "./shared";
 
-/** Banners on the AGIZA customer app's home screen: an image, an optional title and link. */
-export function SlidersSection() {
-  const { canEdit } = useCatalogAccess();
+/**
+ * Banners on the AGIZA customer app's home screen: an image, an optional title and link.
+ * Shown under Settings; the API grants access through Settings or E-commerce permissions.
+ */
+export function SlidersSection({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: catalogKeys.sliders, queryFn: ({ signal }) => catalogApi.sliders.list(signal) });
   const [title, setTitle] = useState("");

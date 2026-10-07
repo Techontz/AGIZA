@@ -24,3 +24,8 @@ export function ShopStatusBadge({ status }: { status: ShopStatus }) {
 export function ShopPaymentBadge({ status }: { status: ShopOrder["payment_status"] }) {
   return <span className={cn(pill, PAYMENT[status])}>{status.toUpperCase()}</span>;
 }
+
+/** The customer ordered while the delivery needed a manual quote: staff must set the cost before they can pay. */
+export function DeliveryFeePendingBadge() {
+  return <span className={cn(pill, "bg-orange-100 text-orange-800 ring-1 ring-orange-300")}>NEEDS MANUAL DELIVERY COST</span>;
+}

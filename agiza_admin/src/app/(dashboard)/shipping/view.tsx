@@ -1,12 +1,12 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Package2, PackageSearch, Plus, Ship } from "lucide-react";
+import { AlertTriangle, Package2, PackageSearch, PackageX, Plus, Ship } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { AddToShipmentModal } from "@/components/shipping/add-to-shipment-modal";
 import { CreateShipmentModal } from "@/components/shipping/create-shipment-modal";
-import { ReceiveModal } from "@/components/shipping/receive-modal";
+import { MarkLostModal, ReceiveModal } from "@/components/shipping/receive-modal";
 import { STATUS_OPTIONS, useCarriers, useOriginCountries, useShippingAccess } from "@/components/shipping/shared";
 import { DocumentsModal } from "@/components/shipping/shipment-dialogs";
 import { ReadyTable, ShipmentsTable, WaitingTable } from "@/components/shipping/tables";
@@ -23,7 +23,7 @@ import { useUrlFilters } from "@/hooks/use-url-filters";
 import { shippingApi, shippingKeys, type Parcel } from "@/lib/api/services/shipping";
 import { pageMeta } from "@/lib/nav";
 
-type Tab = "ready" | "shipments" | "waiting";
+type Tab = "ready" | "shipments" | "waiting" | "lost";
 const select = "w-auto bg-white";
 const PAGE_SIZE = 20;
 
@@ -39,7 +39,7 @@ export function ShippingView() {
   }, [debounced, f.search, setF]);
 
   const base = { search: f.search, shipper: f.shipper, origin: f.origin, method: f.method, page: Number(f.page), page_size: PAGE_SIZE };
-  const parcelQuery = { ...base, stage: tab === "waiting" ? "waiting" : "ready" };
+  const parcelQuery = { ...base, stage: tab === "waiting" || tab === "lost" ? tab : "ready" };
   const shipmentQuery = { ...base, status: f.status };
 
   const stats = useQuery({ queryKey: shippingKeys.stats, queryFn: shippingApi.shipments.stats });
@@ -76,6 +76,7 @@ export function ShippingView() {
 
   const [bulk, setBulk] = useState<"create" | "add" | null>(null);
   const [receiving, setReceiving] = useState<Parcel | null>(null);
+  const [losing, setLosing] = useState<Parcel | null>(null);
   const [docsFor, setDocsFor] = useState<number | null>(null);
   const expanded = f.open ? Number(f.open) : null;
 
@@ -92,6 +93,7 @@ export function ShippingView() {
     ready: { icon: Package2, title: "No orders ready for shipment", description: "Orders appear here once their goods are received at the consolidation warehouse." },
     shipments: { icon: Ship, title: "No shipments found", description: "Select orders in Ready for Shipment to create a shipment." },
     waiting: { icon: PackageSearch, title: "No orders waiting to be received", description: "Goods on their way to the consolidation warehouse appear here." },
+    lost: { icon: PackageX, title: "No lost parcels", description: "Parcels marked lost from Waiting to Receive appear here." },
   }[tab];
 
   return (
@@ -139,6 +141,7 @@ export function ShippingView() {
               { value: "ready", label: `Ready for Shipment (${s?.ready ?? "…"})` },
               { value: "shipments", label: `Shipments (${s?.total ?? "…"})` },
               { value: "waiting", label: `Waiting to Receive (${s?.waiting ?? "…"})` },
+              { value: "lost", label: `Lost (${s?.lost ?? "…"})` },
             ]}
           />
         </div>
@@ -171,7 +174,9 @@ export function ShippingView() {
       ) : tab === "ready" ? (
         <ReadyTable rows={parcelRows} loading={parcels.isPending} selected={selected} onToggle={toggle} onToggleAll={toggleAll} selectable={canEdit} footer={pagination} />
       ) : tab === "waiting" ? (
-        <WaitingTable rows={parcels.data?.results ?? []} loading={parcels.isPending} canEdit={canEdit} onReceive={setReceiving} footer={pagination} />
+        <WaitingTable rows={parcels.data?.results ?? []} loading={parcels.isPending} canEdit={canEdit} onReceive={setReceiving} onLost={setLosing} footer={pagination} />
+      ) : tab === "lost" ? (
+        <WaitingTable rows={parcels.data?.results ?? []} loading={parcels.isPending} canEdit={canEdit} onReceive={setReceiving} lost footer={pagination} />
       ) : (
         <ShipmentsTable
           rows={shipments.data?.results ?? []}
@@ -206,6 +211,7 @@ export function ShippingView() {
         />
       )}
       {receiving && <ReceiveModal parcel={receiving} onClose={() => setReceiving(null)} />}
+      {losing && <MarkLostModal parcel={losing} onClose={() => setLosing(null)} />}
       {docsShipment && <DocumentsModal shipment={docsShipment} canEdit={canEdit && docsShipment.status !== "cancelled"} onClose={() => setDocsFor(null)} />}
     </PageContainer>
   );

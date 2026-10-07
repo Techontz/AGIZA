@@ -8,13 +8,20 @@ export type ProcurementStatus =
   | "pending_sourcing"
   | "supplier_selected"
   | "paid"
+  | "supplier_shipped"
   | "supplier_cancelled"
   | "received_at_cargo"
   | "cancelled";
 
-export type ExceptionFlag = "" | "payment_issue" | "supplier_delay" | "quality_concern" | "stock_unavailable";
+export type ExceptionFlag =
+  | ""
+  | "payment_issue"
+  | "supplier_delay"
+  | "quality_concern"
+  | "stock_unavailable"
+  | "parcel_lost";
 
-export type ProcurementAction = "select_supplier" | "mark_paid" | "cancel_supplier";
+export type ProcurementAction = "select_supplier" | "mark_paid" | "mark_shipped" | "cancel_supplier";
 
 export interface ProcurementOrder {
   id: number;
@@ -45,6 +52,7 @@ export interface ProcurementOrder {
   exception_flag_display: string;
   expected_at_cargo: string | null;
   paid_at: string | null;
+  shipped_at: string | null;
   received_at: string | null;
   notes: string;
   actions: ProcurementAction[];
@@ -56,6 +64,7 @@ export interface ProcurementStats {
   total: number;
   pending_sourcing: number;
   paid: number;
+  shipped: number;
   received_at_cargo: number;
   with_exceptions: number;
   total_value: string;
@@ -121,7 +130,14 @@ export interface SelectSupplierInput {
 export interface MarkPaidInput {
   payment_reference?: string;
   paid_at?: string;
-  supplier_tracking_number?: string;
+  note?: string;
+}
+
+export interface MarkShippedInput {
+  /** Mandatory: the parcel is tracked to the consolidation warehouse with it. */
+  supplier_tracking_number: string;
+  shipped_at?: string;
+  expected_at_cargo?: string | null;
   note?: string;
 }
 
@@ -131,6 +147,7 @@ export const PROCUREMENT_STATUS: Record<ProcurementStatus, [string, string]> = {
   pending_sourcing: ["bg-yellow-100 text-yellow-800", "Pending Sourcing"],
   supplier_selected: ["bg-blue-100 text-blue-800", "Supplier Selected"],
   paid: ["bg-green-100 text-green-800", "Paid"],
+  supplier_shipped: ["bg-teal-100 text-teal-800", "Supplier Shipped"],
   supplier_cancelled: ["bg-red-100 text-red-800", "Supplier Canceled"],
   received_at_cargo: ["bg-purple-100 text-purple-800", "Received at Cargo"],
   cancelled: ["bg-gray-100 text-gray-600", "Cancelled"],
@@ -141,6 +158,7 @@ export const EXCEPTION_FLAGS: Record<Exclude<ExceptionFlag, "">, [string, string
   supplier_delay: ["bg-orange-100 text-orange-800", "Supplier Delay"],
   quality_concern: ["bg-yellow-100 text-yellow-800", "Quality Concern"],
   stock_unavailable: ["bg-red-100 text-red-800", "Stock Unavailable"],
+  parcel_lost: ["bg-red-100 text-red-800", "Parcel Lost"],
 };
 
 /** Design origin filter: ISO code → label and badge colour. */
@@ -165,6 +183,8 @@ export const procurementApi = {
   selectSupplier: (id: number, data: SelectSupplierInput) =>
     api.post<ProcurementOrder>(`procurement/orders/${id}/select-supplier`, data),
   markPaid: (id: number, data: MarkPaidInput) => api.post<ProcurementOrder>(`procurement/orders/${id}/mark-paid`, data),
+  markShipped: (id: number, data: MarkShippedInput) =>
+    api.post<ProcurementOrder>(`procurement/orders/${id}/mark-shipped`, data),
   cancelSupplier: (id: number, reason: string) =>
     api.post<ProcurementOrder>(`procurement/orders/${id}/cancel-supplier`, { reason }),
   history: (id: number) => api.get<HistoryEntry[]>(`procurement/orders/${id}/history`),

@@ -1,12 +1,12 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { ChevronDown, ChevronUp, Clock, Package2, Plus, ShoppingCart, TrendingUp, User } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, Clock, Package2, Plus, ShoppingCart, TrendingUp, User } from "lucide-react";
 import React, { useEffect, useState } from "react";
 
 import { OpenProblemsNotice } from "@/components/ecommerce/fulfillment-issues";
 import { useOrderAccess } from "@/components/orders/shared";
-import { ShopPaymentBadge, ShopStatusBadge } from "@/components/orders/shop/badges";
+import { DeliveryFeePendingBadge, ShopPaymentBadge, ShopStatusBadge } from "@/components/orders/shop/badges";
 import { NewShopOrderDialog } from "@/components/orders/shop/new-order-dialog";
 import { ShopOrderDetails } from "@/components/orders/shop/row-details";
 import { Button } from "@/components/ui/button";
@@ -35,7 +35,7 @@ function compactTSh(value: string | undefined): string {
 export function EcommerceOrdersView() {
   const meta = pageMeta["/orders/ecommerce"];
   const { canEdit } = useOrderAccess();
-  const [f, setF] = useUrlFilters({ search: "", status: "all", payment: "all", channel: "all", page: "1", open: "" });
+  const [f, setF] = useUrlFilters({ search: "", status: "all", payment: "all", channel: "all", fee: "all", page: "1", open: "" });
   const [search, setSearch] = useState(f.search);
   const [creating, setCreating] = useState(false);
   const debounced = useDebouncedValue(search);
@@ -43,7 +43,15 @@ export function EcommerceOrdersView() {
     if (debounced !== f.search) setF({ search: debounced, open: "" });
   }, [debounced, f.search, setF]);
 
-  const query = { search: f.search, status: f.status, payment: f.payment, channel: f.channel, page: Number(f.page), page_size: 20 };
+  const query = {
+    search: f.search,
+    status: f.status,
+    payment: f.payment,
+    channel: f.channel,
+    delivery_fee_pending: f.fee === "pending" ? "true" : undefined,
+    page: Number(f.page),
+    page_size: 20,
+  };
   const list = useQuery({
     queryKey: shopOrderKeys.list(query),
     queryFn: ({ signal }) => shopOrdersApi.list(query, signal),
@@ -53,7 +61,7 @@ export function EcommerceOrdersView() {
   const rows = list.data?.results ?? [];
   const expanded = f.open ? Number(f.open) : null;
   const s = stats.data;
-  const filtered = Boolean(f.search || f.status !== "all" || f.payment !== "all" || f.channel !== "all");
+  const filtered = Boolean(f.search || f.status !== "all" || f.payment !== "all" || f.channel !== "all" || f.fee !== "all");
 
   return (
     <PageContainer>
@@ -93,6 +101,21 @@ export function EcommerceOrdersView() {
 
       <OpenProblemsNotice className="mb-6" />
 
+      {Boolean(s?.delivery_fee_pending) && f.fee !== "pending" && (
+        <div className="mb-6 flex flex-wrap items-center gap-3 rounded-lg border border-orange-300 bg-orange-50 p-4" role="status">
+          <AlertTriangle className="size-5 flex-shrink-0 text-orange-600" />
+          <p className="flex-1 text-sm text-orange-900">
+            <span className="font-semibold">
+              {s?.delivery_fee_pending} order{s?.delivery_fee_pending === 1 ? "" : "s"} need{s?.delivery_fee_pending === 1 ? "s" : ""} a manual delivery cost.
+            </span>{" "}
+            Customers can&apos;t pay until you set it.
+          </p>
+          <Button size="sm" variant="outline" onClick={() => setF({ fee: "pending", status: "all", page: "1", open: "" })}>
+            Show them
+          </Button>
+        </div>
+      )}
+
       <Card className="p-6 mb-6">
         <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
           <SearchInput placeholder="Search by Order ID, Customer, or Email..." value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search shop orders" />
@@ -117,6 +140,10 @@ export function EcommerceOrdersView() {
               <option value="whatsapp">WhatsApp</option>
               <option value="shop">Physical shop</option>
               <option value="manual">Entered by staff</option>
+            </Select>
+            <Select className="w-auto bg-white" aria-label="Filter by delivery cost" value={f.fee} onChange={(e) => setF({ fee: e.target.value, page: "1", open: "" })}>
+              <option value="all">Any Delivery Cost</option>
+              <option value="pending">Needs manual delivery cost</option>
             </Select>
           </div>
         </div>
@@ -176,7 +203,7 @@ export function EcommerceOrdersView() {
         onClose={() => setCreating(false)}
         onCreated={(o) => {
           setSearch("");
-          setF({ search: "", status: "all", payment: "all", channel: "all", open: String(o.id) });
+          setF({ search: "", status: "all", payment: "all", channel: "all", fee: "all", open: String(o.id) });
         }}
       />
     </PageContainer>
@@ -211,7 +238,10 @@ function Row({ order: o, open, toggle }: { order: ShopOrder; open: boolean; togg
           <div className="font-semibold text-gray-900 whitespace-nowrap">{formatTSh(o.total_amount)}</div>
         </td>
         <td className="px-6 py-4">
-          <ShopStatusBadge status={o.status} />
+          <div className="flex flex-col items-start gap-1">
+            <ShopStatusBadge status={o.status} />
+            {o.details.delivery_fee_pending && o.status !== "cancelled" && <DeliveryFeePendingBadge />}
+          </div>
         </td>
         <td className="px-6 py-4">
           <ShopPaymentBadge status={o.payment_status} />

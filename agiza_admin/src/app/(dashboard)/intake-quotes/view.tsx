@@ -1,7 +1,7 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Clock, FileText, MessageSquare, Plus, Send, ThumbsDown, ThumbsUp } from "lucide-react";
+import { CheckCircle2, Clock, FileText, MessageSquare, Phone, Plus, Send, ThumbsDown, ThumbsUp } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { ApproveDialog, NewQuoteDialog, RespondDialog, ServiceTypeBadge } from "@/components/orders/quote-dialogs";
@@ -121,9 +121,30 @@ export function IntakeView() {
                           <div className="font-semibold text-gray-900 whitespace-nowrap">{q.reference}</div>
                           {q.status === "declined" && <span className="text-xs font-medium text-red-600">Declined — re-quote</span>}
                         </td>
-                        <td className="px-6 py-4 text-gray-900">{q.customer.full_name}</td>
+                        <td className="px-6 py-4">
+                          <div className="text-gray-900 whitespace-nowrap">{q.customer.full_name}</div>
+                          {q.customer.phone && (
+                            <a href={`tel:${q.customer.phone}`} className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-blue-700 whitespace-nowrap">
+                              <Phone className="size-3" />
+                              {q.customer.phone}
+                            </a>
+                          )}
+                        </td>
                         <td className="px-6 py-4"><ServiceTypeBadge type={q.service_type} /></td>
-                        <td className="px-6 py-4"><div className="text-gray-900 max-w-xs">{q.description}</div></td>
+                        <td className="px-6 py-4">
+                          {q.items?.length ? (
+                            <div className="max-w-xs">
+                              <span className="inline-block mb-1 px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-xs font-medium">
+                                {q.items.length} items · one quotation
+                              </span>
+                              <div className="text-sm text-gray-900 line-clamp-2">
+                                {q.items.map((it) => (it.quantity > 1 ? `${it.name} ×${it.quantity}` : it.name)).join(", ")}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-gray-900 max-w-xs">{q.description}</div>
+                          )}
+                        </td>
                         <td className="px-6 py-4">
                           {q.origin || q.destination ? (
                             <div className="text-sm text-gray-900">

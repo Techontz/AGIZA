@@ -15,6 +15,7 @@ export const STATUS: Record<string, string> = {
   supplier_confirmed: "bg-blue-100 text-blue-800",
   paid_supplier: "bg-green-100 text-green-800",
   in_production: "bg-purple-100 text-purple-800",
+  waiting_to_receive: "bg-teal-100 text-teal-800",
   sent_to_consolidation: "bg-indigo-100 text-indigo-800",
   shipping_to_destination: "bg-cyan-100 text-cyan-800",
   clearance: "bg-orange-100 text-orange-800",

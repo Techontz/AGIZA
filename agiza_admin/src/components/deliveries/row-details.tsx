@@ -131,6 +131,20 @@ function DetailsBox({ delivery: d }: { delivery: Delivery }) {
   return (
     <div className="bg-white p-4 rounded border border-gray-200 space-y-2">
       <InfoRow label="Scheduled">{formatDateTime(d.scheduled_at)}</InfoRow>
+      <InfoRow label="Driver">
+        {d.driver ? (
+          <>
+            {d.driver.full_name}
+            {d.driver.phone && (
+              <a href={`tel:${d.driver.phone}`} className="block text-sm font-normal text-blue-600 hover:text-blue-800">
+                {d.driver.phone}
+              </a>
+            )}
+          </>
+        ) : (
+          <span className="font-normal italic text-gray-500">Unassigned</span>
+        )}
+      </InfoRow>
       <InfoRow label="Recipient">
         {d.recipient_name || d.customer.full_name}
         {(d.recipient_phone || d.customer.phone) && <span className="block text-sm font-normal text-gray-600">{d.recipient_phone || d.customer.phone}</span>}
@@ -292,11 +306,52 @@ function Actions({ delivery }: { delivery: Delivery }) {
   );
 }
 
+/** What is being delivered: product, SKU, bin code, warehouse and quantity of each line. */
+export function DeliveryItemsTable({ delivery }: { delivery: Delivery }) {
+  if (delivery.items.length === 0) return null;
+  const cell = "px-3 py-2 text-sm";
+  return (
+    <div className="overflow-x-auto bg-white rounded border border-gray-200">
+      <table className="w-full">
+        <thead className="bg-gray-50 border-b border-gray-200">
+          <tr>
+            {["Product", "SKU", "Bin Code", "Warehouse", "Qty"].map((h) => (
+              <th key={h} scope="col" className="px-3 py-2 text-left text-xs font-semibold text-gray-700 uppercase whitespace-nowrap">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {delivery.items.map((i, n) => (
+            <tr key={n}>
+              <td className={cn(cell, "text-gray-900")}>
+                {i.product_name}
+                {i.variant_name && i.variant_name !== "Default" && <span className="block text-xs text-gray-500">{i.variant_name}</span>}
+              </td>
+              <td className={cn(cell, "font-mono text-gray-800 whitespace-nowrap")}>{i.sku || "—"}</td>
+              <td className={cn(cell, "font-mono text-gray-800 whitespace-nowrap")}>{i.bin_code || "—"}</td>
+              <td className={cn(cell, "text-gray-700 whitespace-nowrap")}>{i.warehouse || "—"}</td>
+              <td className={cn(cell, "text-gray-900")}>{i.quantity}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /** Expanded "Details" row of the Deliveries table. */
 export function DeliveryRowDetails({ delivery }: { delivery: Delivery }) {
   return (
     <div className="space-y-6">
       <ProofPanel delivery={delivery} />
+      {delivery.items.length > 0 && (
+        <div>
+          <h4 className="font-semibold text-gray-900 mb-3">Items</h4>
+          <DeliveryItemsTable delivery={delivery} />
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div>
           <h4 className="font-semibold text-gray-900 mb-3">Delivery Details</h4>

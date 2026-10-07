@@ -3,7 +3,7 @@ import type { Paginated } from "../types";
 
 /* ------------------------------------------------------------------ types */
 
-export type ParcelStage = "waiting" | "ready" | "in_shipment" | "arrived" | "cancelled";
+export type ParcelStage = "waiting" | "ready" | "in_shipment" | "arrived" | "lost" | "cancelled";
 export type ParcelSource = "agiza_procured" | "client_purchased";
 export type CargoType = "standard" | "electronic_battery" | "bulk" | "machinery" | "fragile";
 export type WeightType = "estimated" | "exact";
@@ -72,6 +72,8 @@ export interface Parcel {
   cbm: string | null;
   weight_type: WeightType;
   received_at: string | null;
+  lost_at: string | null;
+  lost_reason: string;
   exception_flags: string[];
   image: string | null;
   shipment: { id: number; cargo_id: string; shipment_number: string } | null;
@@ -154,6 +156,7 @@ export interface ShippingStats {
   alerts: number;
   ready: number;
   waiting: number;
+  lost: number;
 }
 
 export interface Warehouse {
@@ -224,6 +227,8 @@ export const shippingApi = {
     list: (query: QueryParams, signal?: AbortSignal) => api.get<Paginated<Parcel>>(P, query, signal),
     update: (id: number, data: Partial<ReceiveInput> & Record<string, unknown>) => api.patch<Parcel>(`${P}/${id}`, data),
     receive: (id: number, data: ReceiveInput) => api.post<Parcel>(`${P}/${id}/receive`, data),
+    /** The expected goods never arrived: leaves Waiting to Receive (shows under Lost). Reason required. */
+    markLost: (id: number, reason: string) => api.post<Parcel>(`${P}/${id}/lost`, { reason }),
   },
   shipments: {
     list: (query: QueryParams, signal?: AbortSignal) => api.get<Paginated<Shipment>>(S, query, signal),

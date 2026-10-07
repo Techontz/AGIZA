@@ -144,15 +144,14 @@ export function MarkPaidDialog({ proc, open, onClose }: { proc: ProcurementOrder
   const [v, setV] = useState<Record<string, string>>({});
   const { errors, onError } = useFormErrors(open);
   useEffect(() => {
-    if (open) setV({ payment_reference: "", paid_at: "", supplier_tracking_number: proc.supplier_tracking_number, note: "" });
-  }, [open, proc]);
+    if (open) setV({ payment_reference: "", paid_at: "", note: "" });
+  }, [open]);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setV((p) => ({ ...p, [k]: e.target.value }));
   const save = useApiMutation(
     () =>
       procurementApi.markPaid(proc.id, {
         payment_reference: v.payment_reference,
         paid_at: v.paid_at ? new Date(v.paid_at).toISOString() : undefined,
-        supplier_tracking_number: v.supplier_tracking_number,
         note: v.note,
       }),
     { invalidate: INVALIDATE, success: (r) => `${r.order.reference}: supplier marked as paid`, onSuccess: onClose, onError },
@@ -173,7 +172,8 @@ export function MarkPaidDialog({ proc, open, onClose }: { proc: ProcurementOrder
       <div className="space-y-4">
         <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-900">
           Paying <strong>{proc.supplier?.name}</strong> {formatTSh(proc.item_cost)} for {proc.order.reference}.
-          The order moves to Paid Supplier and the goods are expected at cargo.
+          The order moves to Paid Supplier. Once the supplier ships, record it with the tracking number so the goods
+          are expected at cargo.
         </div>
         {errors.item_cost && <p className="text-sm text-red-600">{errors.item_cost}</p>}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -184,11 +184,74 @@ export function MarkPaidDialog({ proc, open, onClose }: { proc: ProcurementOrder
             <Input id="mp-at" type="datetime-local" value={v.paid_at ?? ""} onChange={set("paid_at")} />
           </Field>
         </div>
-        <Field label="Supplier Tracking #" htmlFor="mp-track" error={errors.supplier_tracking_number}>
-          <Input id="mp-track" value={v.supplier_tracking_number ?? ""} onChange={set("supplier_tracking_number")} />
-        </Field>
         <Field label="Note (optional)" htmlFor="mp-note" error={errors.note}>
           <Textarea id="mp-note" rows={2} value={v.note ?? ""} onChange={set("note")} />
+        </Field>
+      </div>
+    </Modal>
+  );
+}
+
+/* ----------------------------------------------------------- mark shipped */
+
+export function MarkShippedDialog({ proc, open, onClose }: { proc: ProcurementOrder; open: boolean; onClose: () => void }) {
+  const [v, setV] = useState<Record<string, string>>({});
+  const { errors, setErrors, onError } = useFormErrors(open);
+  useEffect(() => {
+    if (open)
+      setV({
+        supplier_tracking_number: proc.supplier_tracking_number,
+        shipped_at: "",
+        expected_at_cargo: proc.expected_at_cargo ?? "",
+        note: "",
+      });
+  }, [open, proc]);
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setV((p) => ({ ...p, [k]: e.target.value }));
+  const save = useApiMutation(
+    () =>
+      procurementApi.markShipped(proc.id, {
+        supplier_tracking_number: (v.supplier_tracking_number ?? "").trim(),
+        shipped_at: v.shipped_at ? new Date(v.shipped_at).toISOString() : undefined,
+        expected_at_cargo: v.expected_at_cargo || null,
+        note: v.note,
+      }),
+    { invalidate: INVALIDATE, success: (r) => `${r.order.reference}: supplier shipped — waiting to receive at cargo`, onSuccess: onClose, onError },
+  );
+  const submit = () => {
+    if (!v.supplier_tracking_number?.trim()) return setErrors({ supplier_tracking_number: "Enter the tracking number." });
+    save.mutate(undefined);
+  };
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Supplier Shipped"
+      size="lg"
+      footer={
+        <>
+          <Button variant="success" className="flex-1" onClick={submit} loading={save.isPending}>Mark as Shipped</Button>
+          <Button variant="muted" onClick={onClose}>Cancel</Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="p-3 bg-teal-50 border border-teal-200 rounded-lg text-sm text-teal-900">
+          <strong>{proc.supplier?.name}</strong> shipped {proc.order.reference} to the consolidation warehouse. The order moves to
+          Waiting to Receive and the parcel appears in Shipping.
+        </div>
+        <Field label="Supplier Tracking #" required htmlFor="sh-track" error={errors.supplier_tracking_number}>
+          <Input id="sh-track" value={v.supplier_tracking_number ?? ""} onChange={set("supplier_tracking_number")} placeholder="e.g. SF1234567890" />
+        </Field>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Shipped At" htmlFor="sh-at" error={errors.shipped_at} hint="Blank = now">
+            <Input id="sh-at" type="datetime-local" value={v.shipped_at ?? ""} onChange={set("shipped_at")} />
+          </Field>
+          <Field label="Expected to Cargo" htmlFor="sh-eta" error={errors.expected_at_cargo}>
+            <Input id="sh-eta" type="date" value={v.expected_at_cargo ?? ""} onChange={set("expected_at_cargo")} />
+          </Field>
+        </div>
+        <Field label="Note (optional)" htmlFor="sh-note" error={errors.note}>
+          <Textarea id="sh-note" rows={2} value={v.note ?? ""} onChange={set("note")} />
         </Field>
       </div>
     </Modal>
@@ -222,12 +285,18 @@ export function CancelSupplierDialog({ proc, open, onClose }: { proc: Procuremen
         <p className="text-sm">
           Record that <strong>{proc.supplier?.name ?? "the supplier"}</strong> cancelled {proc.order.reference}. A new supplier will
           have to be selected.
+          {proc.status !== "supplier_selected" && (
+            <>
+              {" "}The order goes back to Supplier Confirmed, the expected parcel is withdrawn and this supplier order&apos;s payment
+              and tracking details are cleared (they stay in the history).
+            </>
+          )}
         </p>
       }
     >
       <div className="mt-4">
         <Field label="Reason" required htmlFor="cs-reason" error={errors.reason}>
-          <Textarea id="cs-reason" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Out of stock, refunded in full" />
+          <Textarea id="cs-reason" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Out of stock, failed to ship, refunded in full" />
         </Field>
       </div>
     </ConfirmDialog>
@@ -238,7 +307,7 @@ export function CancelSupplierDialog({ proc, open, onClose }: { proc: Procuremen
 
 export function EditProcurementDialog({ proc, open, onClose }: { proc: ProcurementOrder; open: boolean; onClose: () => void }) {
   const operators = useQuery({ queryKey: procurementKeys.operators, queryFn: procurementApi.operators, enabled: open });
-  const costsLocked = proc.status === "paid" || proc.status === "received_at_cargo";
+  const costsLocked = proc.status === "paid" || proc.status === "supplier_shipped" || proc.status === "received_at_cargo";
   const [v, setV] = useState<Record<string, string>>({});
   const { errors, onError } = useFormErrors(open);
   useEffect(() => {
