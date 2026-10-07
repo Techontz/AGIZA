@@ -127,7 +127,7 @@ export default function NewRequestScreen() {
     <FormScreen
       footer={
         <View style={styles.footer}>
-          <Button title={buy ? 'Place Order' : 'Send request'} onPress={() => submit.mutate()} loading={submit.isPending} disabled={!canSubmit} />
+          <Button title={buy ? 'Place Order' : local ? 'Request delivery quotation' : 'Send request'} onPress={() => submit.mutate()} loading={submit.isPending} disabled={!canSubmit} />
         </View>
       }>
       <View style={styles.types}>

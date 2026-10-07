@@ -60,6 +60,7 @@ export function useLocalDeliveryForm({
   const [receiver, setReceiver] = useState<Party>(EMPTY);
   const [item, setItem] = useState({
     name: '',
+    type: '',
     size: '' as RequestInput['package_size'] | '',
     details: '',
   });
@@ -84,7 +85,8 @@ export function useLocalDeliveryForm({
     item_name: item.name.trim(),
     quantity: 1,
     package_size: item.size || undefined,
-    details: item.details.trim(),
+    // No separate server field: the item type leads the description staff read.
+    details: [item.type.trim() && `Item type: ${item.type.trim()}`, item.details.trim()].filter(Boolean).join('\n'),
     pickup_city: sender.city,
     pickup_address: sender.address.trim(),
     sender_name: sender.name.trim(),
@@ -211,6 +213,13 @@ export function useLocalDeliveryForm({
           placeholder="e.g. Laptop, clothing, documents"
           maxLength={160}
           error={err?.field('item_name')}
+        />
+        <Input
+          label="Item type (optional)"
+          value={item.type}
+          onChangeText={(type) => setItem((i) => ({ ...i, type }))}
+          placeholder="e.g. Electronics, fragile, documents"
+          maxLength={80}
         />
         <View style={styles.sizes}>
           <Text variant="smallMedium" color={colors.text}>
