@@ -84,17 +84,33 @@ def find_customer(handle: str, channel: str) -> Customer | None:
     return None
 
 
+ROOM_FIELDS = ("order", "quote", "return_request")
+
+
+def room_filter(room: dict | None) -> dict:
+    """Lookup for an app chat room: one per order / quotation / return, plus a general room with none."""
+    room = room or {}
+    return {f: room[f] for f in ROOM_FIELDS if room.get(f)} or {f"{f}__isnull": True for f in ROOM_FIELDS}
+
+
 @transaction.atomic
 def receive(*, channel: str, handle: str, name: str, body: str, external_id: str = "",
-            thread_id: str = "") -> Message:
-    """Store a customer's message (webhook or web widget); opens a conversation if needed."""
+            thread_id: str = "", room: dict | None = None) -> Message:
+    """Store a customer's message (webhook or web widget); opens a conversation if needed.
+
+    `room` (the app) keeps a separate conversation per order, quotation or return; without it the
+    customer's latest open conversation on the channel is used, as for WhatsApp and the other channels.
+    """
     if external_id and Message.objects.filter(external_id=external_id).exists():
         return Message.objects.get(external_id=external_id)  # provider retries are idempotent
-    conv = (Conversation.objects.select_for_update().filter(channel=channel, contact_handle=handle)
-            .exclude(status=Conversation.Status.ARCHIVED).order_by("-last_message_at").first())
+    qs = Conversation.objects.select_for_update().filter(channel=channel, contact_handle=handle)
+    if room is not None:
+        qs = qs.filter(**room_filter(room))
+    conv = qs.exclude(status=Conversation.Status.ARCHIVED).order_by("-last_message_at").first()
     if conv is None:
         conv = Conversation.objects.create(channel=channel, contact_handle=handle, contact_name=name or handle,
-                                           external_thread_id=thread_id, customer=find_customer(handle, channel))
+                                           external_thread_id=thread_id, customer=find_customer(handle, channel),
+                                           **{f: v for f, v in (room or {}).items() if f in ROOM_FIELDS and v})
     msg = Message.objects.create(conversation=conv, sender=Message.Sender.CUSTOMER, body=body,
                                  delivery_status=Message.Delivery.RECEIVED, external_id=external_id)
     _touch(conv, msg)

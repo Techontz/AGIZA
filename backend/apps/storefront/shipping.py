@@ -23,10 +23,12 @@ import logging
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 
+from django.db.models import Q
+
 from apps.catalog.models import LocationKind, ProductVariant, StoreSettings
 from apps.locations.models import City, Country
 from apps.shipping_engine.calculator import RateCalculationError, RateCalculator, Shipment
-from apps.shipping_engine.constants import AppliesTo, Status
+from apps.shipping_engine.constants import AppliesTo, MethodCategory, Status
 from apps.shipping_engine.models import EngineSettings, ShippingMethod, ShippingProfile, ShippingRule, eta_label
 
 logger = logging.getLogger("apps.storefront")
@@ -144,8 +146,12 @@ def _groups(lines: list[Line], *, onward: bool = False) -> list[_Group]:
     return list(groups.values())
 
 
-def candidate_methods(lines: list[Line]) -> list[ShippingMethod]:
-    """Methods every product in the cart allows (a product with no methods set allows any)."""
+def candidate_methods(lines: list[Line], *, with_local: bool = False) -> list[ShippingMethod]:
+    """
+    Methods every product in the cart allows (a product with no methods set allows any).
+    with_local: also local methods (rider, pickup…) whatever the products allow, so the customer's
+    location decides the delivery: the Shipping Engine only prices them where a rule covers the address.
+    """
     allowed: set[int] | None = None
     for line in lines:
         ids = {m.pk for m in line.variant.product.shipping_methods.all()}
@@ -153,7 +159,7 @@ def candidate_methods(lines: list[Line]) -> list[ShippingMethod]:
             allowed = ids if allowed is None else allowed & ids
     qs = ShippingMethod.objects.filter(status=Status.ACTIVE)
     if allowed is not None:
-        qs = qs.filter(pk__in=allowed)
+        qs = qs.filter(Q(pk__in=allowed) | Q(category=MethodCategory.LOCAL)) if with_local else qs.filter(pk__in=allowed)
     return list(qs.order_by("name"))
 
 
@@ -217,7 +223,7 @@ def delivery_options(lines: list[Line], destination: City, *, currency: str) -> 
         logger.error("Delivery options unavailable: %s", exc.message)
         return []
     # Products limit the methods of the leg they travel on: imported items' methods are for the import leg.
-    return _price_options(groups, candidate_methods(local), destination, currency)
+    return _price_options(groups, candidate_methods(local, with_local=True), destination, currency)
 
 
 def import_options(lines: list[Line], *, currency: str) -> list[dict]:

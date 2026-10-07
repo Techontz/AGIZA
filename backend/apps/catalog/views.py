@@ -28,6 +28,7 @@ from .models import (
     Category,
     DeliveryEstimateRoute,
     Label,
+    MobileSlider,
     OriginEstimate,
     Product,
     ProductImage,
@@ -44,6 +45,7 @@ from .serializers import (
     EstimateQuerySerializer,
     EstimateRouteSerializer,
     LabelSerializer,
+    MobileSliderSerializer,
     OptionSerializer,
     OptionValueSerializer,
     OriginEstimateSerializer,
@@ -97,6 +99,35 @@ class BrandViewSet(CatalogViewSet):
         brand.save(update_fields=["logo", "logo_content_type", "updated_at"])
         record_audit(action="update", request=request, instance=brand, changes={"logo": [None, brand.logo.name]})
         return Response(BrandSerializer(self.get_queryset().get(pk=brand.pk)).data)
+
+
+@extend_schema(tags=["catalog"])
+class MobileSliderViewSet(CatalogViewSet):
+    """Home-screen banners of the customer app."""
+
+    serializer_class = MobileSliderSerializer
+    filterset_fields = ["is_active"]
+    search_fields = ["title"]
+    pagination_class = None
+
+    def get_queryset(self):
+        return MobileSlider.objects.all()
+
+    @action(detail=True, methods=["post", "get"], parser_classes=[MultiPartParser, FormParser])
+    def image(self, request, pk=None):
+        slider = self.get_object()
+        if request.method == "GET":
+            if not slider.image:
+                raise Http404
+            return file_response(slider.image, slider.image_content_type)
+        upload = request.FILES.get("file")
+        slider.image_content_type = validate_upload(upload, allowed=IMAGE_TYPES)
+        if slider.image:
+            slider.image.delete(save=False)
+        slider.image = upload
+        slider.save(update_fields=["image", "image_content_type", "updated_at"])
+        record_audit(action="update", request=request, instance=slider, changes={"image": [None, slider.image.name]})
+        return Response(MobileSliderSerializer(slider).data)
 
 
 @extend_schema(tags=["catalog"])

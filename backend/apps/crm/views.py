@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 from apps.accounts.constants import Module
 from apps.accounts.permissions import HasModulePermission
 from apps.core.audit import record_audit
+from apps.catalog.models import Category
 from apps.core.workflow import run
 from apps.orders.serializers import _person
 from apps.parties.models import Customer
@@ -89,10 +90,23 @@ class RuleWriteSerializer(serializers.Serializer):
 
 
 class InterestSerializer(serializers.ModelSerializer):
+    # Staff pick a category or subcategory; the app's home screen then shows this customer its products.
+    category = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all(), required=False, allow_null=True)
+    category_name = serializers.SerializerMethodField()
+
     class Meta:
         model = CustomerInterest
-        fields = ["id", "label", "confidence", "source", "updated_at"]
+        fields = ["id", "label", "category", "category_name", "confidence", "source", "updated_at"]
         read_only_fields = ["id", "source", "updated_at"]
+        extra_kwargs = {"label": {"required": False, "allow_blank": True}, "confidence": {"required": False}}
+
+    def get_category_name(self, obj) -> str | None:
+        return str(obj.category) if obj.category_id else None
+
+    def validate(self, attrs):
+        if not attrs.get("category") and not attrs.get("label", "").strip():
+            raise serializers.ValidationError({"category": "Choose a category or enter an interest."})
+        return attrs
 
 
 class CriteriaSerializer(serializers.Serializer):
@@ -183,7 +197,7 @@ class CustomerTagsView(APIView):
 
 
 class CustomerInterestsView(APIView):
-    """Interests of a customer: GET list, POST {label, confidence} manual interest, DELETE ?id=, PUT = recompute."""
+    """Interests of a customer: GET list, POST {category | label, confidence} manual interest, DELETE ?id=, PUT = recompute."""
 
     module = Module.PEOPLE
     permission_classes = [HasModulePermission]
@@ -191,7 +205,7 @@ class CustomerInterestsView(APIView):
     serializer_class = InterestSerializer
 
     def _list(self, customer):
-        return InterestSerializer(customer.interests.all(), many=True).data
+        return InterestSerializer(customer.interests.select_related("category__parent"), many=True).data
 
     @extend_schema(tags=["crm"], responses=InterestSerializer(many=True))
     def get(self, request, pk):
@@ -202,9 +216,11 @@ class CustomerInterestsView(APIView):
         customer = get_object_or_404(Customer, pk=pk)
         s = InterestSerializer(data=request.data)
         s.is_valid(raise_exception=True)
-        label = s.validated_data["label"].strip().lower()
+        category = s.validated_data.get("category")
+        label = (str(category) if category else s.validated_data["label"]).strip().lower()[:80]
         CustomerInterest.objects.update_or_create(customer=customer, label=label, defaults={
-            "confidence": s.validated_data["confidence"], "source": CustomerInterest.Source.MANUAL})
+            "confidence": s.validated_data.get("confidence", 100), "category": category,
+            "source": CustomerInterest.Source.MANUAL})
         record_audit(action="update", request=request, instance=customer, changes={"interest": [None, label]})
         return Response(self._list(customer), status=status.HTTP_201_CREATED)
 

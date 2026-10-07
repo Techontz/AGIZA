@@ -9,6 +9,7 @@ from .views import (
     EstimateRouteViewSet,
     ImageFileView,
     LabelViewSet,
+    MobileSliderViewSet,
     OptionViewSet,
     OriginEstimateViewSet,
     ProductViewSet,
@@ -21,6 +22,7 @@ router = DefaultRouter()
 router.register("catalog/categories", CategoryViewSet, basename="category")
 router.register("catalog/brands", BrandViewSet, basename="brand")
 router.register("catalog/labels", LabelViewSet, basename="label")
+router.register("catalog/sliders", MobileSliderViewSet, basename="mobile-slider")
 router.register("catalog/options", OptionViewSet, basename="product-option")
 router.register("catalog/vendors", VendorViewSet, basename="vendor")
 router.register("catalog/products", ProductViewSet, basename="product")

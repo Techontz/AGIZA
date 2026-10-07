@@ -15,6 +15,7 @@ from .models import (
     DeliveryEstimateRoute,
     Label,
     LocationKind,
+    MobileSlider,
     OriginEstimate,
     Product,
     ProductImage,
@@ -71,6 +72,18 @@ class BrandSerializer(serializers.ModelSerializer):
 
     def get_logo_url(self, obj) -> str | None:
         return f"catalog/brands/{obj.id}/logo/file" if obj.logo else None
+
+
+class MobileSliderSerializer(serializers.ModelSerializer):
+    has_image = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MobileSlider
+        fields = ["id", "title", "link", "is_active", "sort_order", "has_image", "created_at", "updated_at"]
+        read_only_fields = ["id", "has_image", "created_at", "updated_at"]
+
+    def get_has_image(self, obj) -> bool:
+        return bool(obj.image)
 
 
 class LabelSerializer(serializers.ModelSerializer):

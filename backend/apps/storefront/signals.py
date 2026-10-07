@@ -60,5 +60,9 @@ def support_replied(sender, instance: Message, created: bool, **kwargs):
     conversation = instance.conversation
     if conversation.channel != "web" or conversation.customer_id is None:
         return
-    notify_customer(conversation.customer, title="New message from AGIZA Support", body=instance.body[:180],
-                    data={"type": "chat_message", "conversation": conversation.pk, "screen": "chat"})
+    from .views.requests import _room_key, _room_title
+
+    _, room_title = _room_title(conversation)
+    notify_customer(conversation.customer, title=f"New message · {room_title}", body=instance.body[:180],
+                    data={"type": "chat_message", "conversation": conversation.pk, "screen": "chat",
+                          "room": _room_key(conversation), "room_title": room_title})

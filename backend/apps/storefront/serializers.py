@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from django.urls import reverse
 from rest_framework import serializers
 
 from apps.catalog.models import Category, Product, ProductVariant
@@ -164,6 +165,7 @@ class ProductCardSerializer(serializers.ModelSerializer):
     brand = serializers.CharField(source="brand.name", default=None)
     category = serializers.CharField(source="category.name")
     in_stock = serializers.SerializerMethodField()
+    available = serializers.SerializerMethodField()
     labels = serializers.SerializerMethodField()
     vendor = serializers.SerializerMethodField()
     rating = serializers.SerializerMethodField()
@@ -173,7 +175,7 @@ class ProductCardSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = ["id", "name", "price", "price_max", "compare_at_price", "image", "brand", "category",
-                  "condition", "featured", "ofa_kali", "in_stock", "labels", "vendor", "created_at", "rating",
+                  "condition", "featured", "ofa_kali", "in_stock", "available", "labels", "vendor", "created_at", "rating",
                   "rating_count", "ships_from"]
 
     def get_ships_from(self, product) -> str | None:
@@ -204,6 +206,14 @@ class ProductCardSerializer(serializers.ModelSerializer):
     def get_in_stock(self, product) -> bool:
         stock = self.context.get("stock", {})
         return product.status == "active" and any(stock.get(v.pk, 0) > 0 for v in getattr(product, "shop_variants", []))
+
+    def get_available(self, product) -> int:
+        """Units customers can buy now, over all shop variants (shown as "8 in stock" on tiles).
+        Imported products count as orderable (MAX_LINE_QUANTITY per variant) since AGIZA buys them abroad."""
+        if product.status != "active":
+            return 0
+        stock = self.context.get("stock", {})
+        return sum(max(stock.get(v.pk, 0), 0) for v in getattr(product, "shop_variants", []))
 
     def get_labels(self, product) -> list[dict]:
         return [{"name": lb.name, "color": lb.color} for lb in product.labels.all() if lb.visible]
@@ -500,12 +510,22 @@ class QuoteRequestSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     order = serializers.SerializerMethodField()
     can_reply = serializers.SerializerMethodField()
+    photos = serializers.SerializerMethodField()
 
     class Meta:
         model = QuoteRequest
         fields = ["id", "reference", "service_type", "description", "origin", "destination", "status",
                   "status_display", "requested_at", "quoted_amount", "currency", "estimated_delivery",
-                  "response_notes", "responded_at", "customer_replied_at", "order", "can_reply"]
+                  "response_notes", "responded_at", "customer_replied_at", "order", "can_reply", "photos"]
+
+    def get_photos(self, quote) -> list[dict]:
+        request = self.context.get("request")
+        rows = []
+        for a in quote.attachments.all():
+            path = reverse("storefront:request-photo", args=[quote.pk, a.pk])
+            rows.append({"id": a.pk, "url": request.build_absolute_uri(path) if request else path,
+                         "from": "agiza" if a.from_agiza else "me"})
+        return rows
 
     def get_order(self, quote) -> str | None:
         order = getattr(quote, "created_order", None)
@@ -516,20 +536,48 @@ class QuoteRequestSerializer(serializers.ModelSerializer):
 
 
 class QuoteCreateSerializer(serializers.Serializer):
-    REQUEST_TYPES = {"buy_for_me": "Buy for me", "deliver_for_me": "Deliver for me"}
+    REQUEST_TYPES = {"buy_for_me": "Buy for me", "deliver_for_me": "Deliver for me",
+                     "local_delivery": "Local delivery"}
 
     request_type = serializers.ChoiceField(choices=list(REQUEST_TYPES))
     item_name = serializers.CharField(max_length=160)
     link = serializers.URLField(max_length=500, required=False, allow_blank=True)
     quantity = serializers.IntegerField(min_value=1, max_value=100000, default=1)
-    origin_country = serializers.CharField(max_length=2)
-    destination_city = serializers.PrimaryKeyRelatedField(queryset=City.objects.filter(is_active=True))
+    origin_country = serializers.CharField(max_length=2, required=False, allow_blank=True)
+    # Optional for parcels from abroad: the request falls back to the customer's default address and staff
+    # confirm delivery when quoting. A local delivery must say where it goes.
+    destination_city = serializers.PrimaryKeyRelatedField(queryset=City.objects.filter(is_active=True), required=False,
+                                                          allow_null=True)
+    # Local delivery (a parcel moved inside Tanzania): where it's collected and who receives it
+    pickup_city = serializers.PrimaryKeyRelatedField(queryset=City.objects.filter(is_active=True), required=False,
+                                                     allow_null=True)
+    pickup_address = serializers.CharField(max_length=300, required=False, allow_blank=True)
+    dropoff_address = serializers.CharField(max_length=300, required=False, allow_blank=True)
+    contact_name = serializers.CharField(max_length=120, required=False, allow_blank=True)  # the receiver
+    contact_phone = serializers.CharField(max_length=30, required=False, allow_blank=True)
+    sender_name = serializers.CharField(max_length=120, required=False, allow_blank=True)
+    sender_phone = serializers.CharField(max_length=30, required=False, allow_blank=True)
+    PACKAGE_SIZES = {"small": "Small", "medium": "Medium", "large": "Large"}
+    package_size = serializers.ChoiceField(choices=list(PACKAGE_SIZES), required=False, allow_blank=True)
     weight_kg = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True,
                                          min_value=0)
     tracking_number = serializers.CharField(max_length=80, required=False, allow_blank=True)
+    # Set when the customer asks for a shop product that is out of stock.
+    product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all(), required=False, allow_null=True)
+    SHIPPING_METHODS = {"air": "Air freight", "sea": "Sea freight"}
+    shipping_method = serializers.ChoiceField(choices=list(SHIPPING_METHODS), required=False, allow_blank=True)
     details = serializers.CharField(max_length=2000, required=False, allow_blank=True)
 
     def validate(self, attrs):
+        if attrs["request_type"] == "local_delivery" and not attrs.get("destination_city"):
+            raise serializers.ValidationError({"destination_city": "Choose the city to deliver to."})
+        if attrs["request_type"] == "local_delivery":
+            if not attrs.get("pickup_city"):
+                raise serializers.ValidationError({"pickup_city": "Choose where the parcel is collected."})
+            return attrs
+        # A product request may leave the country to staff; a parcel already on its way must say where from.
+        if attrs["request_type"] == "deliver_for_me" and not attrs.get("origin_country", "").strip():
+            raise serializers.ValidationError({"origin_country": "Choose the country the item comes from."})
         if attrs["request_type"] == "deliver_for_me" and not attrs.get("tracking_number", "").strip():
             raise serializers.ValidationError({"tracking_number": "Enter the supplier's tracking number."})
         return attrs

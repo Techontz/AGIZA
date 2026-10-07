@@ -132,6 +132,20 @@ def test_preview_prices_delivery_with_the_shipping_engine(app, shop, home):
     assert rider["shipping_fee"] == "3000.00" and rider["total"] == "1778000.00" and rider["can_place_order"]
 
 
+
+def test_local_delivery_is_offered_by_location_even_when_a_product_limits_its_methods(app, shop, home):
+    # A seller allows only long-distance methods; inside Dar the engine still prices rider and pickup.
+    shop.product.shipping_methods.set([shop.bus])
+    add(app, shop.variant)
+    body = app.post(f"{APP}/checkout/preview/", {"address": home.pk}, format="json").json()
+    options = {o["code"]: o for o in body["shipping_options"]}
+    assert options["RIDER"]["available"] and options["PICKUP"]["available"] and not body["issues"]
+    assert options["BUS"]["available"] is False
+    # Upcountry the local methods have no rule, so only the product's own method is quoted.
+    far = Address.objects.create(customer=home.customer, line1="Plot 3", city=shop.mwanza)
+    body = app.post(f"{APP}/checkout/preview/", {"address": far.pk}, format="json").json()
+    assert not any(o["available"] for o in body["shipping_options"] if o["code"] in ("RIDER", "PICKUP"))
+
 def test_heavier_carts_are_priced_per_kg(app, shop, home):
     shop.product.weight_kg = D("4")
     shop.product.save()

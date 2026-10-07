@@ -90,3 +90,26 @@ class QuoteStatusHistory(models.Model):
 
     def __str__(self) -> str:
         return f"{self._meta.verbose_name} #{self.pk}"
+
+
+def quote_photo_path(instance, filename):
+    from apps.core.uploads import safe_filename
+
+    return f"quotes/{instance.quote_id}/{safe_filename(filename)}"
+
+
+class QuoteAttachment(TimeStampedModel):
+    """Photos on a quotation: ones the customer adds to an app request (e.g. the parcel they want delivered)
+    and ones AGIZA staff attach to their answer (e.g. the exact item found). Served only through the
+    authenticated API; copied onto the order when the quote is approved."""
+
+    quote = models.ForeignKey(QuoteRequest, on_delete=models.CASCADE, related_name="attachments")
+    file = models.FileField(upload_to=quote_photo_path)
+    content_type = models.CharField(max_length=100, blank=True)
+    from_agiza = models.BooleanField(default=False, help_text="Attached by staff to the quotation (shown to the customer)")
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.quote.reference} photo #{self.pk}"

@@ -599,3 +599,24 @@ class OriginEstimate(TimeStampedModel):
             models.UniqueConstraint(fields=["country", "method"], name="uniq_origin_estimate"),
             models.CheckConstraint(name="origin_estimate_range", condition=Q(min_days__lte=models.F("max_days"))),
         ]
+
+
+def slider_image_path(instance, filename):
+    return f"catalog/sliders/{safe_filename(filename)}"
+
+
+class MobileSlider(TimeStampedModel):
+    """A banner on the customer app's home screen, managed by staff."""
+
+    title = models.CharField(max_length=120, blank=True)
+    image = models.FileField(upload_to=slider_image_path, blank=True)
+    image_content_type = models.CharField(max_length=100, blank=True)
+    link = models.URLField(blank=True, help_text="Opened when the banner is tapped (optional)")
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+
+    def __str__(self) -> str:
+        return self.title or f"Slider #{self.pk}"

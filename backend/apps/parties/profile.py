@@ -78,8 +78,9 @@ def customer_profile(customer: Customer) -> dict:
     tags = [{"id": t.id, "name": t.tag.name, "type": "system" if t.source == "rule" else "manual",
              "rule": t.rule.name if t.rule_id else None, "created_at": t.created_at}
             for t in CustomerTag.objects.filter(customer=customer).select_related("tag", "rule")]
-    interests = [{"id": i.id, "label": i.label, "confidence": i.confidence, "source": i.source}
-                 for i in CustomerInterest.objects.filter(customer=customer)]
+    interests = [{"id": i.id, "label": i.label, "confidence": i.confidence, "source": i.source,
+                  "category": i.category_id, "category_name": str(i.category) if i.category_id else None}
+                 for i in CustomerInterest.objects.filter(customer=customer).select_related("category__parent")]
     order_ids = [str(o["id"]) for o in rows]
     activity = AuditLog.objects.filter(
         Q(content_type=ContentType.objects.get_for_model(Customer), object_id=str(customer.pk))

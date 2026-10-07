@@ -20,6 +20,7 @@ class QuoteSerializer(serializers.ModelSerializer):
     service_type_display = serializers.CharField(source="get_service_type_display", read_only=True)
     responded_by = serializers.SerializerMethodField()
     created_order = serializers.SerializerMethodField()
+    photos = serializers.SerializerMethodField()
 
     class Meta:
         model = QuoteRequest
@@ -27,12 +28,17 @@ class QuoteSerializer(serializers.ModelSerializer):
             "id", "reference", "customer", "customer_id", "service_type", "service_type_display", "description",
             "origin", "destination", "status", "status_display", "requested_at", "quoted_amount", "currency",
             "estimated_delivery", "response_notes", "responded_by", "responded_at", "customer_replied_at",
-            "approved_at", "created_order", "created_at", "updated_at",
+            "approved_at", "created_order", "photos", "created_at", "updated_at",
         ]
         read_only_fields = [
             "id", "reference", "status", "quoted_amount", "currency", "estimated_delivery", "response_notes",
             "responded_at", "customer_replied_at", "approved_at", "created_at", "updated_at",
         ]
+
+    def get_photos(self, obj) -> list[dict]:
+        # Relative to the API root; the admin's proxy serves them with the staff session.
+        return [{"id": a.id, "url": f"quotes/{obj.id}/photos/{a.id}/file", "from_agiza": a.from_agiza}
+                for a in obj.attachments.all()]
 
     def get_responded_by(self, obj) -> dict | None:
         return {"id": obj.responded_by.id, "full_name": obj.responded_by.full_name} if obj.responded_by else None

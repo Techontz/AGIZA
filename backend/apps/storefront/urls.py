@@ -45,6 +45,10 @@ urlpatterns = [
     path("stores/<slug:slug>/", catalog.StoreDetailView.as_view(), name="store"),
     path("stores/<slug:slug>/<store_media:kind>/", catalog.StoreMediaView.as_view(), name="store-media"),
     path("cities/", catalog.CityListView.as_view(), name="cities"),
+    path("sliders/", catalog.SliderListView.as_view(), name="sliders"),
+    path("sliders/<int:pk>/image/", catalog.SliderImageView.as_view(), name="slider-image"),
+    path("warehouse-addresses/", catalog.WarehouseAddressListView.as_view(), name="warehouse-addresses"),
+    path("import-rates/", catalog.ImportRatesView.as_view(), name="import-rates"),
     path("delivery-estimate/", catalog.DeliveryEstimateView.as_view(), name="delivery-estimate"),
     path("sourcing-countries/", catalog.SourcingCountryListView.as_view(), name="sourcing-countries"),
     # Addresses, cart, checkout
@@ -86,9 +90,12 @@ urlpatterns = [
     # Buy for me / Deliver for me, support
     path("requests/", requests.QuoteListView.as_view(), name="requests"),
     path("requests/<int:pk>/", requests.QuoteDetailView.as_view(), name="request"),
+    path("requests/<int:pk>/photos/", requests.QuotePhotoUploadView.as_view(), name="request-photos"),
+    path("requests/<int:pk>/photos/<int:photo_id>/", requests.QuotePhotoFileView.as_view(), name="request-photo"),
     path("requests/<int:pk>/accept/", requests.QuoteReplyView.as_view(), name="request-accept"),
     path("requests/<int:pk>/decline/", requests.QuoteDeclineView.as_view(), name="request-decline"),
     path("support/messages/", requests.SupportChatView.as_view(), name="support-messages"),
+    path("support/rooms/", requests.SupportRoomListView.as_view(), name="support-rooms"),
     # Seller (vendor) area — the signed-in account's own store only
     path("seller/store/", seller.ApplicationView.as_view(), name="seller-store"),
     path("seller/store/<store_media:kind>/", seller.StoreMediaUploadView.as_view(), name="seller-store-media"),

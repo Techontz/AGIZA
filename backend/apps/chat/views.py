@@ -57,6 +57,7 @@ class ConversationSerializer(serializers.ModelSerializer):
     customer = serializers.SerializerMethodField()
     order = serializers.SerializerMethodField()
     quote = serializers.SerializerMethodField()
+    return_request = serializers.SerializerMethodField()
     assigned_agent = serializers.SerializerMethodField()
     active_handler = serializers.SerializerMethodField()
     lifecycle = serializers.SerializerMethodField()
@@ -69,7 +70,7 @@ class ConversationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Conversation
         fields = ["id", "reference", "channel", "channel_display", "contact_name", "contact_handle", "customer",
-                  "order", "quote", "status", "response_status", "department", "assigned_agent", "active_handler",
+                  "order", "quote", "return_request", "status", "response_status", "department", "assigned_agent", "active_handler",
                   "handler_since", "escalated_to", "escalated_at", "follow_up_at", "last_message_at",
                   "last_message_preview", "unread_count", "lifecycle", "client_action_state", "client_value",
                   "created_at"]
@@ -85,6 +86,10 @@ class ConversationSerializer(serializers.ModelSerializer):
     def get_quote(self, obj) -> dict | None:
         q = obj.quote
         return {"id": q.id, "reference": q.reference, "status": q.status} if q else None
+
+    def get_return_request(self, obj) -> dict | None:
+        r = obj.return_request
+        return {"id": r.id, "reference": r.reference} if r else None
 
     def get_assigned_agent(self, obj) -> dict | None:
         return _person(obj.assigned_agent)
@@ -203,7 +208,7 @@ class ConversationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
                  .annotate(s=Coalesce(Sum("amount", filter=~Q(kind=Payment.Kind.REFUND)), 0, output_field=MONEY)
                            - Coalesce(Sum("amount", filter=Q(kind=Payment.Kind.REFUND)), 0, output_field=MONEY))
                  .values("s"))
-        qs = (Conversation.objects.select_related("customer", "order", "quote", "assigned_agent", "active_handler")
+        qs = (Conversation.objects.select_related("customer", "order", "quote", "return_request", "assigned_agent", "active_handler")
               .prefetch_related(Prefetch("messages", queryset=Message.objects.filter(quote__isnull=False)
                                          .select_related("quote").order_by("created_at", "id"), to_attr="quote_cards"))
               .annotate(unread_count=Coalesce(Subquery(unread), 0), customer_orders=Coalesce(Subquery(orders), 0),

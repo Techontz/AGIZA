@@ -108,13 +108,25 @@ def approve(quote: QuoteRequest, *, user, order_details: dict, request=None):
         source_quote=quote,
         **order_fields,
     )
-    if order_type == OrderType.EXPRESS and quote.estimated_delivery:
+    # The quotation's photos (the customer's and AGIZA's) travel with the order (same stored files).
+    from apps.orders.models import OrderAttachment
+
+    for photo in quote.attachments.all():
+        OrderAttachment.objects.create(order=order, file=photo.file.name, content_type=photo.content_type,
+                                       caption="AGIZA quotation photo" if photo.from_agiza else "Customer photo")
+    if order_type == OrderType.EXPRESS:
         details = order.express
-        details.estimated_delivery_at = timezone.make_aware(
-            timezone.datetime.combine(quote.estimated_delivery, timezone.datetime.min.time().replace(hour=17))
-        )
-        details.quoted_at = quote.responded_at
-        details.quoted_by = quote.responded_by
+        # An app request says "Package size: Medium": that's the size the customer selected.
+        size = next((ln.partition(":")[2].strip().lower() for ln in quote.description.split("\n")
+                     if ln.startswith("Package size:")), "")
+        if size in ("small", "medium", "large"):
+            details.customer_package_size = size
+        if quote.estimated_delivery:
+            details.estimated_delivery_at = timezone.make_aware(
+                timezone.datetime.combine(quote.estimated_delivery, timezone.datetime.min.time().replace(hour=17))
+            )
+            details.quoted_at = quote.responded_at
+            details.quoted_by = quote.responded_by
         details.save()
     elif order_type == OrderType.INTERNATIONAL and quote.estimated_delivery:
         order.international.estimated_delivery = quote.estimated_delivery

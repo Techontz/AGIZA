@@ -49,6 +49,8 @@ class Conversation(TimeStampedModel):
                               related_name="conversations")
     quote = models.ForeignKey("quotes.QuoteRequest", null=True, blank=True, on_delete=models.SET_NULL,
                               related_name="conversations")
+    return_request = models.ForeignKey("returns.ReturnRequest", null=True, blank=True, on_delete=models.SET_NULL,
+                                       related_name="conversations")
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN, db_index=True)
     response_status = models.CharField(max_length=14, choices=ResponseStatus.choices, default=ResponseStatus.NEW)
     department = models.CharField(max_length=12, choices=Department.choices, default=Department.SALES)
