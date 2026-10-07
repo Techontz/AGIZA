@@ -15,7 +15,7 @@ import { ApiError } from '@/lib/api/client';
 import { addressApi, shopApi } from '@/lib/api/endpoints';
 import type { Address, City } from '@/lib/api/types';
 import { keys } from '@/lib/query';
-import { colors, space } from '@/theme/tokens';
+import { colors, space, themed } from '@/theme/tokens';
 
 type Pin = { latitude: string; longitude: string } | null;
 
@@ -140,7 +140,7 @@ function AddressForm({ address, cities }: { address: Address | null; cities: Cit
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   footer: { padding: space.lg, backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-});
+}));

@@ -35,7 +35,9 @@ export function openNotificationTarget(n: InboxNotification): boolean {
     return true;
   }
   if (screen === 'chat') {
-    router.push('/support');
+    if (typeof data.room === 'string' && data.room) {
+      router.push({ pathname: '/chat-room', params: { room: data.room, title: String(data.room_title ?? 'AGIZA Support') } });
+    } else router.push('/chat');
     return true;
   }
   if (typeof data.order === 'string') {

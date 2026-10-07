@@ -1,27 +1,28 @@
 import { useQuery } from '@tanstack/react-query';
 import { router, type Href } from 'expo-router';
-import { Globe, MessageCircle, PackageSearch, Search, Truck } from 'lucide-react-native';
+import { ArrowUpRight, Globe2, PackageSearch, Search, Store } from 'lucide-react-native';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Logo } from '@/components/brand';
+import { HomeSlider } from '@/components/home-slider';
 import { NotificationBell } from '@/components/notification-bell';
 import { ProductTile } from '@/components/product-tile';
-import { StoreTile } from '@/components/store';
-import { Section } from '@/components/ui/card';
+import { SeeAll, Section } from '@/components/ui/card';
 import { ErrorState, Loading } from '@/components/ui/states';
 import { Text } from '@/components/ui/text';
 import { shopApi } from '@/lib/api/endpoints';
-import type { ProductCard, Store } from '@/lib/api/types';
+import type { ProductCard } from '@/lib/api/types';
 import { useAuth } from '@/lib/auth/session';
 import { keys } from '@/lib/query';
-import { colors, radius, shadow, space } from '@/theme/tokens';
+import { colors, fonts, radius, shadow, space, themed } from '@/theme/tokens';
 
 const GAP = space.md;
+const ORIGINS = ['China', 'USA', 'UK', 'India', 'Dubai'];
 
 function ProductRow({ products, width }: { products: ProductCard[]; width: number }) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hscroll}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hscroll} style={styles.bleed}>
       {products.map((p) => (
         <ProductTile key={p.id} product={p} width={width} />
       ))}
@@ -29,38 +30,62 @@ function ProductRow({ products, width }: { products: ProductCard[]; width: numbe
   );
 }
 
-function StoreRow({ stores, width }: { stores: Store[]; width: number }) {
+/** Agiza: AGIZA buys or ships from abroad. A dark card so it reads as the flagship service. */
+function AgizaCard({ onPress }: { onPress: () => void }) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hscroll}>
-      {stores.map((s) => (
-        <StoreTile key={s.slug} store={s} width={width} />
-      ))}
-    </ScrollView>
-  );
-}
-
-function SeeAll({ onPress, label }: { onPress: () => void; label: string }) {
-  return (
-    <Pressable accessibilityRole="link" accessibilityLabel={label} onPress={onPress} hitSlop={8}>
-      <Text variant="smallMedium" color={colors.primary}>
-        See all
-      </Text>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Agiza: order from China, USA, UK, India and Dubai"
+      onPress={onPress}
+      style={({ pressed }) => [styles.feature, styles.agiza, pressed && styles.pressed]}>
+      <View style={styles.agizaGlow} />
+      <View style={[styles.featureIcon, { backgroundColor: colors.brand }]}>
+        <Globe2 size={22} color={colors.onPrimary} strokeWidth={1.8} />
+      </View>
+      <View style={styles.featureText}>
+        <Text style={styles.featureTitle} color={colors.onHero}>
+          Agiza
+        </Text>
+        <Text variant="caption" color="rgba(255,255,255,0.7)" numberOfLines={2}>
+          {ORIGINS.join(' · ')}
+        </Text>
+      </View>
+      <View style={[styles.featureCta, { backgroundColor: colors.brand }]}>
+        <Text style={styles.ctaText} color={colors.onPrimary}>
+          Order
+        </Text>
+        <ArrowUpRight size={15} color={colors.onPrimary} />
+      </View>
     </Pressable>
   );
 }
 
-function ServiceCard({ icon: Icon, title, text, onPress }: { icon: typeof Globe; title: string; text: string; onPress: () => void }) {
+/** Shop: ready stock in Tanzania. A warm light card beside the dark Agiza one. */
+function ShopCard({ onPress }: { onPress: () => void }) {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.service, pressed && { opacity: 0.85 }]}>
-      <View style={styles.serviceIcon}>
-        <Icon size={22} color={colors.brand} />
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Shop: products checked and ready in stock"
+      onPress={onPress}
+      style={({ pressed }) => [styles.feature, styles.shop, pressed && styles.pressed]}>
+      <View style={[styles.featureIcon, { backgroundColor: colors.ink }]}>
+        <Store size={22} color={colors.background} strokeWidth={1.8} />
       </View>
-      <Text variant="subheading" color={colors.ink}>
-        {title}
-      </Text>
-      <Text variant="small" color={colors.textMuted}>
-        {text}
-      </Text>
+      <View style={styles.featureText}>
+        <Text style={styles.featureTitle} color={colors.ink}>
+          Shop
+        </Text>
+        <Text variant="caption" color={colors.textMuted} numberOfLines={2}>
+          Bidhaa zilizopitiwa tayari
+        </Text>
+      </View>
+      {/* Ink pill: dark on the light card, light on the dark-mode card. */}
+      <View style={[styles.featureCta, { backgroundColor: colors.ink }]}>
+        <Text style={styles.ctaText} color={colors.background}>
+          Shop
+        </Text>
+        <ArrowUpRight size={15} color={colors.background} />
+      </View>
     </Pressable>
   );
 }
@@ -68,139 +93,155 @@ function ServiceCard({ icon: Icon, title, text, onPress }: { icon: typeof Globe;
 export default function HomeScreen() {
   const { width } = useWindowDimensions();
   const { status, customer } = useAuth();
-  const featured = useQuery({ queryKey: keys.products({ featured: true }), queryFn: () => shopApi.products({ featured: true }) });
-  const deals = useQuery({ queryKey: keys.products({ deals: true }), queryFn: () => shopApi.products({ deals: true }) });
-  const latest = useQuery({ queryKey: keys.products({}), queryFn: () => shopApi.products({}) });
-  const stores = useQuery({ queryKey: keys.stores({}), queryFn: () => shopApi.stores({}) });
-  const tile = Math.min(180, (width - space.lg * 2 - GAP) / 2.2);
   const signedIn = status === 'signedIn';
+  const latest = useQuery({ queryKey: keys.products({}), queryFn: () => shopApi.products({}) });
+  // Below new arrivals: products picked for this customer (staff set their interests in the admin)
+  // and the products AGIZA features. Each row only shows when it has products.
+  const forYou = useQuery({
+    queryKey: keys.products({ for_you: true }),
+    queryFn: () => shopApi.products({ for_you: true }),
+    enabled: signedIn,
+  });
+  const featured = useQuery({ queryKey: keys.products({ featured: true }), queryFn: () => shopApi.products({ featured: true }) });
+  const tile = Math.min(176, (width - space.lg * 2 - GAP) / 2.15);
   const needsSignIn = (href: Href) => () => router.push(signedIn ? href : '/login');
+  const see = (params: Record<string, string>) => () => router.push({ pathname: '/products', params });
 
-  const refreshing = featured.isRefetching || deals.isRefetching || latest.isRefetching || stores.isRefetching;
-  const refresh = () => Promise.all([featured.refetch(), deals.refetch(), latest.refetch(), stores.refetch()]);
+  const refreshing = latest.isRefetching || featured.isRefetching || forYou.isRefetching;
+  const refresh = () => Promise.all([latest.refetch(), featured.refetch(), signedIn ? forYou.refetch() : null]);
+  const picked = signedIn ? (forYou.data?.results ?? []) : [];
+  const firstName = customer?.full_name.split(' ')[0];
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.brand} />}>
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />}>
         <View style={styles.header}>
-          <Logo size={30} />
+          <Logo size={28} />
           <View style={styles.headerRight}>
-            <Text variant="small" color={colors.textMuted} numberOfLines={1} style={styles.greeting}>
-              {customer ? `Karibu, ${customer.full_name.split(' ')[0]}` : 'Karibu AGIZA'}
-            </Text>
-            {signedIn ? <NotificationBell /> : null}
+            <View style={styles.greeting}>
+              <Text variant="caption" color={colors.textMuted} numberOfLines={1}>
+                Karibu
+              </Text>
+              <Text variant="smallMedium" color={colors.ink} numberOfLines={1}>
+                {firstName ?? 'AGIZA'}
+              </Text>
+            </View>
+            {signedIn ? (
+              <View style={styles.bell}>
+                <NotificationBell />
+              </View>
+            ) : null}
           </View>
         </View>
 
         <Pressable accessibilityRole="search" onPress={() => router.push('/shop')} style={styles.search}>
-          <Search size={18} color={colors.textMuted} />
-          <Text variant="body" color={colors.textSubtle}>
+          <Search size={19} color={colors.ink} />
+          <Text variant="body" color={colors.textSubtle} style={{ flex: 1 }}>
             Search products
           </Text>
         </Pressable>
 
-        <View style={styles.services}>
-          <ServiceCard icon={Globe} title="Buy for me" text="We buy abroad and ship to you" onPress={needsSignIn('/requests/new')} />
-          <ServiceCard
-            icon={Truck}
-            title="Deliver for me"
-            text="Ship goods you already bought"
-            onPress={needsSignIn({ pathname: '/requests/new', params: { type: 'deliver_for_me' } })}
-          />
+        <View style={styles.features}>
+          <AgizaCard onPress={needsSignIn('/requests/new')} />
+          <ShopCard onPress={() => router.push('/shop')} />
         </View>
+
+        <HomeSlider />
 
         {latest.isLoading ? (
           <Loading />
         ) : latest.isError ? (
           <ErrorState error={latest.error} onRetry={refresh} />
         ) : (
-          <>
-            {deals.data?.results.length ? (
-              <Section title="Ofa kali">
-                <ProductRow products={deals.data.results} width={tile} />
-              </Section>
-            ) : null}
-            {featured.data?.results.length ? (
-              <Section title="Featured">
-                <ProductRow products={featured.data.results} width={tile} />
-              </Section>
-            ) : null}
-            {stores.data?.results.length ? (
-              <Section title="Stores" action={<SeeAll label="See all stores" onPress={() => router.push('/stores')} />}>
-                <StoreRow stores={stores.data.results} width={Math.min(132, tile * 0.8)} />
-              </Section>
-            ) : null}
-            <Section
-              title="New arrivals"
-              action={<SeeAll label="See all new arrivals" onPress={() => router.push('/products')} />}>
-              {latest.data?.results.length ? (
-                <ProductRow products={latest.data.results} width={tile} />
-              ) : (
-                <View style={styles.emptyRow}>
-                  <PackageSearch size={20} color={colors.textSubtle} />
-                  <Text variant="small" color={colors.textMuted}>
-                    New products will appear here soon.
-                  </Text>
-                </View>
-              )}
-            </Section>
-          </>
+          <Section title="New arrivals" action={<SeeAll label="See all new arrivals" onPress={see({ title: 'New arrivals' })} />}>
+            {latest.data?.results.length ? (
+              <ProductRow products={latest.data.results} width={tile} />
+            ) : (
+              <View style={styles.emptyRow}>
+                <PackageSearch size={20} color={colors.textSubtle} />
+                <Text variant="small" color={colors.textMuted}>
+                  New products will appear here soon.
+                </Text>
+              </View>
+            )}
+          </Section>
         )}
 
-        <Pressable accessibilityRole="button" onPress={needsSignIn('/support')} style={styles.help}>
-          <MessageCircle size={20} color={colors.ink} />
-          <View style={{ flex: 1 }}>
-            <Text variant="subheading" color={colors.ink}>
-              Need help?
-            </Text>
-            <Text variant="small" color={colors.textMuted}>
-              Chat with AGIZA Support
-            </Text>
-          </View>
-        </Pressable>
+        {picked.length ? (
+          <Section
+            title="For you"
+            subtitle="Picked for your interests"
+            action={<SeeAll label="See all products for you" onPress={see({ for_you: '1', title: 'For you' })} />}>
+            <ProductRow products={picked} width={tile} />
+          </Section>
+        ) : null}
+
+        {featured.data?.results.length ? (
+          <Section title="Featured" action={<SeeAll label="See all featured products" onPress={see({ featured: '1', title: 'Featured' })} />}>
+            <ProductRow products={featured.data.results} width={tile} />
+          </Section>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   safe: { flex: 1, backgroundColor: colors.background },
-  content: { padding: space.lg, gap: space.xxl, paddingBottom: space.xxxl },
+  content: { paddingHorizontal: space.lg, paddingTop: space.sm, gap: space.xxl, paddingBottom: space.xxxl + space.lg },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: space.md },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: space.xs, flexShrink: 1 },
-  greeting: { flexShrink: 1 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexShrink: 1 },
+  greeting: { alignItems: 'flex-end', flexShrink: 1 },
+  bell: {
+    borderRadius: 22,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
   search: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.sm,
-    minHeight: 48,
-    paddingHorizontal: space.md,
-    borderRadius: radius.md,
+    gap: space.md,
+    minHeight: 54,
+    marginTop: -space.sm,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.pill,
     backgroundColor: colors.surface,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
+    ...shadow.card,
   },
-  services: { flexDirection: 'row', gap: GAP },
-  service: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.lg, padding: space.lg, gap: 6, ...shadow.card },
-  serviceIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
+  features: { flexDirection: 'row', gap: GAP, marginTop: -space.xs },
+  feature: { flex: 1, borderRadius: radius.lg, padding: space.lg, gap: space.md, minHeight: 186, overflow: 'hidden' },
+  agiza: { backgroundColor: colors.hero, ...shadow.float },
+  agizaGlow: {
+    position: 'absolute',
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    right: -70,
+    top: -60,
+    borderWidth: 22,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
-  hscroll: { gap: GAP, paddingRight: space.lg, paddingBottom: 4 },
-  emptyRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  help: {
+  shop: { backgroundColor: colors.primarySoft, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  pressed: { opacity: 0.94, transform: [{ scale: 0.98 }] },
+  featureIcon: { width: 44, height: 44, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  featureText: { flex: 1, gap: 4 },
+  featureTitle: { fontFamily: fonts.bold, fontSize: 22, lineHeight: 26, letterSpacing: -0.4 },
+  featureCta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.md,
-    padding: space.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.primarySoft,
+    justifyContent: 'center',
+    gap: 4,
+    height: 42,
+    borderRadius: radius.pill,
   },
-});
+  ctaText: { fontFamily: fonts.semibold, fontSize: 14 },
+  bleed: { marginHorizontal: -space.lg },
+  hscroll: { gap: GAP, paddingHorizontal: space.lg, paddingBottom: space.md, paddingTop: 2 },
+  emptyRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+}));

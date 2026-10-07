@@ -1,7 +1,7 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { PenLine, Star } from 'lucide-react-native';
-import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, View } from 'react-native';
 
 import { openWriteReview, REVIEW_STATUS_NOTE } from '@/components/product-reviews';
 import { RatingDistributionView } from '@/components/rating';
@@ -13,7 +13,7 @@ import { Text } from '@/components/ui/text';
 import { reviewApi } from '@/lib/api/endpoints';
 import { useAuth } from '@/lib/auth/session';
 import { keys } from '@/lib/query';
-import { colors, space } from '@/theme/tokens';
+import { colors, space, themed } from '@/theme/tokens';
 
 /** Every visible review of a product, 20 per page. */
 export default function ProductReviewsScreen() {
@@ -77,7 +77,7 @@ export default function ProductReviewsScreen() {
         ListFooterComponent={
           list.isFetchingNextPage ? (
             <View style={styles.footer}>
-              <ActivityIndicator color={colors.brand} />
+              <ActivityIndicator color={colors.primary} />
             </View>
           ) : null
         }
@@ -86,8 +86,8 @@ export default function ProductReviewsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   content: { padding: space.lg, gap: space.md, flexGrow: 1 },
   header: { gap: space.md, marginBottom: space.xs },
   footer: { padding: space.lg },
-});
+}));

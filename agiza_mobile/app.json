@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "agiza",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "tz.co.agiza.app",
       "supportsTablet": false
@@ -19,7 +19,10 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"],
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
       "softwareKeyboardLayoutMode": "resize",
       "predictiveBackGestureEnabled": false
     },
@@ -43,6 +46,14 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "AGIZA uses your location to pin your delivery address."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "AGIZA uses your photos so you can show us the product you want.",
+          "cameraPermission": false,
+          "microphonePermission": false
         }
       ],
       [

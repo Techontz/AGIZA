@@ -1,5 +1,8 @@
 import { api } from './client';
 import type {
+  ChatRoom,
+  HomeSlider,
+  WarehouseAddress,
   Address,
   AppConfig,
   Cart,
@@ -58,11 +61,15 @@ export type ProductQuery = {
   ordering?: string;
   /** Only products that can be bought now. */
   in_stock?: boolean;
+  /** Signed in: products from the categories AGIZA staff chose for this customer. */
+  for_you?: boolean;
 };
 
 export const shopApi = {
   config: () => api.get<AppConfig>('config/'),
   categories: () => api.get<Category[]>('categories/'),
+  sliders: () => api.get<HomeSlider[]>('sliders/'),
+  warehouses: () => api.get<{ count: number; results: WarehouseAddress[] }>('warehouse-addresses/'),
   products: (query: ProductQuery & { page?: number }) => api.get<Paginated<ProductCard>>('products/', query),
   product: (id: number) => api.get<ProductDetail>(`products/${id}/`),
   stores: (query: { search?: string; page?: number }) => api.get<Paginated<Store>>('stores/', query),
@@ -119,28 +126,49 @@ export const orderApi = {
 };
 
 export type RequestInput = {
-  request_type: 'buy_for_me' | 'deliver_for_me';
+  request_type: 'buy_for_me' | 'deliver_for_me' | 'local_delivery';
   item_name: string;
   link?: string;
   quantity: number;
-  origin_country: string;
-  destination_city: number;
+  origin_country?: string;
+  destination_city?: number | null;
   weight_kg?: string | null;
   tracking_number?: string;
+  shipping_method?: 'air' | 'sea' | '';
   details?: string;
+  /** Local delivery (inside Tanzania): pickup side, the sender, and the receiver (`contact_*`). */
+  pickup_city?: number | null;
+  pickup_address?: string;
+  dropoff_address?: string;
+  sender_name?: string;
+  sender_phone?: string;
+  contact_name?: string;
+  contact_phone?: string;
+  package_size?: 'small' | 'medium' | 'large';
+  /** A shop product the customer wants that is out of stock. */
+  product?: number;
 };
 
 export const requestApi = {
   list: () => api.get<Paginated<QuoteRequest>>('requests/', { page_size: 50 }),
   get: (id: number) => api.get<QuoteRequest>(`requests/${id}/`),
   create: (data: RequestInput) => api.post<QuoteRequest>('requests/', data),
+  addPhoto: (id: number, photo: { uri: string; mimeType?: string | null; fileName?: string | null }) => {
+    const form = new FormData();
+    const type = photo.mimeType ?? 'image/jpeg';
+    // React Native's FormData takes a {uri, name, type} file descriptor.
+    form.append('file', { uri: photo.uri, name: photo.fileName ?? `photo.${type.split('/')[1] ?? 'jpg'}`, type } as unknown as Blob);
+    return api.upload<QuoteRequest>(`requests/${id}/photos/`, form);
+  },
   accept: (id: number, note = '') => api.post<QuoteRequest>(`requests/${id}/accept/`, { note }),
   decline: (id: number, note = '') => api.post<QuoteRequest>(`requests/${id}/decline/`, { note }),
 };
 
 export const supportApi = {
-  messages: () => api.get<{ messages: ChatMessage[] }>('support/messages/'),
-  send: (body: string) => api.post<ChatMessage>('support/messages/', { body }),
+  /** `room`: '' = general AGIZA Support, or `order:<ref>`, `quote:<id>`, `return:<ref>`. */
+  messages: (room = '') => api.get<{ messages: ChatMessage[] }>('support/messages/', { room: room || undefined }),
+  send: (body: string, room = '') => api.post<ChatMessage>('support/messages/', { body, room }),
+  rooms: () => api.get<{ rooms: ChatRoom[] }>('support/rooms/'),
 };
 
 export type ReviewInput = { rating: number; title: string; body: string };

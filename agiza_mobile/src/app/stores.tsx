@@ -1,14 +1,14 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Store as StoreIcon } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, View } from 'react-native';
 
 import { SearchField } from '@/components/search-field';
 import { StoreListCard } from '@/components/store';
 import { EmptyState, ErrorState, Loading } from '@/components/ui/states';
 import { shopApi } from '@/lib/api/endpoints';
 import { keys } from '@/lib/query';
-import { colors, space } from '@/theme/tokens';
+import { colors, space, themed } from '@/theme/tokens';
 
 /** Every store customers can buy from (AGIZA first), searchable on the server. */
 export default function StoresScreen() {
@@ -51,7 +51,7 @@ export default function StoresScreen() {
       ListFooterComponent={
         list.isFetchingNextPage ? (
           <View style={styles.footer}>
-            <ActivityIndicator color={colors.brand} />
+            <ActivityIndicator color={colors.primary} />
           </View>
         ) : null
       }
@@ -59,7 +59,7 @@ export default function StoresScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   content: { padding: space.lg, gap: space.md, flexGrow: 1 },
   footer: { padding: space.lg },
-});
+}));

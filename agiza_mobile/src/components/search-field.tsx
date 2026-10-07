@@ -1,8 +1,8 @@
 import { Search, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, TextInput, View } from 'react-native';
 
-import { colors, fonts, radius, space } from '@/theme/tokens';
+import { colors, fonts, radius, space, themed } from '@/theme/tokens';
 
 /** The shop's search box. Reports the trimmed text once typing pauses; searching itself happens on the server. */
 export function SearchField({
@@ -42,7 +42,7 @@ export function SearchField({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   search: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -55,4 +55,4 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   input: { flex: 1, fontFamily: fonts.regular, fontSize: 16, color: colors.ink, paddingVertical: space.sm },
-});
+}));

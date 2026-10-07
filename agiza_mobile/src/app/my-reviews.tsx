@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { ChevronRight, PenLine, Star } from 'lucide-react-native';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 
 import { openWriteReview, REVIEW_STATUS_NOTE } from '@/components/product-reviews';
 import { ProductImage } from '@/components/product-tile';
@@ -13,7 +13,7 @@ import { Text } from '@/components/ui/text';
 import { reviewApi } from '@/lib/api/endpoints';
 import { date } from '@/lib/format';
 import { keys } from '@/lib/query';
-import { colors, space } from '@/theme/tokens';
+import { colors, space, themed } from '@/theme/tokens';
 
 const STATUS: Record<string, { label: string; tone: Tone }> = {
   published: { label: 'Published', tone: 'success' },
@@ -42,7 +42,7 @@ export default function MyReviewsScreen() {
   return (
     <ScrollView
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={mine.isRefetching} onRefresh={() => mine.refetch()} tintColor={colors.brand} />}>
+      refreshControl={<RefreshControl refreshing={mine.isRefetching} onRefresh={() => mine.refetch()} tintColor={colors.primary} />}>
       {to_review.length ? (
         <Section title="To review">
           <Card style={styles.list}>
@@ -132,7 +132,7 @@ export default function MyReviewsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   content: { padding: space.lg, gap: space.xl, paddingBottom: space.xxxl },
   list: { paddingVertical: space.xs },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 48 },
@@ -142,4 +142,4 @@ const styles = StyleSheet.create({
   review: { gap: space.sm },
   badges: { flexDirection: 'row', gap: space.xs, flexWrap: 'wrap' },
   edit: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', minHeight: 44, paddingRight: space.md },
-});
+}));

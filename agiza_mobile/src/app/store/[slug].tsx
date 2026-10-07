@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { MapPin } from 'lucide-react-native';
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
 import { ProductGrid } from '@/components/product-grid';
 import { RatingInline } from '@/components/rating';
@@ -15,7 +15,7 @@ import { Text } from '@/components/ui/text';
 import { shopApi } from '@/lib/api/endpoints';
 import type { Store } from '@/lib/api/types';
 import { keys } from '@/lib/query';
-import { colors, radius, shadow, space } from '@/theme/tokens';
+import { colors, radius, shadow, space, themed } from '@/theme/tokens';
 
 const AVATAR = 72;
 
@@ -92,10 +92,10 @@ export default function StoreScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   header: { gap: space.lg, marginBottom: space.xs },
   hero: { paddingBottom: AVATAR / 2 },
-  banner: { height: 132, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: '#F3F4F6' },
+  banner: { height: 132, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surfaceMuted },
   bannerBrand: { backgroundColor: colors.brand },
   bannerGlow: {
     position: 'absolute',
@@ -120,4 +120,4 @@ const styles = StyleSheet.create({
   info: { gap: space.sm },
   meta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.sm },
   inline: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-});
+}));

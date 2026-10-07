@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { Globe, Truck } from 'lucide-react-native';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
 import { ProductImage } from '@/components/product-tile';
 import { Badge, PAYMENT_LABEL, paymentTone, statusTone } from '@/components/ui/badge';
@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
 import type { OrderCard } from '@/lib/api/types';
 import { date, money } from '@/lib/format';
-import { colors, radius, space } from '@/theme/tokens';
+import { colors, radius, space, themed } from '@/theme/tokens';
 
 export function OrderRow({ order }: { order: OrderCard }) {
   const Icon = order.type === 'international' ? Globe : Truck;
@@ -19,7 +19,7 @@ export function OrderRow({ order }: { order: OrderCard }) {
           <ProductImage uri={order.image} size={56} />
         ) : (
           <View style={styles.icon}>
-            <Icon size={24} color={colors.brand} />
+            <Icon size={24} color={colors.primary} />
           </View>
         )}
         <View style={styles.body}>
@@ -50,7 +50,7 @@ export function OrderRow({ order }: { order: OrderCard }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   row: { flexDirection: 'row', gap: space.md },
   icon: {
     width: 56,
@@ -64,4 +64,4 @@ const styles = StyleSheet.create({
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   badges: { flexDirection: 'row', alignItems: 'center', gap: space.xs, marginTop: 2 },
   spacer: { flex: 1 },
-});
+}));

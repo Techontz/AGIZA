@@ -2,7 +2,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { PenLine } from 'lucide-react-native';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 
 import { RatingDistributionView } from '@/components/rating';
 import { ReviewItem } from '@/components/review-card';
@@ -13,7 +13,7 @@ import { Text } from '@/components/ui/text';
 import { reviewApi } from '@/lib/api/endpoints';
 import { useAuth } from '@/lib/auth/session';
 import { keys } from '@/lib/query';
-import { colors, space } from '@/theme/tokens';
+import { colors, space, themed } from '@/theme/tokens';
 
 const PREVIEW = 3;
 
@@ -40,7 +40,7 @@ export function ProductReviews({ productId, name }: { productId: number; name: s
   if (reviews.isLoading) {
     body = (
       <Card style={styles.center}>
-        <ActivityIndicator color={colors.brand} accessibilityLabel="Loading reviews" />
+        <ActivityIndicator color={colors.primary} accessibilityLabel="Loading reviews" />
       </Card>
     );
   } else if (reviews.isError || !reviews.data) {
@@ -99,9 +99,9 @@ export function ProductReviews({ productId, name }: { productId: number; name: s
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   section: { marginTop: space.sm },
   center: { alignItems: 'center', paddingVertical: space.xl },
   gap: { gap: space.md },
   seeAll: { minHeight: 44, justifyContent: 'center' },
-});
+}));

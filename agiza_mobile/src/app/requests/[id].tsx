@@ -1,17 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { MessageCircle } from 'lucide-react-native';
+import { Alert, ScrollView, View } from 'react-native';
 
+import { PrivatePhotos } from '@/components/private-photos';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, Row, Section } from '@/components/ui/card';
 import { ErrorState, errorMessage, Loading, Notice } from '@/components/ui/states';
 import { Text } from '@/components/ui/text';
 import { requestApi } from '@/lib/api/endpoints';
+import type { Paginated, QuoteRequest } from '@/lib/api/types';
 import { date, dateTime, money } from '@/lib/format';
 import { keys } from '@/lib/query';
 import { QUOTE_TONE, requestKind, requestTitle } from '@/lib/requests';
-import { colors, space } from '@/theme/tokens';
+import { openChatRoom, quoteRoom } from '@/lib/chat';
+import { colors, space, themed } from '@/theme/tokens';
 
 const NEXT_STEP: Record<string, string> = {
   new: 'AGIZA is preparing your quotation. You will be notified when it is ready.',
@@ -26,7 +30,13 @@ export default function RequestScreen() {
   const { id, created } = useLocalSearchParams<{ id: string; created?: string }>();
   const quoteId = Number(id);
   const queryClient = useQueryClient();
-  const quote = useQuery({ queryKey: keys.request(quoteId), queryFn: () => requestApi.get(quoteId) });
+  const quote = useQuery({
+    queryKey: keys.request(quoteId),
+    queryFn: () => requestApi.get(quoteId),
+    // Open with what the Quotations list already has; details refresh in the background.
+    placeholderData: () =>
+      queryClient.getQueryData<Paginated<QuoteRequest>>(keys.requests)?.results.find((q) => q.id === quoteId),
+  });
   const reply = useMutation({
     mutationFn: (accept: boolean) => (accept ? requestApi.accept(quoteId) : requestApi.decline(quoteId)),
     onSuccess: (updated) => {
@@ -39,6 +49,9 @@ export default function RequestScreen() {
   if (quote.isError || !quote.data) return <ErrorState error={quote.error} onRetry={() => quote.refetch()} />;
   const q = quote.data;
   const details = q.description.split('\n').slice(1).filter((l) => l !== 'Submitted in the AGIZA app');
+  const photos = q.photos ?? [];
+  const agizaPhotos = photos.filter((p) => p.from === 'agiza').map((p) => p.url);
+  const myPhotos = photos.filter((p) => p.from !== 'agiza').map((p) => p.url);
 
   return (
     <ScrollView contentContainerStyle={styles.content}>
@@ -68,6 +81,14 @@ export default function RequestScreen() {
                 {q.response_notes}
               </Text>
             ) : null}
+            {agizaPhotos.length ? (
+              <View style={styles.photos}>
+                <Text variant="smallMedium" color={colors.ink}>
+                  Photos from AGIZA
+                </Text>
+                <PrivatePhotos urls={agizaPhotos} label="Photo from AGIZA" />
+              </View>
+            ) : null}
           </Card>
         </Section>
       ) : null}
@@ -81,6 +102,11 @@ export default function RequestScreen() {
               {line}
             </Text>
           ))}
+          {myPhotos.length ? (
+            <View style={styles.photos}>
+              <PrivatePhotos urls={myPhotos} label="Your photo" />
+            </View>
+          ) : null}
         </Card>
       </Section>
 
@@ -101,6 +127,12 @@ export default function RequestScreen() {
           />
         </View>
       ) : null}
+      <Button
+        title="Chat with AGIZA about this quotation"
+        variant="secondary"
+        icon={<MessageCircle size={18} color={colors.ink} />}
+        onPress={() => openChatRoom(...quoteRoom(q.id, q.reference))}
+      />
       {q.order ? (
         <Button title={`View order ${q.order}`} onPress={() => router.push({ pathname: '/order/[reference]', params: { reference: q.order! } })} />
       ) : null}
@@ -108,7 +140,8 @@ export default function RequestScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   content: { padding: space.lg, gap: space.xl, paddingBottom: space.xxxl },
   actions: { gap: space.sm },
-});
+  photos: { marginTop: space.md, gap: space.sm },
+}));

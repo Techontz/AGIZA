@@ -6,7 +6,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Calculator, Plane, Truck } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 
 import { Picker } from '@/components/picker';
 import { Card, Divider } from '@/components/ui/card';
@@ -15,14 +15,14 @@ import { Text } from '@/components/ui/text';
 import { shopApi } from '@/lib/api/endpoints';
 import type { ShippingOption } from '@/lib/api/types';
 import { isFree, money } from '@/lib/format';
-import { colors, space } from '@/theme/tokens';
+import { colors, space, themed } from '@/theme/tokens';
 
 function OptionList({ title, icon: Icon, options }: { title: string; icon: typeof Truck; options: ShippingOption[] }) {
   const available = options.filter((o) => o.available);
   return (
     <View style={styles.list}>
       <View style={styles.inline}>
-        <Icon size={16} color={colors.brand} />
+        <Icon size={16} color={colors.primary} />
         <Text variant="smallMedium" color={colors.ink}>
           {title}
         </Text>
@@ -86,7 +86,7 @@ export function DeliveryCalculator({ variantId, quantity }: { variantId: number;
         options={(cities.data ?? []).map((c) => ({ value: c.id, label: c.name, detail: c.region }))}
         onChange={setCity}
       />
-      {city !== null && estimate.isLoading ? <ActivityIndicator color={colors.brand} /> : null}
+      {city !== null && estimate.isLoading ? <ActivityIndicator color={colors.primary} /> : null}
       {estimate.isError ? <Notice tone="danger">{errorMessage(estimate.error)}</Notice> : null}
       {city !== null && data ? (
         <>
@@ -121,10 +121,10 @@ export function DeliveryCalculator({ variantId, quantity }: { variantId: number;
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   wrap: { gap: space.sm },
   inline: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   list: { gap: space.xs },
   card: { paddingVertical: space.xs },
   option: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.xs },
-});
+}));

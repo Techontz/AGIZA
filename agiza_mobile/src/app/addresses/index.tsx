@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { MapPin, Pencil, Trash2 } from 'lucide-react-native';
-import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, Pressable, View } from 'react-native';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { EmptyState, ErrorState, errorMessage, Loading, Notice } from '@/compone
 import { Text } from '@/components/ui/text';
 import { addressApi } from '@/lib/api/endpoints';
 import { keys } from '@/lib/query';
-import { colors, space } from '@/theme/tokens';
+import { colors, space, themed } from '@/theme/tokens';
 
 export default function AddressesScreen() {
   const queryClient = useQueryClient();
@@ -38,7 +38,7 @@ export default function AddressesScreen() {
       renderItem={({ item }) => (
         <Card>
           <View style={styles.row}>
-            <MapPin size={20} color={colors.brand} />
+            <MapPin size={20} color={colors.primary} />
             <View style={{ flex: 1, gap: 2 }}>
               <View style={styles.titleRow}>
                 <Text variant="subheading" color={colors.ink}>
@@ -84,8 +84,8 @@ export default function AddressesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   list: { padding: space.lg, gap: space.md, flexGrow: 1 },
   row: { flexDirection: 'row', gap: space.md, alignItems: 'flex-start' },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-});
+}));

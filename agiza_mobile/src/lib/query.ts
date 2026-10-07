@@ -5,7 +5,10 @@ import { ApiError } from './api/client';
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30_000,
+      // Screens show what they already have instantly and refresh quietly in the background.
+      staleTime: 60_000,
+      gcTime: 30 * 60_000,
+      refetchOnWindowFocus: false,
       retry: (count, error) => !(error instanceof ApiError && error.status >= 400 && error.status < 500) && count < 2,
     },
     mutations: { retry: false },
@@ -21,6 +24,7 @@ export const keys = {
   store: (slug: string) => ['store', slug] as const,
   cities: ['cities'] as const,
   countries: ['sourcing-countries'] as const,
+  sliders: ['sliders'] as const,
   cart: ['cart'] as const,
   addresses: ['addresses'] as const,
   orders: (group?: string) => ['orders', group ?? 'all'] as const,
@@ -28,6 +32,9 @@ export const keys = {
   requests: ['requests'] as const,
   request: (id: number) => ['request', id] as const,
   support: ['support'] as const,
+  supportRoom: (room: string) => ['support', 'room', room] as const,
+  supportRooms: ['support', 'rooms'] as const,
+  warehouses: ['warehouse-addresses'] as const,
   reviews: (productId: number) => ['reviews', productId] as const,
   myReviews: ['reviews', 'mine'] as const,
   wishlist: ['wishlist'] as const,

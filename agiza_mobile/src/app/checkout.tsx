@@ -28,7 +28,7 @@ import type { CheckoutQuote, PaymentMethod, ShippingOption } from '@/lib/api/typ
 import { isFree, money } from '@/lib/format';
 import { openPaymentPage } from '@/lib/payment-page';
 import { keys } from '@/lib/query';
-import { colors, radius, space } from '@/theme/tokens';
+import { colors, radius, shadow, space, themed } from '@/theme/tokens';
 
 function Choice({
   selected,
@@ -125,7 +125,7 @@ function OptionsSection({
     <Section title={title}>
       {intro ? (
         <View style={styles.inline}>
-          <Plane size={16} color={colors.brand} />
+          <Plane size={16} color={colors.primary} />
           <Text variant="small" color={colors.textMuted} style={{ flex: 1 }}>
             {intro}
           </Text>
@@ -265,7 +265,7 @@ export default function CheckoutScreen() {
               Total
             </Text>
             {refreshing ? (
-              <ActivityIndicator color={colors.brand} />
+              <ActivityIndicator color={colors.primary} />
             ) : (
               <Text variant="title" color={colors.ink}>
                 {money(quote.total, quote.currency)}
@@ -338,7 +338,7 @@ export default function CheckoutScreen() {
                     </Text>
                   )}
                   {line.imported && !line.issue ? (
-                    <Text variant="smallMedium" color={colors.brand}>
+                    <Text variant="smallMedium" color={colors.primary}>
                       Ships from {line.origin ?? 'abroad'}
                     </Text>
                   ) : null}
@@ -426,19 +426,20 @@ export default function CheckoutScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   choices: { gap: space.sm },
   choice: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    padding: space.md,
-    borderRadius: radius.md,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md + 2,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  choiceSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  choiceSelected: { borderColor: colors.ink, borderWidth: 1.5, backgroundColor: colors.surface },
   choiceDisabled: { opacity: 0.6 },
   radio: {
     width: 20,
@@ -449,15 +450,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  radioOn: { borderColor: colors.primary },
-  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
+  radioOn: { borderColor: colors.ink, borderWidth: 6 },
+  radioDot: { width: 0, height: 0 },
   inline: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   items: { paddingVertical: space.sm },
   item: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.xs },
   shipments: {
     gap: space.xs,
     padding: space.md,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
@@ -467,8 +468,11 @@ const styles = StyleSheet.create({
     padding: space.lg,
     gap: space.sm,
     backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    borderColor: colors.border,
+    ...shadow.float,
   },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-});
+}));

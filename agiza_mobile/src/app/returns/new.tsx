@@ -16,7 +16,8 @@ import { returnApi } from '@/lib/api/endpoints';
 import type { OrderReturnOptions } from '@/lib/api/types';
 import { money } from '@/lib/format';
 import { keys } from '@/lib/query';
-import { colors, radius, space } from '@/theme/tokens';
+import { openChatRoom, orderRoom } from '@/lib/chat';
+import { colors, radius, space, themed } from '@/theme/tokens';
 
 function ReturnForm({ order, options }: { order: string; options: OrderReturnOptions }) {
   const queryClient = useQueryClient();
@@ -147,7 +148,7 @@ export default function NewReturnScreen() {
             ? 'Every item in this order is already returned or not returnable.'
             : `Returns are accepted within ${options.data.window_days} days of delivery. Chat with AGIZA Support if you need help.`
         }
-        action={<Button title="Chat with support" variant="secondary" onPress={() => router.push('/support')} style={styles.action} />}
+        action={<Button title="Chat with AGIZA about this order" variant="secondary" onPress={() => openChatRoom(...orderRoom(order))} style={styles.action} />}
       />
     );
   } else body = <ReturnForm order={order} options={options.data} />;
@@ -160,7 +161,7 @@ export default function NewReturnScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   flex: { flex: 1 },
   item: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.xs },
   reasons: { gap: space.sm },
@@ -185,8 +186,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  radioActive: { borderColor: colors.primary },
-  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
+  radioActive: { borderColor: colors.ink },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.ink },
   footer: {
     padding: space.lg,
     gap: space.sm,
@@ -195,4 +196,4 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   action: { marginTop: space.sm, minWidth: 180 },
-});
+}));

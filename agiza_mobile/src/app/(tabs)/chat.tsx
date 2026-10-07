@@ -1,141 +1,107 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Send } from 'lucide-react-native';
-import { useState } from 'react';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
+import { ChevronRight, Headset, MessageCircle, Package, PackageX, ReceiptText, type LucideIcon } from 'lucide-react-native';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
-import { ErrorState, errorMessage, Loading, Notice } from '@/components/ui/states';
+import { SignInPrompt } from '@/components/sign-in-prompt';
+import { ErrorState, Loading } from '@/components/ui/states';
 import { Text } from '@/components/ui/text';
 import { supportApi } from '@/lib/api/endpoints';
-import type { ChatMessage } from '@/lib/api/types';
+import type { ChatRoom } from '@/lib/api/types';
+import { useAuth } from '@/lib/auth/session';
+import { openChatRoom } from '@/lib/chat';
 import { dateTime } from '@/lib/format';
 import { keys } from '@/lib/query';
-import { colors, fonts, radius, space } from '@/theme/tokens';
+import { colors, radius, shadow, space, themed } from '@/theme/tokens';
 
-function Bubble({ m }: { m: ChatMessage }) {
-  if (m.from === 'system') {
-    return (
-      <Text variant="caption" color={colors.textSubtle} style={styles.system}>
-        {m.body}
-      </Text>
-    );
-  }
-  const mine = m.from === 'me';
+const ICON: Record<ChatRoom['kind'], LucideIcon> = { general: Headset, order: Package, quote: ReceiptText, return: PackageX };
+
+function RoomRow({ room }: { room: ChatRoom }) {
+  const Icon = ICON[room.kind];
+  const general = room.kind === 'general';
   return (
-    <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
-      {!mine && m.author ? (
-        <Text variant="caption" color={colors.primary}>
-          {m.author} · AGIZA
-        </Text>
-      ) : null}
-      <Text variant="body" color={mine ? '#FFFFFF' : colors.ink}>
-        {m.body}
-      </Text>
-      <Text variant="caption" color={mine ? 'rgba(255,255,255,0.75)' : colors.textSubtle}>
-        {dateTime(m.created_at)}
-      </Text>
-    </View>
-  );
-}
-
-export default function SupportScreen() {
-  const queryClient = useQueryClient();
-  const [body, setBody] = useState('');
-  // Replies arrive from the admin inbox; poll while the chat is open.
-  const messages = useQuery({ queryKey: keys.support, queryFn: supportApi.messages, refetchInterval: 8000 });
-  const send = useMutation({
-    mutationFn: (text: string) => supportApi.send(text),
-    onSuccess: (msg) => {
-      setBody('');
-      queryClient.setQueryData(keys.support, (old: { messages: ChatMessage[] } | undefined) => ({
-        messages: [...(old?.messages ?? []), msg],
-      }));
-    },
-  });
-
-  if (messages.isLoading) return <Loading />;
-  if (messages.isError) return <ErrorState error={messages.error} onRetry={() => messages.refetch()} />;
-  const list = [...(messages.data?.messages ?? [])].reverse();
-
-  return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
-        <FlatList
-          inverted
-          data={list}
-          keyExtractor={(m) => String(m.id)}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => <Bubble m={item} />}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text variant="body" color={colors.textMuted} style={styles.center}>
-                Ask us anything about orders, delivery or payments. The AGIZA team replies here.
-              </Text>
-            </View>
-          }
-        />
-        {send.isError ? (
-          <View style={styles.error}>
-            <Notice tone="danger">{errorMessage(send.error)}</Notice>
-          </View>
-        ) : null}
-        <View style={styles.composer}>
-          <TextInput
-            value={body}
-            onChangeText={setBody}
-            placeholder="Type a message"
-            placeholderTextColor={colors.textSubtle}
-            multiline
-            maxLength={2000}
-            accessibilityLabel="Message"
-            style={styles.input}
-          />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Send message"
-            disabled={!body.trim() || send.isPending}
-            onPress={() => send.mutate(body.trim())}
-            style={[styles.send, (!body.trim() || send.isPending) && styles.sendOff]}>
-            {send.isPending ? <ActivityIndicator color="#FFFFFF" /> : <Send size={18} color="#FFFFFF" />}
-          </Pressable>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${room.title}${room.preview ? `. Last message: ${room.preview}` : ''}`}
+      onPress={() => openChatRoom(room.key, room.title)}
+      style={({ pressed }) => [styles.row, general && styles.general, pressed && styles.pressed]}>
+      <View style={[styles.icon, general && { backgroundColor: colors.brand }]}>
+        <Icon size={20} color={general ? colors.onPrimary : colors.ink} />
+      </View>
+      <View style={styles.body}>
+        <View style={styles.top}>
+          <Text variant="subheading" color={colors.ink} numberOfLines={1} style={styles.title}>
+            {room.title}
+          </Text>
+          {room.last_message_at ? (
+            <Text variant="caption" color={colors.textSubtle}>
+              {dateTime(room.last_message_at)}
+            </Text>
+          ) : null}
         </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        <Text variant="small" color={colors.textMuted} numberOfLines={1}>
+          {room.preview || (general ? 'Questions about anything? We reply here.' : 'Start the conversation')}
+        </Text>
+      </View>
+      <ChevronRight size={18} color={colors.textSubtle} />
+    </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  flex: { flex: 1 },
-  list: { padding: space.lg, gap: space.sm, flexGrow: 1 },
-  empty: { flex: 1, justifyContent: 'center', padding: space.xl, transform: [{ scaleY: -1 }] },
-  center: { textAlign: 'center' },
-  system: { alignSelf: 'center', textAlign: 'center' },
-  bubble: { maxWidth: '82%', padding: space.md, borderRadius: radius.lg, gap: 2 },
-  mine: { alignSelf: 'flex-end', backgroundColor: colors.primary, borderBottomRightRadius: 4 },
-  theirs: { alignSelf: 'flex-start', backgroundColor: colors.surface, borderBottomLeftRadius: 4 },
-  error: { paddingHorizontal: space.lg },
-  composer: {
+export default function ChatScreen() {
+  const { status } = useAuth();
+  const rooms = useQuery({
+    queryKey: keys.supportRooms,
+    queryFn: supportApi.rooms,
+    enabled: status === 'signedIn',
+    refetchInterval: 20_000,
+  });
+  if (status !== 'signedIn') {
+    return <SignInPrompt icon={MessageCircle} title="Chat with AGIZA" message="Sign in to ask about orders, delivery or payments." />;
+  }
+  if (rooms.isLoading) return <Loading />;
+  if (rooms.isError) return <ErrorState error={rooms.error} onRetry={() => rooms.refetch()} />;
+
+  return (
+    <FlatList
+      data={rooms.data?.rooms ?? []}
+      keyExtractor={(r) => r.key || 'general'}
+      contentContainerStyle={styles.list}
+      refreshing={rooms.isRefetching}
+      onRefresh={() => rooms.refetch()}
+      renderItem={({ item }) => <RoomRow room={item} />}
+      ListFooterComponent={
+        <Text variant="caption" color={colors.textMuted} style={styles.hint}>
+          To chat about a specific order, quotation or return, open it and tap “Chat with AGIZA”.
+        </Text>
+      }
+    />
+  );
+}
+
+const styles = themed(() => ({
+  list: { padding: space.lg, gap: space.sm },
+  row: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: space.sm,
+    alignItems: 'center',
+    gap: space.md,
     padding: space.md,
-    backgroundColor: colors.surface,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  input: {
-    flex: 1,
-    maxHeight: 120,
-    minHeight: 44,
-    paddingHorizontal: space.md,
-    paddingVertical: 10,
     borderRadius: radius.lg,
-    backgroundColor: colors.background,
-    fontFamily: fonts.regular,
-    fontSize: 16,
-    color: colors.ink,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
-  send: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  sendOff: { opacity: 0.5 },
-});
+  general: { ...shadow.card, marginBottom: space.sm },
+  pressed: { opacity: 0.9 },
+  icon: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceMuted,
+  },
+  body: { flex: 1, gap: 2 },
+  top: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  title: { flex: 1 },
+  hint: { textAlign: 'center', marginTop: space.lg, paddingHorizontal: space.lg },
+}));

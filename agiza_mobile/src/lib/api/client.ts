@@ -61,8 +61,9 @@ function url(path: string, query?: Options['query']) {
 }
 
 async function send(path: string, { method = 'GET', body, auth = true, query }: Options) {
+  const isForm = body instanceof FormData;
   const headers: Record<string, string> = { Accept: 'application/json' };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
   if (auth) {
     const access = await tokenStore.getAccess();
     if (access) headers.Authorization = `Bearer ${access}`;
@@ -74,7 +75,7 @@ async function send(path: string, { method = 'GET', body, auth = true, query }: 
     res = await fetch(url(path, query), {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
       signal: controller.signal,
     });
   } catch (e) {
@@ -121,5 +122,6 @@ export const api = {
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body: body ?? {} }),
   patch: <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  upload: <T>(path: string, form: FormData) => request<T>(path, { method: 'POST', body: form }),
   public: <T>(path: string, body?: unknown) => request<T>(path, { method: body ? 'POST' : 'GET', body, auth: false }),
 };

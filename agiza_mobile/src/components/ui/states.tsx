@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { CloudOff, type LucideIcon } from 'lucide-react-native';
 
 import { ApiError } from '@/lib/api/client';
-import { colors, space } from '@/theme/tokens';
+import { colors, radius, space, themed } from '@/theme/tokens';
 
 import { Button } from './button';
 import { Text } from './text';
@@ -11,7 +11,7 @@ import { Text } from './text';
 export function Loading({ label }: { label?: string }) {
   return (
     <View style={styles.center} accessibilityLabel={label ?? 'Loading'}>
-      <ActivityIndicator size="large" color={colors.brand} />
+      <ActivityIndicator size="large" color={colors.primary} />
       {label ? (
         <Text variant="small" color={colors.textMuted}>
           {label}
@@ -55,7 +55,7 @@ export function EmptyState({
   return (
     <View style={styles.center}>
       <View style={styles.iconWrap}>
-        <Icon size={32} color={colors.brand} />
+        <Icon size={32} color={colors.primary} />
       </View>
       <Text variant="heading" color={colors.ink} style={styles.text}>
         {title}
@@ -82,17 +82,20 @@ export function Notice({ tone = 'info', children }: { tone?: 'info' | 'warning' 
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xxl, gap: space.md },
   text: { textAlign: 'center' },
   button: { marginTop: space.sm, minWidth: 160 },
   iconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    marginBottom: space.xs,
+    borderWidth: 8,
+    borderColor: colors.surface,
     backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  notice: { borderRadius: 10, padding: space.md },
-});
+  notice: { borderRadius: radius.md, paddingHorizontal: space.lg, paddingVertical: space.md },
+}));

@@ -1,21 +1,29 @@
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { Globe } from 'lucide-react-native';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { Globe, ReceiptText } from 'lucide-react-native';
+import { FlatList, View } from 'react-native';
 
+import { SignInPrompt } from '@/components/sign-in-prompt';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState, ErrorState, Loading } from '@/components/ui/states';
 import { Text } from '@/components/ui/text';
 import { requestApi } from '@/lib/api/endpoints';
+import { useAuth } from '@/lib/auth/session';
 import { date, money } from '@/lib/format';
 import { keys } from '@/lib/query';
 import { QUOTE_TONE, requestKind, requestTitle } from '@/lib/requests';
-import { colors, space } from '@/theme/tokens';
+import { colors, space, themed } from '@/theme/tokens';
 
-export default function RequestsScreen() {
-  const requests = useQuery({ queryKey: keys.requests, queryFn: requestApi.list });
+export default function QuotationsScreen() {
+  const { status } = useAuth();
+  const requests = useQuery({ queryKey: keys.requests, queryFn: requestApi.list, enabled: status === 'signedIn' });
+  if (status !== 'signedIn') {
+    return (
+      <SignInPrompt icon={ReceiptText} title="Your quotations" message="Sign in to request Buy for me or Deliver for me quotations." />
+    );
+  }
   if (requests.isLoading) return <Loading />;
   if (requests.isError) return <ErrorState error={requests.error} onRetry={() => requests.refetch()} />;
   return (
@@ -60,7 +68,7 @@ export default function RequestsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   list: { padding: space.lg, gap: space.md, flexGrow: 1 },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-});
+}));

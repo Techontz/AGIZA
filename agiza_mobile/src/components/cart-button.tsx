@@ -1,41 +1,29 @@
 import { router } from 'expo-router';
-import { Bell } from 'lucide-react-native';
+import { ShoppingBag } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { useUnreadNotifications } from '@/hooks/use-notifications';
+import { useCart } from '@/hooks/use-cart';
 import { colors, fonts, themed } from '@/theme/tokens';
 
-/** Bell with the unread count; opens the inbox. 44 pt touch target. */
-export function NotificationBell() {
-  const unread = useUnreadNotifications();
+/** The cart isn't a tab: this header button opens it and shows the item count. 44 pt touch target. */
+export function CartButton() {
+  const { count } = useCart();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={unread ? `Notifications, ${unread} unread` : 'Notifications'}
-      onPress={() => router.push('/notifications')}
+      accessibilityLabel={count ? `Cart, ${count} items` : 'Cart'}
+      onPress={() => router.push('/cart')}
       style={({ pressed }) => [styles.button, pressed && styles.pressed]}>
-      <Bell size={22} color={colors.ink} />
-      {unread > 0 ? (
+      <ShoppingBag size={22} color={colors.ink} />
+      {count > 0 ? (
         <View style={styles.badge}>
           <Text style={styles.badgeText} color={colors.onPrimary}>
-            {unread > 99 ? '99+' : unread}
+            {count > 99 ? '99+' : count}
           </Text>
         </View>
       ) : null}
     </Pressable>
-  );
-}
-
-/** Just the count pill, for list rows. */
-export function UnreadPill({ count }: { count: number }) {
-  if (!count) return null;
-  return (
-    <View style={[styles.badge, styles.inline]}>
-      <Text style={styles.badgeText} color={colors.onPrimary}>
-        {count > 99 ? '99+' : count}
-      </Text>
-    </View>
   );
 }
 
@@ -54,6 +42,5 @@ const styles = themed(() => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  inline: { position: 'relative', top: 0, right: 0 },
   badgeText: { fontFamily: fonts.semibold, fontSize: 10, lineHeight: 13 },
 }));

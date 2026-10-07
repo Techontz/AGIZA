@@ -1,18 +1,19 @@
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, View, type ViewStyle } from 'react-native';
 
-import { colors, radius, space } from '@/theme/tokens';
+import { colors, radius, space, themed } from '@/theme/tokens';
 
 import { Text } from './text';
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
+type Variant = 'primary' | 'dark' | 'secondary' | 'ghost' | 'danger';
 
-const palette: Record<Variant, { bg: string; pressed: string; text: string; border: string }> = {
-  primary: { bg: colors.primary, pressed: colors.primaryPressed, text: '#FFFFFF', border: colors.primary },
-  secondary: { bg: colors.surface, pressed: colors.background, text: colors.ink, border: colors.borderStrong },
+const palette = (): Record<Variant, { bg: string; pressed: string; text: string; border: string }> => ({
+  primary: { bg: colors.brand, pressed: colors.brandPressed, text: colors.onPrimary, border: colors.brand },
+  dark: { bg: colors.hero, pressed: colors.ink, text: colors.onHero, border: colors.hero },
+  secondary: { bg: colors.surface, pressed: colors.surfaceMuted, text: colors.ink, border: colors.borderStrong },
   ghost: { bg: 'transparent', pressed: colors.primarySoft, text: colors.primary, border: 'transparent' },
   danger: { bg: colors.surface, pressed: colors.dangerSoft, text: colors.danger, border: colors.danger },
-};
+});
 
 export function Button({
   title,
@@ -33,8 +34,9 @@ export function Button({
   style?: ViewStyle;
   accessibilityHint?: string;
 }) {
-  const p = palette[variant];
+  const p = palette()[variant];
   const inactive = disabled || loading;
+  const off = disabled && !loading; // muted grey rather than a faded colour
   return (
     <Pressable
       accessibilityRole="button"
@@ -44,7 +46,8 @@ export function Button({
       style={({ pressed }) => [
         styles.base,
         { backgroundColor: pressed && !inactive ? p.pressed : p.bg, borderColor: p.border },
-        inactive && styles.inactive,
+        off && variant !== 'ghost' && styles.off,
+        loading && styles.inactive,
         style,
       ]}>
       {loading ? (
@@ -52,7 +55,7 @@ export function Button({
       ) : (
         <View style={styles.row}>
           {icon}
-          <Text variant="subheading" color={p.text}>
+          <Text variant="subheading" color={off ? colors.textSubtle : p.text}>
             {title}
           </Text>
         </View>
@@ -61,15 +64,16 @@ export function Button({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   base: {
-    minHeight: 50,
+    minHeight: 54,
     borderRadius: radius.md,
     borderWidth: 1,
-    paddingHorizontal: space.lg,
+    paddingHorizontal: space.xl,
     alignItems: 'center',
     justifyContent: 'center',
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  inactive: { opacity: 0.55 },
-});
+  inactive: { opacity: 0.7 },
+  off: { backgroundColor: colors.surfaceMuted, borderColor: colors.surfaceMuted },
+}));

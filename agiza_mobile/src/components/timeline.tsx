@@ -1,10 +1,10 @@
 import { Check } from 'lucide-react-native';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import type { TimelineStep } from '@/lib/api/types';
 import { dateTime } from '@/lib/format';
-import { colors, space } from '@/theme/tokens';
+import { colors, space, themed } from '@/theme/tokens';
 
 /** Tracking steps from the server; only recorded events are shown as done. */
 export function Timeline({ steps, cancelled }: { steps: TimelineStep[]; cancelled?: boolean }) {
@@ -33,7 +33,7 @@ export function Timeline({ steps, cancelled }: { steps: TimelineStep[]; cancelle
                   {dateTime(step.at)}
                 </Text>
               ) : current && !cancelled ? (
-                <Text variant="small" color={colors.brand}>
+                <Text variant="small" color={colors.primary}>
                   In progress
                 </Text>
               ) : null}
@@ -45,7 +45,7 @@ export function Timeline({ steps, cancelled }: { steps: TimelineStep[]; cancelle
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   row: { flexDirection: 'row', gap: space.md },
   rail: { alignItems: 'center', width: 22 },
   dot: {
@@ -63,4 +63,4 @@ const styles = StyleSheet.create({
   line: { width: 2, flex: 1, minHeight: 24, backgroundColor: colors.border },
   lineDone: { backgroundColor: colors.success },
   body: { flex: 1, paddingBottom: space.lg, gap: 2 },
-});
+}));

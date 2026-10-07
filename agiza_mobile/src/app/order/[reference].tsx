@@ -3,7 +3,7 @@ import * as Clipboard from 'expo-clipboard';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { ChevronRight, CircleCheck, Copy, MessageCircle, PackageX } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 
 import { ProductImage } from '@/components/product-tile';
 import { StoreAvatar, StoreName, VerifiedMark, openStore } from '@/components/store';
@@ -20,7 +20,8 @@ import { date, dateTime, isFree, money, signedMoney } from '@/lib/format';
 import { openPaymentPage } from '@/lib/payment-page';
 import { keys } from '@/lib/query';
 import { REFUND_LABEL, refundTone, returnTone } from '@/lib/returns';
-import { colors, space } from '@/theme/tokens';
+import { openChatRoom, orderRoom } from '@/lib/chat';
+import { colors, space, themed } from '@/theme/tokens';
 
 function Confirmation({
   order,
@@ -232,7 +233,7 @@ export default function OrderScreen() {
     <ScrollView
       contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl refreshing={order.isRefetching} onRefresh={() => order.refetch()} tintColor={colors.brand} />
+        <RefreshControl refreshing={order.isRefetching} onRefresh={() => order.refetch()} tintColor={colors.primary} />
       }>
       <Stack.Screen options={{ title: o.reference }} />
       {placed && o.status !== 'cancelled' ? (
@@ -304,7 +305,7 @@ export default function OrderScreen() {
                         <Badge label="Cancelled: seller couldn't supply" tone="danger" />
                       </View>
                     ) : item.sourced_abroad ? (
-                      <Text variant="smallMedium" color={colors.brand}>
+                      <Text variant="smallMedium" color={colors.primary}>
                         Imported — bought abroad for your order
                       </Text>
                     ) : null}
@@ -509,16 +510,16 @@ export default function OrderScreen() {
       ) : null}
 
       <Button
-        title="Questions? Chat with support"
-        variant="ghost"
-        icon={<MessageCircle size={18} color={colors.primary} />}
-        onPress={() => router.push('/support')}
+        title="Chat with AGIZA about this order"
+        variant="secondary"
+        icon={<MessageCircle size={18} color={colors.ink} />}
+        onPress={() => openChatRoom(...orderRoom(o.reference))}
       />
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   content: { padding: space.lg, gap: space.xl, paddingBottom: space.xxxl },
   confirm: { alignItems: 'center', gap: space.sm },
   copy: {
@@ -578,4 +579,4 @@ const styles = StyleSheet.create({
   },
   actions: { gap: space.xs },
   cancelBox: { gap: space.md },
-});
+}));

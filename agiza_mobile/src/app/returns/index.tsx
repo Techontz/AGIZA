@@ -1,7 +1,7 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { PackageX } from 'lucide-react-native';
-import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, View } from 'react-native';
 
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -11,7 +11,7 @@ import { returnApi } from '@/lib/api/endpoints';
 import { date, money } from '@/lib/format';
 import { keys } from '@/lib/query';
 import { REFUND_LABEL, refundTone, returnTone } from '@/lib/returns';
-import { colors, space } from '@/theme/tokens';
+import { colors, space, themed } from '@/theme/tokens';
 
 /** Every return request I made, newest first. */
 export default function ReturnsScreen() {
@@ -79,7 +79,7 @@ export default function ReturnsScreen() {
       ListFooterComponent={
         list.isFetchingNextPage ? (
           <View style={styles.footer}>
-            <ActivityIndicator color={colors.brand} />
+            <ActivityIndicator color={colors.primary} />
           </View>
         ) : null
       }
@@ -87,7 +87,7 @@ export default function ReturnsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   list: { padding: space.lg, gap: space.md, flexGrow: 1 },
   top: {
     flexDirection: 'row',
@@ -106,4 +106,4 @@ const styles = StyleSheet.create({
   },
   spacer: { flex: 1 },
   footer: { padding: space.lg },
-});
+}));

@@ -4,7 +4,7 @@ import { FlatList, Modal, Pressable, StyleSheet, TextInput, View } from 'react-n
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/text';
-import { colors, fonts, radius, space } from '@/theme/tokens';
+import { colors, fonts, radius, space, themed } from '@/theme/tokens';
 
 export type PickerOption<T extends string | number> = { value: T; label: string; detail?: string };
 
@@ -104,7 +104,7 @@ export function Picker<T extends string | number>({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   wrap: { gap: 6 },
   field: {
     minHeight: 50,
@@ -138,4 +138,4 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-});
+}));

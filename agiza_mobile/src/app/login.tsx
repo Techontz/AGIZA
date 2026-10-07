@@ -12,7 +12,7 @@ import { Text } from '@/components/ui/text';
 import { accountApi } from '@/lib/api/endpoints';
 import { useAuth } from '@/lib/auth/session';
 import { cleanPhone } from '@/lib/format';
-import { colors, space } from '@/theme/tokens';
+import { colors, space, themed } from '@/theme/tokens';
 
 export default function LoginScreen() {
   const { signIn } = useAuth();
@@ -71,9 +71,9 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   hero: { alignItems: 'center', gap: space.sm, marginVertical: space.lg },
   link: { alignSelf: 'center', padding: space.sm },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
   center: { textAlign: 'center' },
-});
+}));

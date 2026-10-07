@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { Bell, ChevronRight } from 'lucide-react-native';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, View } from 'react-native';
 
 import { EmptyState, ErrorState, errorMessage, Loading, Notice } from '@/components/ui/states';
 import { Text } from '@/components/ui/text';
@@ -10,7 +10,7 @@ import { notificationApi } from '@/lib/api/endpoints';
 import type { InboxNotification, NotificationPage } from '@/lib/api/types';
 import { dateTime } from '@/lib/format';
 import { keys } from '@/lib/query';
-import { colors, radius, shadow, space } from '@/theme/tokens';
+import { colors, radius, shadow, space, themed } from '@/theme/tokens';
 
 type Pages = InfiniteData<NotificationPage, number>;
 
@@ -71,7 +71,7 @@ export default function NotificationsScreen() {
               disabled={markAll.isPending}
               style={styles.markAll}>
               {markAll.isPending ? (
-                <ActivityIndicator color={colors.brand} />
+                <ActivityIndicator color={colors.primary} />
               ) : (
                 <Text variant="smallMedium" color={colors.primary}>
                   Mark all read
@@ -144,7 +144,7 @@ export default function NotificationsScreen() {
         ListFooterComponent={
           list.isFetchingNextPage ? (
             <View style={styles.footer}>
-              <ActivityIndicator color={colors.brand} />
+              <ActivityIndicator color={colors.primary} />
             </View>
           ) : null
         }
@@ -153,7 +153,7 @@ export default function NotificationsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   content: { padding: space.lg, gap: space.sm, flexGrow: 1 },
   markAll: { minHeight: 44, minWidth: 44, justifyContent: 'center', paddingHorizontal: space.xs },
   item: {
@@ -171,4 +171,4 @@ const styles = StyleSheet.create({
   dotRead: { backgroundColor: 'transparent' },
   flex: { flex: 1, gap: 2 },
   footer: { padding: space.lg },
-});
+}));

@@ -6,27 +6,40 @@ import {
   useFonts,
 } from '@expo-google-fonts/outfit';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { useNotificationAlerts } from '@/hooks/use-notification-alerts';
 import { AuthProvider, useAuth } from '@/lib/auth/session';
 import { queryClient } from '@/lib/query';
-import { colors, fonts } from '@/theme/tokens';
+import { applyScheme, colors, fonts, scheme } from '@/theme/tokens';
 
 SplashScreen.preventAutoHideAsync();
 
-const theme = {
-  ...DefaultTheme,
-  colors: { ...DefaultTheme.colors, primary: colors.primary, background: colors.background, card: colors.surface, text: colors.ink },
+const navigationTheme = () => {
+  const base = scheme() === 'dark' ? DarkTheme : DefaultTheme;
+  return {
+    ...base,
+    colors: {
+      ...base.colors,
+      primary: colors.primary,
+      background: colors.background,
+      card: colors.surface,
+      text: colors.ink,
+      border: colors.border,
+    },
+  };
 };
 
 function RootStack() {
   const { status } = useAuth();
   const [fontsLoaded] = useFonts({ Outfit_400Regular, Outfit_500Medium, Outfit_600SemiBold, Outfit_700Bold });
   const ready = fontsLoaded && status !== 'loading';
+  useNotificationAlerts(status === 'signedIn');
 
   useEffect(() => {
     if (ready) SplashScreen.hideAsync();
@@ -37,7 +50,8 @@ function RootStack() {
   return (
     <Stack
       screenOptions={{
-        headerTitleStyle: { fontFamily: fonts.semibold, fontSize: 17 },
+        headerTitleStyle: { fontFamily: fonts.bold, fontSize: 18 },
+        headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.ink,
         headerShadowVisible: false,
         headerBackButtonDisplayMode: 'minimal',
@@ -59,10 +73,10 @@ function RootStack() {
         <Stack.Screen name="order/[reference]" options={{ title: 'Order' }} />
         <Stack.Screen name="addresses/index" options={{ title: 'Delivery addresses' }} />
         <Stack.Screen name="addresses/edit" options={{ title: 'Address', presentation: 'modal' }} />
-        <Stack.Screen name="requests/index" options={{ title: 'Buy for me' }} />
+        <Stack.Screen name="chat-room" options={{ title: 'AGIZA Support' }} />
+        <Stack.Screen name="shipping-addresses" options={{ title: 'AGIZA shipping addresses' }} />
         <Stack.Screen name="requests/new" options={{ title: 'New request', presentation: 'modal' }} />
         <Stack.Screen name="requests/[id]" options={{ title: 'Request' }} />
-        <Stack.Screen name="support" options={{ title: 'AGIZA Support' }} />
         <Stack.Screen name="profile" options={{ title: 'Profile' }} />
         <Stack.Screen name="change-password" options={{ title: 'Change password' }} />
         <Stack.Screen name="delete-account" options={{ title: 'Delete account' }} />
@@ -79,13 +93,19 @@ function RootStack() {
 }
 
 export default function RootLayout() {
+  // Light or dark follows the phone. When it changes, the palette switches and the screens are
+  // drawn again with the new colours (sign-in, cart and cached data are kept).
+  // applyScheme only changes anything when the phone's setting changes, so calling it here is safe.
+  applyScheme(useColorScheme());
+  const dark = scheme() === 'dark';
+
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <ThemeProvider value={theme}>
-            <StatusBar style="dark" />
-            <RootStack />
+          <ThemeProvider value={navigationTheme()}>
+            <StatusBar style={dark ? 'light' : 'dark'} />
+            <RootStack key={scheme()} />
           </ThemeProvider>
         </AuthProvider>
       </QueryClientProvider>

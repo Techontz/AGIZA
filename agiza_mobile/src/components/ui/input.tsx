@@ -1,7 +1,7 @@
 import { forwardRef, useState } from 'react';
-import { StyleSheet, TextInput, type TextInputProps, View } from 'react-native';
+import { TextInput, type TextInputProps, View } from 'react-native';
 
-import { colors, fonts, radius, space } from '@/theme/tokens';
+import { colors, fonts, radius, space, themed, scheme } from '@/theme/tokens';
 
 import { Text } from './text';
 
@@ -17,6 +17,7 @@ export const Input = forwardRef<TextInput, Props>(function Input({ label, error,
       <TextInput
         ref={ref}
         placeholderTextColor={colors.textSubtle}
+        keyboardAppearance={scheme()}
         accessibilityLabel={label}
         {...props}
         onFocus={(e) => {
@@ -48,20 +49,20 @@ export const Input = forwardRef<TextInput, Props>(function Input({ label, error,
   );
 });
 
-const styles = StyleSheet.create({
-  wrap: { gap: 6 },
+const styles = themed(() => ({
+  wrap: { gap: 8 },
   input: {
-    minHeight: 50,
+    minHeight: 54,
     borderWidth: 1,
-    borderColor: colors.borderStrong,
+    borderColor: colors.border,
     borderRadius: radius.md,
-    paddingHorizontal: space.md,
+    paddingHorizontal: space.lg,
     backgroundColor: colors.surface,
     fontFamily: fonts.regular,
     fontSize: 16,
     color: colors.ink,
   },
-  multiline: { minHeight: 96, paddingTop: space.md, textAlignVertical: 'top' },
-  focused: { borderColor: colors.brand },
+  multiline: { minHeight: 110, paddingTop: space.md, textAlignVertical: 'top' },
+  focused: { borderColor: colors.ink, borderWidth: 1.5 },
   invalid: { borderColor: colors.danger },
-});
+}));

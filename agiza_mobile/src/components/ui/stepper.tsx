@@ -1,7 +1,7 @@
 import { Minus, Plus } from 'lucide-react-native';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 
-import { colors, radius } from '@/theme/tokens';
+import { colors, radius, themed } from '@/theme/tokens';
 
 import { Text } from './text';
 
@@ -32,7 +32,7 @@ export function QuantityStepper({
         <Minus size={16} color={colors.ink} />
       </Pressable>
       <View style={styles.value}>
-        {busy ? <ActivityIndicator size="small" color={colors.brand} /> : <Text variant="subheading">{value}</Text>}
+        {busy ? <ActivityIndicator size="small" color={colors.primary} /> : <Text variant="subheading">{value}</Text>}
       </View>
       <Pressable
         accessibilityRole="button"
@@ -47,15 +47,15 @@ export function QuantityStepper({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   wrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    borderRadius: radius.md,
+    padding: 3,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceMuted,
   },
-  btn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  btn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
   off: { opacity: 0.35 },
   value: { minWidth: 32, alignItems: 'center' },
-});
+}));

@@ -59,6 +59,10 @@ export type ProductCard = {
   rating_count: number;
   /** Imported product: the country it ships from (bought abroad after payment). Null when held in Tanzania. */
   ships_from: string | null;
+  /** Units that can be bought now (imported products count as orderable). Older servers don't send it. */
+  available?: number;
+  /** Out of stock but customers may ask AGIZA to source it ("Pata bei"). Missing = allowed. */
+  can_request?: boolean;
 };
 
 export type Variant = {
@@ -73,6 +77,9 @@ export type Variant = {
 };
 
 export type ProductDetail = ProductCard & {
+  /** Shown under the product: staff picks, then same category / bought in the same orders. */
+  related?: ProductCard[];
+  bought_together?: ProductCard[];
   description: string;
   condition_display: string;
   condition_description: string;
@@ -317,6 +324,8 @@ export type QuoteRequest = {
   customer_replied_at: string | null;
   order: string | null;
   can_reply: boolean;
+  /** `from`: 'agiza' = attached by staff to the quotation; 'me' = the customer's own. */
+  photos: { id: number; url: string; from: 'me' | 'agiza' }[];
 };
 
 export type ChatMessage = { id: number; from: 'me' | 'agiza' | 'system'; body: string; author: string | null; created_at: string };
@@ -398,4 +407,27 @@ export type OrderReturnOptions = {
   items: { item: number; name: string; variant_name: string; quantity: number; returnable: number; unit_price: string }[];
   reasons: { code: string; label: string }[];
   returns: ReturnSummary[];
+};
+
+/** A home-screen banner staff manage in the admin (E-commerce → App Home Sliders). */
+export type HomeSlider = { id: number; title: string; link: string | null; image: string };
+
+/** A chat with AGIZA: general support, or one about an order, quotation or return. */
+export type ChatRoom = {
+  key: string;
+  kind: 'general' | 'order' | 'quote' | 'return';
+  title: string;
+  preview: string;
+  last_message_at: string | null;
+};
+
+/** One of AGIZA's receiving warehouses abroad, where suppliers send "Deliver for me" parcels. */
+export type WarehouseAddress = {
+  id: number;
+  name: string;
+  address: string;
+  city: string;
+  phone: string;
+  contact_person: string;
+  country: { code: string; name: string };
 };

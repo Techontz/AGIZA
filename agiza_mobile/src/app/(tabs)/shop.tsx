@@ -1,14 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { ChevronRight, Search, Store as StoreIcon, X } from 'lucide-react-native';
+import { Search, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, TextInput, useWindowDimensions, View } from 'react-native';
 
 import { ProductGrid } from '@/components/product-grid';
+import { StoreTile } from '@/components/store';
 import { Text } from '@/components/ui/text';
 import { shopApi } from '@/lib/api/endpoints';
 import { keys } from '@/lib/query';
-import { colors, fonts, radius, space } from '@/theme/tokens';
+import { colors, fonts, radius, space, themed } from '@/theme/tokens';
 
 const SORTS = [
   { value: 'newest', label: 'Newest' },
@@ -34,7 +35,7 @@ function Chip({
       hitSlop={{ top: 6, bottom: 6 }}
       onPress={onPress}
       style={[styles.chip, active && styles.chipActive]}>
-      <Text variant="smallMedium" color={active ? '#FFFFFF' : colors.text}>
+      <Text variant="smallMedium" color={active ? colors.onPrimary : colors.text}>
         {label}
       </Text>
     </Pressable>
@@ -42,7 +43,9 @@ function Chip({
 }
 
 export default function ShopScreen() {
+  const { width } = useWindowDimensions();
   const categories = useQuery({ queryKey: keys.categories, queryFn: shopApi.categories });
+  const stores = useQuery({ queryKey: keys.stores({}), queryFn: () => shopApi.stores({}) });
   const [text, setText] = useState('');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<number | undefined>();
@@ -73,25 +76,25 @@ export default function ShopScreen() {
           </Pressable>
         ) : null}
       </View>
-      <Pressable
-        accessibilityRole="link"
-        accessibilityLabel="Browse stores"
-        accessibilityHint="Shop by seller"
-        onPress={() => router.push('/stores')}
-        style={({ pressed }) => [styles.stores, pressed && styles.pressed]}>
-        <View style={styles.storesIcon}>
-          <StoreIcon size={18} color={colors.brand} />
+      {stores.data?.results.length ? (
+        <View style={styles.storesBlock}>
+          <View style={styles.storesHead}>
+            <Text variant="subheading" color={colors.ink}>
+              Stores
+            </Text>
+            <Pressable accessibilityRole="link" accessibilityLabel="See all stores" hitSlop={8} onPress={() => router.push('/stores')}>
+              <Text variant="smallMedium" color={colors.primary}>
+                See all
+              </Text>
+            </Pressable>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.storeRow}>
+            {stores.data.results.map((st) => (
+              <StoreTile key={st.slug} store={st} width={Math.min(132, (width - space.lg * 2 - space.md) / 2.75)} />
+            ))}
+          </ScrollView>
         </View>
-        <View style={styles.storesText}>
-          <Text variant="bodyMedium" color={colors.ink}>
-            Browse stores
-          </Text>
-          <Text variant="small" color={colors.textMuted}>
-            Shop from AGIZA and marketplace sellers
-          </Text>
-        </View>
-        <ChevronRight size={18} color={colors.textSubtle} />
-      </Pressable>
+      ) : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
         <Chip label="All" active={!category} onPress={() => setCategory(undefined)} />
         {categories.data?.map((c) => (
@@ -112,7 +115,7 @@ export default function ShopScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   header: { gap: space.md, marginBottom: space.xs },
   search: {
     flexDirection: 'row',
@@ -127,25 +130,9 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontFamily: fonts.regular, fontSize: 16, color: colors.ink, paddingVertical: space.sm },
   chips: { gap: space.sm },
-  stores: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-    paddingVertical: space.sm,
-    paddingHorizontal: space.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.primarySoft,
-  },
-  pressed: { opacity: 0.85 },
-  storesIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  storesText: { flex: 1 },
+  storesBlock: { gap: space.sm },
+  storesHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  storeRow: { gap: space.md, paddingBottom: 4 },
   chip: {
     paddingHorizontal: space.md,
     paddingVertical: 7,
@@ -154,5 +141,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  chipActive: { backgroundColor: colors.ink, borderColor: colors.ink },
-});
+  chipActive: { backgroundColor: colors.brand, borderColor: colors.brand },
+}));

@@ -1,10 +1,10 @@
 /** Star ratings. Averages and counts always come from the server; these only draw them. */
 import { Star } from 'lucide-react-native';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import type { RatingDistribution } from '@/lib/api/types';
-import { colors, radius, space } from '@/theme/tokens';
+import { colors, radius, space, themed } from '@/theme/tokens';
 
 const STAR = colors.amber;
 
@@ -143,7 +143,7 @@ export function StarPicker({ value, onChange }: { value: number; onChange: (next
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   stars: { flexDirection: 'row', gap: 1 },
   half: { position: 'absolute', left: 0, top: 0, overflow: 'hidden' },
   inline: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 14 },
@@ -159,4 +159,4 @@ const styles = StyleSheet.create({
   pickerWrap: { gap: space.xs },
   picker: { flexDirection: 'row', gap: space.xs },
   pickStar: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
-});
+}));

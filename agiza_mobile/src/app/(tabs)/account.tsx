@@ -2,19 +2,18 @@ import { router, type Href } from 'expo-router';
 import {
   Bell,
   ChevronRight,
-  Globe,
   Heart,
   KeyRound,
   LogOut,
   MapPin,
-  MessageCircle,
   PackageX,
   Star,
   Trash2,
   UserRound,
+  Warehouse,
   type LucideIcon,
 } from 'lucide-react-native';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, View } from 'react-native';
 
 import { UnreadPill } from '@/components/notification-bell';
 import { SignInPrompt } from '@/components/sign-in-prompt';
@@ -23,7 +22,7 @@ import { Loading } from '@/components/ui/states';
 import { Text } from '@/components/ui/text';
 import { useUnreadNotifications } from '@/hooks/use-notifications';
 import { useAuth } from '@/lib/auth/session';
-import { colors, space } from '@/theme/tokens';
+import { colors, radius, shadow, space, themed } from '@/theme/tokens';
 
 function Item({
   icon: Icon,
@@ -44,7 +43,9 @@ function Item({
       accessibilityLabel={count ? `${label}, ${count} unread` : label}
       onPress={() => router.push(href)}
       style={({ pressed }) => [styles.item, pressed && styles.pressed]}>
-      <Icon size={20} color={danger ? colors.danger : colors.ink} />
+      <View style={[styles.itemIcon, danger && { backgroundColor: colors.dangerSoft }]}>
+        <Icon size={18} color={danger ? colors.danger : colors.ink} />
+      </View>
       <Text variant="bodyMedium" color={danger ? colors.danger : colors.ink} style={{ flex: 1 }}>
         {label}
       </Text>
@@ -69,26 +70,27 @@ export default function AccountScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.content}>
-      <Card style={styles.profile}>
+      <View style={styles.profile}>
+        <View style={styles.profileGlow} />
         <View style={styles.avatar}>
-          <Text variant="heading" color={colors.primary}>
+          <Text variant="title" color={colors.onPrimary}>
             {customer.full_name.trim().charAt(0).toUpperCase()}
           </Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text variant="heading" color={colors.ink} numberOfLines={1}>
+          <Text variant="heading" color={colors.onHero} numberOfLines={1}>
             {customer.full_name}
           </Text>
-          <Text variant="small" color={colors.textMuted}>
+          <Text variant="small" color="rgba(255,255,255,0.72)">
             {customer.phone}
           </Text>
           {customer.email ? (
-            <Text variant="small" color={colors.textMuted} numberOfLines={1}>
+            <Text variant="small" color="rgba(255,255,255,0.72)" numberOfLines={1}>
               {customer.email}
             </Text>
           ) : null}
         </View>
-      </Card>
+      </View>
 
       <Card style={styles.group}>
         <Item icon={Bell} label="Notifications" href="/notifications" count={unread} />
@@ -100,8 +102,7 @@ export default function AccountScreen() {
       <Card style={styles.group}>
         <Item icon={UserRound} label="Profile" href="/profile" />
         <Item icon={MapPin} label="Delivery addresses" href="/addresses" />
-        <Item icon={Globe} label="Buy for me requests" href="/requests" />
-        <Item icon={MessageCircle} label="AGIZA Support" href="/support" />
+        <Item icon={Warehouse} label="AGIZA shipping addresses" href="/shipping-addresses" />
       </Card>
 
       <Card style={styles.group}>
@@ -122,20 +123,47 @@ export default function AccountScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  content: { padding: space.lg, gap: space.lg },
-  profile: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+const styles = themed(() => ({
+  content: { padding: space.lg, gap: space.lg, paddingBottom: space.xxxl },
+  profile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.lg,
+    padding: space.xl,
+    borderRadius: radius.lg,
+    backgroundColor: colors.hero,
+    overflow: 'hidden',
+    ...shadow.float,
+  },
+  profileGlow: {
+    position: 'absolute',
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    right: -60,
+    top: -90,
+    borderWidth: 22,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: colors.primarySoft,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.brand,
     alignItems: 'center',
     justifyContent: 'center',
   },
   group: { paddingVertical: space.xs, paddingHorizontal: 0 },
-  item: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, paddingVertical: 14 },
-  pressed: { backgroundColor: colors.background },
+  item: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, paddingVertical: 12 },
+  itemIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: { backgroundColor: colors.surfaceMuted },
   signOut: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm, padding: space.md },
   ref: { textAlign: 'center' },
-});
+}));

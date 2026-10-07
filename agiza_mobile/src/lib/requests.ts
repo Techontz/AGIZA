@@ -12,9 +12,10 @@ export const QUOTE_TONE: Record<QuoteRequest['status'], Tone> = {
 
 /** The request's first line without its "[Buy for me]" marker. */
 export function requestTitle(q: QuoteRequest) {
-  return q.description.split('\n')[0].replace(/^\[(Buy|Deliver) for me\]\s*/, '');
+  return q.description.split('\n')[0].replace(/^\[((Buy|Deliver) for me|Local delivery)\]\s*/, '');
 }
 
 export function requestKind(q: QuoteRequest) {
+  if (q.description.startsWith('[Local delivery]')) return 'Local delivery';
   return q.description.startsWith('[Deliver for me]') ? 'Deliver for me' : 'Buy for me';
 }

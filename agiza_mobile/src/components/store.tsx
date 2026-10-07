@@ -2,12 +2,12 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { BadgeCheck, ChevronRight, MapPin } from 'lucide-react-native';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { RatingInline } from '@/components/rating';
 import { Text } from '@/components/ui/text';
 import type { Seller, Store } from '@/lib/api/types';
-import { colors, fonts, radius, shadow, space } from '@/theme/tokens';
+import { colors, fonts, radius, shadow, space, themed, scheme } from '@/theme/tokens';
 
 export function openStore(slug: string) {
   router.push({ pathname: '/store/[slug]', params: { slug } });
@@ -31,7 +31,7 @@ export function StoreAvatar({ seller, size = 40 }: { seller: Pick<Seller, 'name'
     return (
       <View style={[styles.avatar, styles.agiza, frame]}>
         <Image
-          source={require('@/assets/images/mark.png')}
+          source={scheme() === 'dark' ? require('@/assets/images/mark-dark.png') : require('@/assets/images/mark.png')}
           style={{ width: size * 0.42, height: size * 0.54 }}
           contentFit="contain"
         />
@@ -49,7 +49,8 @@ export function StoreAvatar({ seller, size = 40 }: { seller: Pick<Seller, 'name'
 }
 
 export function VerifiedMark({ size = 14 }: { size?: number }) {
-  return <BadgeCheck size={size} color={colors.info} accessibilityLabel="Verified seller" />;
+  // A yellow AGIZA seal with a black tick, in both themes.
+  return <BadgeCheck size={size} color="#121212" fill={colors.brand} strokeWidth={2} accessibilityLabel="Verified seller" />;
 }
 
 /** Store name with a verified tick, on one line. */
@@ -170,8 +171,8 @@ export function StoreTile({ store, width }: { store: Store; width: number }) {
   );
 }
 
-const styles = StyleSheet.create({
-  avatar: { backgroundColor: '#F3F4F6', overflow: 'hidden' },
+const styles = themed(() => ({
+  avatar: { backgroundColor: colors.surfaceMuted, overflow: 'hidden' },
   agiza: { backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
   initial: { backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: '100%' },
@@ -200,4 +201,4 @@ const styles = StyleSheet.create({
     ...shadow.card,
   },
   tileName: { maxWidth: '100%', alignItems: 'center' },
-});
+}));

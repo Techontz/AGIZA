@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Camera, MessageCircle } from 'lucide-react-native';
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 
 import { ProductImage } from '@/components/product-tile';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +15,8 @@ import { tokenStore } from '@/lib/auth/token-store';
 import { date, dateTime, money } from '@/lib/format';
 import { keys } from '@/lib/query';
 import { REFUND_LABEL, refundTone, returnTone } from '@/lib/returns';
-import { colors, radius, space } from '@/theme/tokens';
+import { openChatRoom, returnRoom } from '@/lib/chat';
+import { colors, radius, space, themed } from '@/theme/tokens';
 
 /** Evidence photos are private: they load with the customer's token. */
 function EvidencePhotos({ urls }: { urls: string[] }) {
@@ -49,7 +50,7 @@ export default function ReturnScreen() {
   return (
     <ScrollView
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={ret.isRefetching} onRefresh={() => ret.refetch()} tintColor={colors.brand} />}>
+      refreshControl={<RefreshControl refreshing={ret.isRefetching} onRefresh={() => ret.refetch()} tintColor={colors.primary} />}>
       <Stack.Screen options={{ title: r.reference }} />
 
       <Card style={styles.head}>
@@ -167,16 +168,16 @@ export default function ReturnScreen() {
         onPress={() => router.push({ pathname: '/order/[reference]', params: { reference: r.order } })}
       />
       <Button
-        title="Questions? Chat with support"
-        variant="ghost"
-        icon={<MessageCircle size={18} color={colors.primary} />}
-        onPress={() => router.push('/support')}
+        title="Chat with AGIZA about this return"
+        variant="secondary"
+        icon={<MessageCircle size={18} color={colors.ink} />}
+        onPress={() => openChatRoom(...returnRoom(r.reference))}
       />
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   content: { padding: space.lg, gap: space.xl, paddingBottom: space.xxxl },
   head: { gap: space.xs },
   headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: space.sm },
@@ -190,4 +191,4 @@ const styles = StyleSheet.create({
   history: { flexDirection: 'row', gap: space.md, alignItems: 'flex-start', paddingVertical: space.xs },
   dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.borderStrong, marginTop: 6 },
   dotCurrent: { backgroundColor: colors.brand },
-});
+}));

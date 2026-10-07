@@ -1,11 +1,11 @@
 import { BadgeCheck, Store } from 'lucide-react-native';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
 import { Stars } from '@/components/rating';
 import { Text } from '@/components/ui/text';
 import type { Review } from '@/lib/api/types';
 import { date } from '@/lib/format';
-import { colors, radius, space } from '@/theme/tokens';
+import { colors, radius, space, themed } from '@/theme/tokens';
 
 /** One review with the seller's reply under it. */
 export function ReviewItem({ review }: { review: Review }) {
@@ -60,7 +60,7 @@ export function ReviewItem({ review }: { review: Review }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   wrap: { gap: 4, paddingVertical: space.xs },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   author: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
@@ -68,4 +68,4 @@ const styles = StyleSheet.create({
   verified: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   reply: { marginTop: space.xs, padding: space.md, borderRadius: radius.md, backgroundColor: colors.background, gap: 4 },
   replyHead: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-});
+}));

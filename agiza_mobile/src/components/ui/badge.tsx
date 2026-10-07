@@ -1,25 +1,25 @@
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
-import { colors, radius } from '@/theme/tokens';
+import { colors, fonts, radius, themed } from '@/theme/tokens';
 
 import { Text } from './text';
 
 export type Tone = 'neutral' | 'brand' | 'success' | 'warning' | 'danger' | 'info';
 
-const tones: Record<Tone, [string, string]> = {
-  neutral: ['#F3F4F6', colors.text],
+const tones = (): Record<Tone, [string, string]> => ({
+  neutral: [colors.surfaceMuted, colors.text],
   brand: [colors.primarySoft, colors.primary],
   success: [colors.successSoft, colors.success],
   warning: [colors.warningSoft, colors.warning],
   danger: [colors.dangerSoft, colors.danger],
   info: [colors.infoSoft, colors.info],
-};
+});
 
 export function Badge({ label, tone = 'neutral' }: { label: string; tone?: Tone }) {
-  const [bg, fg] = tones[tone];
+  const [bg, fg] = tones()[tone];
   return (
     <View style={[styles.badge, { backgroundColor: bg }]}>
-      <Text variant="caption" color={fg}>
+      <Text variant="caption" color={fg} style={styles.label}>
         {label}
       </Text>
     </View>
@@ -44,6 +44,7 @@ export const PAYMENT_LABEL: Record<string, string> = {
   unpaid: 'Unpaid',
 };
 
-const styles = StyleSheet.create({
-  badge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill },
-});
+const styles = themed(() => ({
+  badge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill },
+  label: { fontFamily: fonts.semibold, letterSpacing: 0.2 },
+}));

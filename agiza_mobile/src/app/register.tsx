@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { Logo } from '@/components/brand';
 import { PhoneStep, ResendCode } from '@/components/code-step';
@@ -13,7 +13,7 @@ import { Text } from '@/components/ui/text';
 import { ApiError } from '@/lib/api/client';
 import { accountApi } from '@/lib/api/endpoints';
 import { useAuth } from '@/lib/auth/session';
-import { colors, space } from '@/theme/tokens';
+import { colors, space, themed } from '@/theme/tokens';
 
 export default function RegisterScreen() {
   const { signIn } = useAuth();
@@ -107,7 +107,7 @@ export default function RegisterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   hero: { alignItems: 'center', gap: space.sm, marginVertical: space.lg },
   link: { alignSelf: 'center', padding: space.sm },
-});
+}));

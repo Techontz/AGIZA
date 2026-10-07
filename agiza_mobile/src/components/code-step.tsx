@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +9,7 @@ import { Text } from '@/components/ui/text';
 import { ApiError } from '@/lib/api/client';
 import { accountApi } from '@/lib/api/endpoints';
 import { cleanPhone } from '@/lib/format';
-import { colors, space } from '@/theme/tokens';
+import { colors, space, themed } from '@/theme/tokens';
 
 const RESEND_SECONDS = 60;
 
@@ -73,4 +73,4 @@ export function ResendCode({ phone, purpose }: { phone: string; purpose: 'regist
   );
 }
 
-const styles = StyleSheet.create({ resend: { alignItems: 'center', gap: space.xs } });
+const styles = themed(() => ({ resend: { alignItems: 'center', gap: space.xs } }));

@@ -20,11 +20,9 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export async function registerForPush(): Promise<void> {
+/** Channel + permission for on-device alerts; works without push credentials. */
+export async function enableAlerts(): Promise<boolean> {
   try {
-    if (!Device.isDevice) return;
-    const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
-    if (!projectId) return;
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('messages', {
         name: 'Order updates and messages',
@@ -33,7 +31,18 @@ export async function registerForPush(): Promise<void> {
     }
     let { status } = await Notifications.getPermissionsAsync();
     if (status !== 'granted') status = (await Notifications.requestPermissionsAsync()).status;
-    if (status !== 'granted') return;
+    return status === 'granted';
+  } catch {
+    return false;
+  }
+}
+
+export async function registerForPush(): Promise<void> {
+  try {
+    if (!Device.isDevice) return;
+    if (!(await enableAlerts())) return;
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+    if (!projectId) return; // no EAS project yet: on-device alerts only (see use-notification-alerts)
     const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
     await accountApi.registerDevice(token, Platform.OS === 'ios' ? 'ios' : 'android');
     deviceToken = token;

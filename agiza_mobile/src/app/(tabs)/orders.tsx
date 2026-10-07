@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { Package } from 'lucide-react-native';
 import { useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, View } from 'react-native';
 
 import { OrderRow } from '@/components/order-row';
 import { SignInPrompt } from '@/components/sign-in-prompt';
@@ -12,7 +12,7 @@ import { Text } from '@/components/ui/text';
 import { orderApi } from '@/lib/api/endpoints';
 import { useAuth } from '@/lib/auth/session';
 import { keys } from '@/lib/query';
-import { colors, radius, space } from '@/theme/tokens';
+import { colors, radius, space, themed } from '@/theme/tokens';
 
 const TABS = [
   { value: 'active', label: 'In progress' },
@@ -75,7 +75,7 @@ export default function OrdersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   screen: { flex: 1 },
   tabs: {
     flexDirection: 'row',
@@ -83,9 +83,9 @@ const styles = StyleSheet.create({
     marginBottom: 0,
     padding: 4,
     borderRadius: radius.md,
-    backgroundColor: '#ECEEF1',
+    backgroundColor: colors.surfaceMuted,
   },
   tab: { flex: 1, alignItems: 'center', paddingVertical: space.sm, borderRadius: radius.sm },
   tabActive: { backgroundColor: colors.surface },
   list: { padding: space.lg, gap: space.md, flexGrow: 1 },
-});
+}));
