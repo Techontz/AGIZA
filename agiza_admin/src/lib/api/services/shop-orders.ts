@@ -45,6 +45,8 @@ export interface ShopOrder extends Omit<OrderBase, "status"> {
     payment_due_at?: string | null;
     /** The Shipping Engine needed a manual quote: staff must set the delivery cost before the customer can pay. */
     delivery_fee_pending: boolean;
+    /** Why the cost must be set by hand: what the Shipping Engine is missing for this address. */
+    delivery_issue?: string;
   };
   payment_status: "paid" | "pending";
   delivery: { id: number; reference: string; status: string; status_display: string } | null;

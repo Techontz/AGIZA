@@ -19,6 +19,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { useEngineAccess } from "@/components/shipping-engine/hooks";
+import { MissingDeliveryPrices } from "@/components/shipping-engine/missing-delivery-prices";
 import {
   Btn,
   EnginePage,
@@ -83,6 +84,7 @@ export function OverviewView() {
         <ErrorState message={(q.error as Error).message} onRetry={() => q.refetch()} />
       ) : (
         <>
+          <MissingDeliveryPrices />
           <div className="grid grid-cols-2 md:grid-cols-4 2xl:grid-cols-7 gap-4 mb-6">
             <StatCard label="Active Routes" value={s?.active_routes} icon={ArrowRight} color="blue" loading={!s} />
             <StatCard label="Shipping Zones" value={s?.zones} icon={MapPin} color="purple" loading={!s} />

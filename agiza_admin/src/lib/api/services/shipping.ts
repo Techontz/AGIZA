@@ -130,6 +130,7 @@ export interface Shipment {
   shipping_method: MethodRef;
   origin: OriginRef;
   origin_warehouse: WarehouseRef | null;
+  arrival_warehouse: WarehouseRef | null;
   destination: { id: number; name: string; label: string };
   status: ShipmentStatus;
   status_display: string;
@@ -208,6 +209,8 @@ export interface UpdateShipmentInput {
 
 export interface TransitionInput {
   status: ShipmentStatus;
+  /** Ready for collection: the warehouse where the goods were received (their deliveries start there). */
+  arrival_warehouse?: number | null;
   note?: string;
   location?: string;
   occurred_at?: string;
@@ -249,6 +252,11 @@ export const shippingApi = {
   /** Consolidation warehouses (origin hubs where parcels are received). */
   warehouses: (query?: QueryParams) =>
     api.get<Paginated<Warehouse>>("warehouses", { type: "consolidation", page_size: 100, ...query }).then((p) => p.results),
+  /** Active warehouses / pickup points a shipment can arrive at (not the consolidation hubs abroad). */
+  arrivalWarehouses: () =>
+    api
+      .get<Paginated<Warehouse>>("warehouses", { page_size: 100 })
+      .then((p) => p.results.filter((w) => w.type !== "consolidation" && w.status === "active")),
 };
 
 /** Query keys: invalidate `shippingKeys.all` after any change. */
@@ -259,4 +267,5 @@ export const shippingKeys = {
   shipments: (query?: object) => ["shipping", "shipments", query ?? {}] as const,
   events: (id: number) => ["shipping", "shipment", id, "events"] as const,
   warehouses: ["shipping", "warehouses"] as const,
+  arrivalWarehouses: ["shipping", "arrival-warehouses"] as const,
 };

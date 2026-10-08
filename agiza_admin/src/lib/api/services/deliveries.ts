@@ -43,6 +43,8 @@ export interface DriverRef extends PersonRef {
 
 /** A line being delivered: shop lines carry SKU and bin; other orders have one line without them. */
 export interface DeliveryItem {
+  /** Row id for corrections: "line:<id>" (shop line), "cargo" or "item". */
+  key: string;
   product_name: string;
   variant_name: string;
   sku: string;
@@ -193,6 +195,9 @@ export const deliveriesApi = {
   transition: (id: number, data: DeliveryTransitionInput) => api.post<Delivery>(`${base}/${id}/transition`, data),
   /** Multipart: signature_name, notes?, completed_at?, signature_image?, photos (repeated, max 6). */
   complete: (id: number, form: FormData) => api.post<Delivery>(`${base}/${id}/complete`, form),
+  /** Correct an item's SKU / bin code for this delivery (drivers on their own deliveries too). */
+  itemLabel: (id: number, data: { key: string; sku?: string; bin_code?: string }) =>
+    api.post<Delivery>(`${base}/${id}/item-label`, data),
   /** Multipart: photos (repeated), signature_name? (when no proof exists yet), notes?. */
   addProof: (id: number, form: FormData) => api.post<Delivery>(`${base}/${id}/proof`, form),
   events: (id: number) => api.get<DeliveryEvent[]>(`${base}/${id}/events`),

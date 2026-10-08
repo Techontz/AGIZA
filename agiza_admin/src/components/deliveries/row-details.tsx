@@ -1,9 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Package } from "lucide-react";
+import { Package, Pencil } from "lucide-react";
 import { useState } from "react";
 
+import { useApiMutation } from "@/hooks/use-api-mutation";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/api/errors";
 import { fileSrc } from "@/lib/api/files";
@@ -308,33 +309,101 @@ function Actions({ delivery }: { delivery: Delivery }) {
 
 /** What is being delivered: product, SKU, bin code, warehouse and quantity of each line. */
 export function DeliveryItemsTable({ delivery }: { delivery: Delivery }) {
+  const { canEdit } = useDeliveryAccess();
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState({ sku: "", bin_code: "" });
+  const save = useApiMutation((d: { key: string; sku: string; bin_code: string }) => deliveriesApi.itemLabel(delivery.id, d), {
+    invalidate: [deliveryKeys.all],
+    success: "SKU / bin code saved",
+    onSuccess: () => setEditing(null),
+  });
   if (delivery.items.length === 0) return null;
   const cell = "px-3 py-2 text-sm";
+  const field = "w-28 rounded border border-gray-300 px-2 py-1 font-mono text-sm focus:border-blue-500 focus:outline-none";
   return (
     <div className="overflow-x-auto bg-white rounded border border-gray-200">
       <table className="w-full">
         <thead className="bg-gray-50 border-b border-gray-200">
           <tr>
-            {["Product", "SKU", "Bin Code", "Warehouse", "Qty"].map((h) => (
-              <th key={h} scope="col" className="px-3 py-2 text-left text-xs font-semibold text-gray-700 uppercase whitespace-nowrap">
+            {["Product", "SKU", "Bin Code", "Warehouse", "Qty", ...(canEdit ? [""] : [])].map((h, n) => (
+              <th key={n} scope="col" className="px-3 py-2 text-left text-xs font-semibold text-gray-700 uppercase whitespace-nowrap">
                 {h}
               </th>
             ))}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {delivery.items.map((i, n) => (
-            <tr key={n}>
-              <td className={cn(cell, "text-gray-900")}>
-                {i.product_name}
-                {i.variant_name && i.variant_name !== "Default" && <span className="block text-xs text-gray-500">{i.variant_name}</span>}
-              </td>
-              <td className={cn(cell, "font-mono text-gray-800 whitespace-nowrap")}>{i.sku || "—"}</td>
-              <td className={cn(cell, "font-mono text-gray-800 whitespace-nowrap")}>{i.bin_code || "—"}</td>
-              <td className={cn(cell, "text-gray-700 whitespace-nowrap")}>{i.warehouse || "—"}</td>
-              <td className={cn(cell, "text-gray-900")}>{i.quantity}</td>
-            </tr>
-          ))}
+          {delivery.items.map((i) => {
+            const isEditing = editing === i.key;
+            return (
+              <tr key={i.key}>
+                <td className={cn(cell, "text-gray-900")}>
+                  {i.product_name}
+                  {i.variant_name && i.variant_name !== "Default" && <span className="block text-xs text-gray-500">{i.variant_name}</span>}
+                </td>
+                <td className={cn(cell, "font-mono text-gray-800 whitespace-nowrap")}>
+                  {isEditing ? (
+                    <input
+                      aria-label={`SKU for ${i.product_name}`}
+                      className={field}
+                      maxLength={64}
+                      value={draft.sku}
+                      onChange={(e) => setDraft((d) => ({ ...d, sku: e.target.value }))}
+                      autoFocus
+                    />
+                  ) : (
+                    i.sku || "—"
+                  )}
+                </td>
+                <td className={cn(cell, "font-mono text-gray-800 whitespace-nowrap")}>
+                  {isEditing ? (
+                    <input
+                      aria-label={`Bin code for ${i.product_name}`}
+                      className={field}
+                      maxLength={60}
+                      value={draft.bin_code}
+                      onChange={(e) => setDraft((d) => ({ ...d, bin_code: e.target.value }))}
+                    />
+                  ) : (
+                    i.bin_code || "—"
+                  )}
+                </td>
+                <td className={cn(cell, "text-gray-700 whitespace-nowrap")}>{i.warehouse || "—"}</td>
+                <td className={cn(cell, "text-gray-900")}>{i.quantity}</td>
+                {canEdit && (
+                  <td className={cn(cell, "whitespace-nowrap text-right")}>
+                    {isEditing ? (
+                      <span className="inline-flex gap-2">
+                        <button
+                          type="button"
+                          disabled={save.isPending}
+                          onClick={() => save.mutate({ key: i.key, sku: draft.sku, bin_code: draft.bin_code })}
+                          className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {save.isPending ? "Saving…" : "Save"}
+                        </button>
+                        <button type="button" onClick={() => setEditing(null)} className="text-xs font-medium text-gray-600 hover:text-gray-900">
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDraft({ sku: i.sku, bin_code: i.bin_code });
+                          setEditing(i.key);
+                        }}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:text-blue-900"
+                        aria-label={`Edit SKU and bin code for ${i.product_name}`}
+                      >
+                        <Pencil className="size-3.5" /> Edit
+                      </button>
+                    )}
+                  </td>
+                )}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

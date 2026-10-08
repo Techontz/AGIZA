@@ -68,6 +68,20 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
               {o.details.shipping_method && ` by ${o.details.shipping_method.name}`}. The customer placed the order without it and
               can&apos;t pay until you set the delivery cost. They are notified when you do.
             </p>
+            {o.details.delivery_issue && (
+              <div className="mt-3 rounded-md border border-orange-200 bg-white/70 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-orange-800">What&apos;s missing</p>
+                <p className="mt-1 text-sm text-gray-800 whitespace-pre-line">{o.details.delivery_issue}</p>
+                <p className="mt-2 text-xs text-gray-600">
+                  Fix it for the next customers in the Shipping Engine:{" "}
+                  <Link href="/shipping-engine/routes" className="font-medium text-blue-700 hover:underline">Routes</Link>
+                  {" · "}
+                  <Link href="/shipping-engine/rules" className="font-medium text-blue-700 hover:underline">Rules</Link>
+                  {" · "}
+                  <Link href="/shipping-engine/test-rate" className="font-medium text-blue-700 hover:underline">Test a rate</Link>
+                </p>
+              </div>
+            )}
           </div>
           {canEdit && (
             <Button size="sm" onClick={() => setAction("fee")}>

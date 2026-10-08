@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { FileText, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 
@@ -9,6 +10,7 @@ import { Modal } from "@/components/ui/modal";
 import { fileSrc } from "@/lib/api/files";
 import {
   shippingApi,
+  shippingKeys,
   type Shipment,
   type ShipmentAlert,
   type ShipmentStatus,
@@ -52,6 +54,9 @@ export function StatusDialog({ shipment, onClose }: { shipment: Shipment; onClos
   const [note, setNote] = useState("");
   const [location, setLocation] = useState("");
   const [when, setWhen] = useState("");
+  const [arrival, setArrival] = useState(shipment.arrival_warehouse ? String(shipment.arrival_warehouse.id) : "");
+  const arriving = status === "completed";
+  const arrivals = useQuery({ queryKey: shippingKeys.arrivalWarehouses, queryFn: shippingApi.arrivalWarehouses, enabled: arriving });
   const skipped = options.slice(0, Math.max(0, options.findIndex((o) => o.value === status)));
   const { errors, onError, reset } = useFormErrors();
   const m = useShippingMutation((d: TransitionInput) => shippingApi.shipments.transition(shipment.id, d), {
@@ -60,18 +65,24 @@ export function StatusDialog({ shipment, onClose }: { shipment: Shipment; onClos
     onError,
   });
   return (
-    <Modal open onClose={onClose} title="Update Status" size="lg" footer={<Footer formId="status-form" label="Update Status" pending={m.isPending} disabled={!status} onClose={onClose} />}>
+    <Modal open onClose={onClose} title="Update Status" size="lg" footer={<Footer formId="status-form" label="Update Status" pending={m.isPending} disabled={!status || (arriving && !arrival)} onClose={onClose} />}>
       <form
         id="status-form"
         className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!status) return;
+          if (!status || (arriving && !arrival)) return;
           reset();
-          m.mutate({ status, note: note.trim(), location: location.trim(), occurred_at: localToIso(when) });
+          m.mutate({
+            status,
+            note: note.trim(),
+            location: location.trim(),
+            occurred_at: localToIso(when),
+            ...(arriving ? { arrival_warehouse: Number(arrival) } : {}),
+          });
         }}
       >
-        <FormErrorBox errors={errors} fields={["status", "note", "location", "occurred_at"]} />
+        <FormErrorBox errors={errors} fields={["status", "arrival_warehouse", "note", "location", "occurred_at"]} />
         <p className="text-sm text-gray-600">
           {shipment.cargo_id} is currently <span className="font-medium text-gray-900">{shipment.status_display}</span>.
         </p>
@@ -82,6 +93,25 @@ export function StatusDialog({ shipment, onClose }: { shipment: Shipment; onClos
             ))}
           </Select>
         </Field>
+        {arriving && (
+          <Field
+            label="Arrived at warehouse"
+            required
+            htmlFor="st-arrival"
+            hint="The orders' deliveries start from this warehouse / pickup point"
+            error={errors.arrival_warehouse}
+          >
+            <Select id="st-arrival" value={arrival} onChange={(e) => setArrival(e.target.value)} disabled={arrivals.isPending}>
+              <option value="">{arrivals.isPending ? "Loading warehouses…" : "Choose a warehouse"}</option>
+              {arrivals.data?.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                  {w.city_name ? ` — ${w.city_name}` : ""}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         {skipped.length > 0 && (
           <p className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-900">
             Skipped milestones are recorded too, in order: {skipped.map(optionLabel).join(" → ")}. The orders on board move along
