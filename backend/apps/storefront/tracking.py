@@ -10,7 +10,7 @@ delivered), mapped onto the current order workflow.
 from __future__ import annotations
 
 from apps.deliveries.models import DeliveryStatus
-from apps.orders.services import payment_summary
+from apps.orders.services import is_imported, payment_summary
 from apps.orders.workflows import EquipmentStatus, ExpressStatus, InternationalStatus, OrderType, ShopStatus
 
 I, E, Q, P = InternationalStatus, ExpressStatus, EquipmentStatus, ShopStatus
@@ -56,6 +56,27 @@ STEPS = {
 }
 
 
+# Shop orders with imported items: the trip to Tanzania comes between preparing and shipping.
+SHOP_IMPORT_STEPS = [
+    ("placed", "Order placed", {P.PENDING}),
+    ("payment", "Payment received", {PAYMENT}),
+    ("processing", "Preparing your order", {P.PROCESSING, P.ORDERED_FROM_SUPPLIER}),
+    ("shipped_from_origin", "At our warehouse abroad", {P.AT_ORIGIN_WAREHOUSE}),
+    ("in_transit", "In transit to Tanzania", {P.SHIPPING_TO_DESTINATION}),
+    ("customs_clearance", "Customs clearance", {P.CLEARANCE}),
+    ("arrived", "Arrived in Tanzania", {P.ARRIVED}),
+    ("shipped", "Shipped", {P.SHIPPED}),
+    ("out_for_delivery", "Out for delivery", {DeliveryStatus.OUT_FOR_DELIVERY}),
+    ("delivered", "Delivered", {P.DELIVERED}),
+]
+
+
+def _steps(order) -> list:
+    if order.order_type == OrderType.SHOP and is_imported(order):
+        return SHOP_IMPORT_STEPS
+    return STEPS[OrderType(order.order_type)]
+
+
 # "Deliver for Me": the customer bought the goods, so there's no supplier step — we wait for the parcel.
 DELIVER_FOR_ME_LABELS = {"processing": "Waiting for your parcel at our warehouse",
                          "shipped_from_origin": "Received at our warehouse"}
@@ -94,7 +115,7 @@ def timeline(order) -> dict:
 
     steps = []
     labels = _labels(order)
-    for key, label, statuses in STEPS[OrderType(order.order_type)]:
+    for key, label, statuses in _steps(order):
         dates = [reached[s] for s in statuses if s in reached]
         steps.append({"key": key, "label": labels.get(key, label), "at": min(dates) if dates else None})
     # A later step having happened means earlier progress steps are done too (a status may be skipped).

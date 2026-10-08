@@ -146,3 +146,40 @@ def test_guest_checkout_with_imported_items(imported, selcom):
         "idempotency_key": "guest-import-0001", "expected_total": quote["total"]}, format="json")
     assert res.status_code == 201, res.json()
     assert res.json()["payment"]["checkout_url"] and Order.objects.get().shop.prepayment_required is True
+
+
+def test_imported_orders_go_through_the_import_stages(app, imported, home, selcom, client_for):
+    add(app, imported.drone_variant, 1)
+    quote = preview(app, home)
+    order = Order.objects.get(reference=place(app, home, quote).json()["order"]["reference"])
+    staff = client_for("admin_l2")
+    url = f"/api/orders/shop/{order.pk}"
+    staff.post(f"{url}/payments/", {"amount": quote["total"], "method": "cash", "kind": "balance"}, format="json")
+    assert staff.post(f"{url}/transition/", {"status": "processing"}, format="json").status_code == 200
+    offered = [t["value"] for t in staff.get(f"{url}/").json()["allowed_transitions"]]
+    assert offered == ["ordered_from_supplier", "at_origin_warehouse", "shipping_to_destination"]
+    for stage in ("ordered_from_supplier", "at_origin_warehouse", "shipping_to_destination", "clearance", "arrived"):
+        res = staff.post(f"{url}/transition/", {"status": stage, "note": "on its way"}, format="json")
+        assert res.status_code == 200, res.json()
+    body = res.json()
+    assert body["status_display"] == "Arrived in Tanzania" and body["allowed_transitions"] == []  # ship is an action
+    assert staff.get("/api/orders/shop/", {"status": "arrived"}).json()["count"] == 1
+    assert staff.get("/api/orders/shop/stats/").json()["importing"] == 1
+
+    steps = app.get(f"{APP}/orders/{order.reference}/").json()["timeline"]["steps"]
+    assert [s["key"] for s in steps] == ["placed", "payment", "processing", "shipped_from_origin", "in_transit",
+                                         "customs_clearance", "arrived", "shipped", "out_for_delivery", "delivered"]
+    assert [s["state"] for s in steps][:8] == ["completed"] * 7 + ["current"]
+
+
+def test_local_orders_skip_the_import_stages(app, imported, home, client_for):
+    add(app, imported.variant, 1)
+    quote = preview(app, home, shipping_method=imported.rider.pk)
+    order = Order.objects.get(reference=place(app, home, quote, payment_method="pay_later").json()["order"]["reference"])
+    staff = client_for("admin_l2")
+    url = f"/api/orders/shop/{order.pk}"
+    staff.post(f"{url}/transition/", {"status": "processing"}, format="json")
+    assert [t["value"] for t in staff.get(f"{url}/").json()["allowed_transitions"]] == []
+    assert staff.post(f"{url}/transition/", {"status": "at_origin_warehouse"}, format="json").status_code == 409
+    keys = [s["key"] for s in app.get(f"{APP}/orders/{order.reference}/").json()["timeline"]["steps"]]
+    assert "in_transit" not in keys

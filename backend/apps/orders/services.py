@@ -31,6 +31,7 @@ from .models import (
 from .workflows import (
     ACTION_EDGES,
     INTERNATIONAL_DEPARTMENT,
+    SHOP_IMPORT_STAGES,
     TERMINAL,
     WORKFLOWS,
     EquipmentStatus,
@@ -111,12 +112,26 @@ def _check_transition(order: Order, to_status: str, via_action: str | None = Non
         raise WorkflowError(
             f"{status_label(order.order_type, to_status)} is set with the “{required_action}” action.", field="status"
         )
+    if order.order_type == OrderType.SHOP and to_status in SHOP_IMPORT_STAGES and not is_imported(order):
+        raise WorkflowError(f"{order.reference} has no imported items: it doesn't travel from abroad.", conflict=True)
     _check_prepayment(order, to_status)
+
+
+def is_imported(order: Order) -> bool:
+    """A shop order with items coming from abroad (a warehouse or supplier outside Tanzania)."""
+    details = getattr(order, "shop", None)
+    if details is None:
+        return False
+    if details.import_shipping_method_id or details.import_fee or details.prepayment_required:
+        return True
+    return any(item.sourced_abroad or (item.warehouse_id and item.warehouse.country.iso2 != "TZ")
+               for item in order.items.all())
 
 
 def _check_prepayment(order: Order, to_status: str):
     """Shop orders with imported items are bought abroad only once the customer has paid in full."""
-    if order.order_type != OrderType.SHOP or to_status not in (ShopStatus.PROCESSING, ShopStatus.SHIPPED):
+    if order.order_type != OrderType.SHOP or to_status not in (ShopStatus.PROCESSING, ShopStatus.ORDERED_FROM_SUPPLIER,
+                                                               ShopStatus.SHIPPED):
         return
     details = getattr(order, "shop", None)
     if details is None or not details.prepayment_required:

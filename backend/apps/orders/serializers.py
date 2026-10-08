@@ -8,6 +8,7 @@ from apps.locations.models import City, Country
 from apps.parties.models import Customer
 from apps.shipping_engine.models import ShippingMethod
 
+from . import services
 from .models import (
     Classification,
     EquipmentDetails,
@@ -23,7 +24,7 @@ from .models import (
     ShopDetails,
 )
 from .services import payment_summary
-from .workflows import EXPRESS_STAGE, WORKFLOWS, ExpressStatus, OrderType, status_label
+from .workflows import EXPRESS_STAGE, SHOP_IMPORT_STAGES, WORKFLOWS, ExpressStatus, OrderType, status_label
 
 
 def _dec(value, places: int = 2) -> str | None:
@@ -136,10 +137,13 @@ class OrderSerializer(serializers.ModelSerializer):
     def get_allowed_transitions(self, obj) -> list[dict]:
         """Next statuses reachable with a plain status change (action-only ones excluded)."""
         _, transitions, action_only = WORKFLOWS[OrderType(obj.order_type)]
+        hidden = set(action_only)
+        if obj.order_type == OrderType.SHOP and not services.is_imported(obj):
+            hidden |= SHOP_IMPORT_STAGES  # the import stages are only for items coming from abroad
         return [
             {"value": s, "label": status_label(obj.order_type, s)}
-            for s in sorted(transitions.get(obj.status, set()))
-            if s not in action_only
+            for s in sorted(transitions.get(obj.status, set()), key=list(transitions).index)
+            if s not in hidden
         ]
 
 

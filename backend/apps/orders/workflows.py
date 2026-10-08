@@ -178,6 +178,12 @@ EQUIPMENT_ACTION_ONLY = {Q.ASSIGNED: "assign-technician"}
 class ShopStatus(models.TextChoices):
     PENDING = "pending", "Pending"
     PROCESSING = "processing", "Processing"
+    # Imported items (from a warehouse or supplier abroad) travel to Tanzania before the last-mile delivery.
+    ORDERED_FROM_SUPPLIER = "ordered_from_supplier", "Ordered from Supplier"
+    AT_ORIGIN_WAREHOUSE = "at_origin_warehouse", "At Warehouse Abroad"
+    SHIPPING_TO_DESTINATION = "shipping_to_destination", "Shipping to Tanzania"
+    CLEARANCE = "clearance", "Customs Clearance"
+    ARRIVED = "arrived", "Arrived in Tanzania"
     SHIPPED = "shipped", "Shipped"
     DELIVERED = "delivered", "Delivered"
     CANCELLED = "cancelled", "Cancelled"
@@ -186,11 +192,19 @@ class ShopStatus(models.TextChoices):
 P = ShopStatus
 SHOP_TRANSITIONS = {
     P.PENDING: {P.PROCESSING, P.CANCELLED},
-    P.PROCESSING: {P.SHIPPED, P.CANCELLED},
+    P.PROCESSING: {P.SHIPPED, P.ORDERED_FROM_SUPPLIER, P.AT_ORIGIN_WAREHOUSE, P.SHIPPING_TO_DESTINATION, P.CANCELLED},
+    P.ORDERED_FROM_SUPPLIER: {P.AT_ORIGIN_WAREHOUSE, P.SHIPPING_TO_DESTINATION, P.CANCELLED},
+    P.AT_ORIGIN_WAREHOUSE: {P.SHIPPING_TO_DESTINATION, P.CANCELLED},
+    P.SHIPPING_TO_DESTINATION: {P.CLEARANCE, P.ARRIVED},
+    P.CLEARANCE: {P.ARRIVED},
+    P.ARRIVED: {P.SHIPPED},
     P.SHIPPED: {P.DELIVERED},
     P.DELIVERED: set(),
     P.CANCELLED: set(),
 }
+# The import stages, offered only for orders with imported items (orders.shop.is_imported).
+SHOP_IMPORT_STAGES = frozenset({P.ORDERED_FROM_SUPPLIER, P.AT_ORIGIN_WAREHOUSE, P.SHIPPING_TO_DESTINATION,
+                                P.CLEARANCE, P.ARRIVED})
 # Shipping deducts stock and opens the delivery; Delivered comes from the delivery's proof.
 SHOP_ACTION_ONLY = {P.SHIPPED: "ship", P.DELIVERED: "deliver", P.CANCELLED: "cancel"}
 

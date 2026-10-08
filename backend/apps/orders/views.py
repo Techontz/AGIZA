@@ -52,7 +52,7 @@ from .serializers import (
     SuggestPriceSerializer,
     TransitionSerializer,
 )
-from .workflows import EXPRESS_STAGE, OrderType
+from .workflows import EXPRESS_STAGE, SHOP_IMPORT_STAGES, OrderType
 
 # Typical weight used for a price suggestion when only the package size is known.
 SIZE_WEIGHT_KG = {PackageSize.SMALL: Decimal("5"), PackageSize.MEDIUM: Decimal("15"), PackageSize.LARGE: Decimal("30")}
@@ -507,7 +507,7 @@ class ShopOrderViewSet(BaseOrderViewSet):
 
     def get_queryset(self):
         return super().get_queryset().prefetch_related(
-            Prefetch("items", queryset=OrderItem.objects.select_related("warehouse", "variant")), "deliveries",
+            Prefetch("items", queryset=OrderItem.objects.select_related("warehouse__country", "variant")), "deliveries",
         ).distinct()
 
     @extend_schema(request=ShopCreateSerializer, responses={201: ShopOrderSerializer})
@@ -536,6 +536,7 @@ class ShopOrderViewSet(BaseOrderViewSet):
         return {
             "pending": qs.filter(status="pending").count(),
             "processing": qs.filter(status="processing").count(),
+            "importing": qs.filter(status__in=SHOP_IMPORT_STAGES).count(),
             "shipped": qs.filter(status="shipped").count(),
             "delivered": qs.filter(status="delivered").count(),
             "delivery_fee_pending": live.filter(shop__delivery_fee_pending=True).count(),

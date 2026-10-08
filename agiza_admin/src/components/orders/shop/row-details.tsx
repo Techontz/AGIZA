@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Ban, CreditCard, ExternalLink, MapPin, Package2, Pencil, PlayCircle, Receipt, Truck } from "lucide-react";
+import { AlertTriangle, Ban, CreditCard, ExternalLink, Globe, MapPin, Package2, Pencil, PlayCircle, Receipt, Truck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -14,13 +14,22 @@ import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Modal } from "@/components/ui/modal";
 import { useApiMutation } from "@/hooks/use-api-mutation";
 import { errorText } from "@/lib/api/errors";
-import { shopOrderKeys, shopOrdersApi, type ShopOrder } from "@/lib/api/services/shop-orders";
+import { shopOrderKeys, shopOrdersApi, type ShopOrder, type ShopStatus } from "@/lib/api/services/shop-orders";
 import { formatDateTime, formatTSh } from "@/lib/format";
 
 import { OrderSellers } from "./sellers-block";
 import { SHOP_INVALIDATE } from "./shared";
 
 type Action = "process" | "ship" | "cancel" | "pay" | "fee" | null;
+
+/** Plain status moves through the import stages: the label for each target status. */
+const IMPORT_VERB: Partial<Record<ShopStatus, string>> = {
+  ordered_from_supplier: "Ordered from Supplier",
+  at_origin_warehouse: "At Warehouse Abroad",
+  shipping_to_destination: "Shipping to Tanzania",
+  clearance: "Customs Clearance",
+  arrived: "Arrived in Tanzania",
+};
 
 const box = "bg-white p-4 rounded border border-gray-200";
 
@@ -37,6 +46,7 @@ function Row({ label, children, strong }: { label: string; children: React.React
 export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
   const { canEdit, canManage, canPay } = useOrderAccess();
   const [action, setAction] = useState<Action>(null);
+  const [stage, setStage] = useState<ShopStatus | null>(null);
   const close = () => setAction(null);
 
   const history = useQuery({ queryKey: shopOrderKeys.sub(o.id, "history"), queryFn: () => shopOrdersApi.history(o.id) });
@@ -50,8 +60,11 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
 
   const canProcess = canEdit && o.allowed_transitions.some((t) => t.value === "processing");
   const feePending = o.details.delivery_fee_pending && o.status !== "cancelled";
-  const canShip = canEdit && o.status === "processing" && !feePending;
-  const canCancel = canManage && (o.status === "pending" || o.status === "processing");
+  const canShip = canEdit && (o.status === "processing" || o.status === "arrived") && !feePending;
+  // Cancelling is possible until the goods leave for Tanzania (or the local order ships).
+  const canCancel = canManage && ["pending", "processing", "ordered_from_supplier", "at_origin_warehouse"].includes(o.status);
+  // Imported items: the next stages of the trip from abroad (offered by the server only for such orders).
+  const importMoves = canEdit ? o.allowed_transitions.filter((t) => t.value in IMPORT_VERB) : [];
   const due = o.payment.due !== null ? Number(o.payment.due) : null;
   const canRecord = canPay && o.status !== "cancelled" && (due === null || due > 0);
   const email = o.details.customer_email || o.customer.email;
@@ -187,13 +200,18 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
       <OrderSellers orderId={o.id} />
       <OrderPickups orderId={o.id} />
 
-      {(canProcess || canShip || canCancel || canRecord || o.delivery) && (
+      {(canProcess || canShip || canCancel || canRecord || importMoves.length > 0 || o.delivery) && (
         <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-gray-200">
           {canProcess && (
             <Button size="sm" onClick={() => setAction("process")}>
               <PlayCircle className="size-4" /> Mark Processing
             </Button>
           )}
+          {importMoves.map((t) => (
+            <Button key={t.value} size="sm" variant="outline" onClick={() => setStage(t.value as ShopStatus)}>
+              <Globe className="size-4" /> {t.label}
+            </Button>
+          ))}
           {canShip && (
             <Button size="sm" variant="success" onClick={() => setAction("ship")}>
               <Truck className="size-4" /> Ship Order
@@ -273,6 +291,7 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
       </div>
 
       <ProcessDialog order={o} open={action === "process"} onClose={close} />
+      <StageDialog order={o} target={stage} onClose={() => setStage(null)} />
       <ShipDialog order={o} open={action === "ship"} onClose={close} />
       <CancelDialog order={o} open={action === "cancel"} onClose={close} />
       <DeliveryFeeDialog order={o} open={action === "fee"} onClose={close} />
@@ -382,6 +401,42 @@ function ProcessDialog({ order: o, open, onClose }: { order: ShopOrder; open: bo
       <div className="mt-4 space-y-3">
         <Field label="Note (optional)" htmlFor={`proc-note-${o.id}`}>
           <Textarea id={`proc-note-${o.id}`} rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add context for the history..." />
+        </Field>
+        <FormAlert error={error} />
+      </div>
+    </ConfirmDialog>
+  );
+}
+
+function StageDialog({ order: o, target, onClose }: { order: ShopOrder; target: ShopStatus | null; onClose: () => void }) {
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<unknown>(null);
+  useEffect(() => {
+    if (target) {
+      setNote("");
+      setError(null);
+    }
+  }, [target]);
+  const label = target ? IMPORT_VERB[target] ?? target : "";
+  const move = useApiMutation(() => shopOrdersApi.transition(o.id, target as string, note.trim()), {
+    invalidate: SHOP_INVALIDATE,
+    success: (r) => `${r.reference}: ${label}`,
+    onSuccess: onClose,
+    onError: setError,
+  });
+  return (
+    <ConfirmDialog
+      open={target !== null}
+      title={`${label} — ${o.reference}`}
+      message={`Move this order to "${label}". The customer sees it on their order tracking.`}
+      confirmLabel="Update Status"
+      pending={move.isPending}
+      onConfirm={() => move.mutate(undefined)}
+      onClose={onClose}
+    >
+      <div className="mt-4 space-y-3">
+        <Field label="Note (optional)" htmlFor={`stage-note-${o.id}`}>
+          <Textarea id={`stage-note-${o.id}`} rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. container number, vessel, expected arrival..." />
         </Field>
         <FormAlert error={error} />
       </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ChevronDown, ChevronUp, Clock, Package2, Plus, ShoppingCart, TrendingUp, User } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, Clock, Globe, Package2, Plus, ShoppingCart, TrendingUp, User } from "lucide-react";
 import React, { useEffect, useState } from "react";
 
 import { OpenProblemsNotice } from "@/components/ecommerce/fulfillment-issues";
@@ -19,7 +19,7 @@ import { ErrorState } from "@/components/ui/states";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useUrlFilters } from "@/hooks/use-url-filters";
 import { errorText } from "@/lib/api/errors";
-import { shopOrderKeys, shopOrdersApi, type ShopOrder } from "@/lib/api/services/shop-orders";
+import { SHOP_IMPORT_STAGES, SHOP_STATUS_OPTIONS, shopOrderKeys, shopOrdersApi, type ShopOrder } from "@/lib/api/services/shop-orders";
 import { formatDateTime, formatTSh } from "@/lib/format";
 import { pageMeta } from "@/lib/nav";
 
@@ -77,9 +77,12 @@ export function EcommerceOrdersView() {
         }
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-6 mb-8">
         <StatCard label="Pending Orders" value={s?.pending} icon={Clock} tone="orange" loading={stats.isPending} />
         <StatCard label="Processing" value={s?.processing} icon={Package2} tone="blue" loading={stats.isPending} />
+        <button type="button" className="text-left" onClick={() => setF({ status: SHOP_IMPORT_STAGES.join(","), page: "1", open: "" })} title="Show orders coming from abroad">
+          <StatCard label="Coming from Abroad" value={s?.importing ?? 0} icon={Globe} tone="indigo" loading={stats.isPending} />
+        </button>
         <StatCard label="Shipped" value={s?.shipped} icon={ShoppingCart} tone="green" loading={stats.isPending} />
         <StatCard
           label="Total Revenue"
@@ -122,11 +125,10 @@ export function EcommerceOrdersView() {
           <div className="flex gap-3 flex-wrap">
             <Select className="w-auto bg-white" aria-label="Filter by status" value={f.status} onChange={(e) => setF({ status: e.target.value, open: "" })}>
               <option value="all">All Statuses</option>
-              <option value="pending">Pending</option>
-              <option value="processing">Processing</option>
-              <option value="shipped">Shipped</option>
-              <option value="delivered">Delivered</option>
-              <option value="cancelled">Cancelled</option>
+              <option value={SHOP_IMPORT_STAGES.join(",")}>Coming from Abroad (all stages)</option>
+              {SHOP_STATUS_OPTIONS.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
             </Select>
             <Select className="w-auto bg-white" aria-label="Filter by payment" value={f.payment} onChange={(e) => setF({ payment: e.target.value, open: "" })}>
               <option value="all">All Payments</option>
@@ -239,7 +241,7 @@ function Row({ order: o, open, toggle }: { order: ShopOrder; open: boolean; togg
         </td>
         <td className="px-6 py-4">
           <div className="flex flex-col items-start gap-1">
-            <ShopStatusBadge status={o.status} />
+            <ShopStatusBadge status={o.status} label={o.status_display} />
             {o.details.delivery_fee_pending && o.status !== "cancelled" && <DeliveryFeePendingBadge />}
           </div>
         </td>

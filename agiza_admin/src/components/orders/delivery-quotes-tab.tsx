@@ -18,7 +18,7 @@ import { formatDateTime } from "@/lib/format";
 const th = "px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase whitespace-nowrap";
 const COLUMNS = ["Order", "Customer", "Phone", "Destination", "Items", "What's missing", "Actions"];
 /** Every live status: a cancelled order no longer needs a delivery cost. */
-const LIVE = "pending,processing,shipped,delivered";
+const LIVE = "pending,processing,ordered_from_supplier,at_origin_warehouse,shipping_to_destination,clearance,arrived,shipped,delivered";
 
 function itemsText(o: ShopOrder): string {
   if (o.items?.length) return o.items.map((i) => (i.quantity > 1 ? `${i.product_name} ×${i.quantity}` : i.product_name)).join(", ");

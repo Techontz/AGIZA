@@ -2,7 +2,33 @@ import { api, type QueryParams } from "../client";
 import type { Paginated } from "../types";
 import type { Assignee, HistoryEntry, OrderBase, Payment } from "./orders";
 
-export type ShopStatus = "pending" | "processing" | "shipped" | "delivered" | "cancelled";
+export type ShopStatus =
+  | "pending"
+  | "processing"
+  // Imported items travel from abroad before the last-mile delivery.
+  | "ordered_from_supplier"
+  | "at_origin_warehouse"
+  | "shipping_to_destination"
+  | "clearance"
+  | "arrived"
+  | "shipped"
+  | "delivered"
+  | "cancelled";
+
+/** Status filter options, in workflow order (the import stages apply to orders with items from abroad). */
+export const SHOP_STATUS_OPTIONS: [ShopStatus, string][] = [
+  ["pending", "Pending"],
+  ["processing", "Processing"],
+  ["ordered_from_supplier", "Ordered from Supplier"],
+  ["at_origin_warehouse", "At Warehouse Abroad"],
+  ["shipping_to_destination", "Shipping to Tanzania"],
+  ["clearance", "Customs Clearance"],
+  ["arrived", "Arrived in Tanzania"],
+  ["shipped", "Shipped"],
+  ["delivered", "Delivered"],
+  ["cancelled", "Cancelled"],
+];
+export const SHOP_IMPORT_STAGES: ShopStatus[] = ["ordered_from_supplier", "at_origin_warehouse", "shipping_to_destination", "clearance", "arrived"];
 export type ShopChannel = "web" | "app" | "whatsapp" | "shop" | "manual";
 
 export interface ShopOrderItem {
@@ -55,6 +81,8 @@ export interface ShopOrder extends Omit<OrderBase, "status"> {
 export interface ShopOrderStats {
   pending: number;
   processing: number;
+  /** In one of the import stages (coming from abroad). */
+  importing?: number;
   shipped: number;
   delivered: number;
   /** Live orders waiting for staff to set their delivery cost. */

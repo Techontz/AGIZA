@@ -34,7 +34,8 @@ def customer_orders(customer):
         .select_related("shop__city", "shop__shipping_method", "shop__import_shipping_method", "international__source_country")
         .prefetch_related(
             "adjustments", "returns__history",
-            Prefetch("items", queryset=OrderItem.objects.select_related("variant__product", "vendor__city", "fulfillment")
+            Prefetch("items", queryset=OrderItem.objects.select_related("variant__product", "vendor__city", "fulfillment",
+                                                                "warehouse__country")
                      .prefetch_related("return_lines__return_request")
                      .prefetch_related(
                 Prefetch("variant__product__images", queryset=ProductImage.objects.filter(variant__isnull=True),
