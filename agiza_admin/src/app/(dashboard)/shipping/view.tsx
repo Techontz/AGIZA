@@ -24,7 +24,7 @@ import { shippingApi, shippingKeys, type Parcel } from "@/lib/api/services/shipp
 import { pageMeta } from "@/lib/nav";
 
 type Tab = "ready" | "shipments" | "delivered" | "waiting" | "lost";
-// Shipments still moving; finished ones are under Delivered.
+// Shipments still moving; those ready for collection have their own tab.
 const ACTIVE_STATUSES = STATUS_OPTIONS.map(([v]) => v).filter((v) => v !== "completed" && v !== "cancelled");
 const select = "w-auto bg-white";
 const PAGE_SIZE = 20;
@@ -97,8 +97,8 @@ export function ShippingView() {
 
   const empty = {
     ready: { icon: Package2, title: "No orders ready for shipment", description: "Orders appear here once their goods are received at the consolidation warehouse." },
-    shipments: { icon: Ship, title: "No active shipments", description: "Select orders in Ready for Shipment to create a shipment. Finished shipments are under Delivered." },
-    delivered: { icon: Ship, title: "No delivered shipments yet", description: "Shipments move here once their goods are ready for collection." },
+    shipments: { icon: Ship, title: "No active shipments", description: "Select orders in Ready for Shipment to create a shipment. Shipments ready for collection are in their own tab." },
+    delivered: { icon: Ship, title: "No shipments ready for collection", description: "Shipments move here from Shipments when their status becomes Ready for collection." },
     waiting: { icon: PackageSearch, title: "No orders waiting to be received", description: "Goods on their way to the consolidation warehouse appear here." },
     lost: { icon: PackageX, title: "No lost parcels", description: "Parcels marked lost from Waiting to Receive appear here." },
   }[tab];
@@ -147,7 +147,7 @@ export function ShippingView() {
             options={[
               { value: "ready", label: `Ready for Shipment (${s?.ready ?? "…"})` },
               { value: "shipments", label: `Shipments (${s?.active ?? "…"})` },
-              { value: "delivered", label: `Delivered (${s?.delivered ?? "…"})` },
+              { value: "delivered", label: `Ready for Collection (${s?.delivered ?? "…"})` },
               { value: "waiting", label: `Waiting to Receive (${s?.waiting ?? "…"})` },
               { value: "lost", label: `Lost (${s?.lost ?? "…"})` },
             ]}
