@@ -405,3 +405,18 @@ export type Returnable = {
 };
 
 export type AppNotification = { id: number; title: string; body: string; data: Record<string, string>; read: boolean; created_at: string };
+
+/** The website home page as staff arranged it (GET /app/home/): visible sections in display order. */
+export type HomeBanner = { id: number; title: string; link: string | null; image: string };
+
+type HomeSectionBase = { id: number; title: string; href: string | null };
+
+export type HomeSection =
+  | (HomeSectionBase & { kind: "banners"; banners: HomeBanner[] })
+  | (HomeSectionBase & { kind: "products"; products: ProductCard[]; category?: { id: number; name: string; slug: string } })
+  | (HomeSectionBase & { kind: "categories"; tiles: { category: Category; image: string | null; count: number }[] })
+  | (HomeSectionBase & { kind: "category_rows"; rows: { category: Category; products: ProductCard[] }[] })
+  | (HomeSectionBase & { kind: "services" })
+  | (HomeSectionBase & { kind: "stores"; stores: Store[] });
+
+export type HomePage = { sections: HomeSection[] };

@@ -1,13 +1,14 @@
 import { Globe, Smartphone, Store as StoreIcon, Truck } from "lucide-react";
 import Link from "next/link";
 
+import { BannerCarousel } from "@/components/home/banner-carousel";
 import { JsonLd } from "@/components/json-ld";
 import { ProductImage } from "@/components/product/product-image";
 import { ProductRow } from "@/components/product/product-card";
 import { StoreCard } from "@/components/store/store-card";
 import { Container } from "@/components/ui/container";
 import { BlockTitle, SectionTitle } from "@/components/ui/states";
-import type { Category, Paginated, ProductCard, Store } from "@/lib/api/types";
+import type { Category, HomePage as HomePayload, HomeSection, Paginated, ProductCard, Store } from "@/lib/api/types";
 import { categoryIcon } from "@/lib/category-icons";
 import { categoryHref } from "@/lib/format";
 import { publicGet } from "@/lib/server/django";
@@ -29,26 +30,13 @@ async function safe<T>(promise: Promise<T | null>, fallback: T): Promise<T> {
 const products = (query: Record<string, string | number>) => safe(publicGet<Page<ProductCard>>("products/", { page_size: 12, ...query }), EMPTY as Page<ProductCard>);
 
 /**
- * The agizastore.com home page, filled from the AGIZA catalogue: rows of products under grey
- * section bars ("Featured products", deals, popular, per department with sub-category links),
- * the AGIZA services, top categories and the marketplace's stores.
+ * The agizastore.com home page. Staff arrange its sections in the admin (E-commerce → Website
+ * Homepage): banners, product rows, the AGIZA services, top categories, department rows and stores,
+ * served in order by /app/home/. Until that endpoint answers, the built-in layout below is used.
  */
 export default async function HomePage() {
-  const [featured, deals, popular, latest, stores, categories] = await Promise.all([
-    products({ featured: 1 }),
-    products({ deals: 1 }),
-    products({ ordering: "popular" }),
-    products({ ordering: "newest" }),
-    safe(publicGet<Page<Store>>("stores/", { page_size: 6 }), EMPTY as Page<Store>),
-    safe(publicGet<Category[]>("categories/", undefined, 300), [] as Category[]),
-  ]);
-  // The first row is always full: featured products first, then the newest ones.
-  const seen = new Set(featured.results.map((p) => p.id));
-  const featuredRow = [...featured.results, ...latest.results.filter((p) => !seen.has(p.id))].slice(0, 12);
-  const departments = categories.slice(0, 8);
-  const byDepartment = await Promise.all(departments.map((c) => products({ category: c.id })));
-  const tiles = departments.map((c, i) => ({ category: c, image: byDepartment[i].results.find((p) => p.image)?.image ?? null, count: byDepartment[i].count }));
-  const departmentRows = departments.map((c, i) => ({ category: c, products: byDepartment[i].results })).filter((d) => d.products.length >= 2).slice(0, 3);
+  const home = await safe(publicGet<HomePayload>("home/"), null);
+  const sections = home?.sections ?? [];
 
   return (
     <>
@@ -75,73 +63,7 @@ export default async function HomePage() {
       <h1 className="sr-only">AGIZA — shop AGIZA and trusted Tanzanian stores, delivered across Tanzania</h1>
 
       <Container className="space-y-10 pt-6 sm:space-y-14 sm:pt-10">
-        {featuredRow.length ? (
-          <ProductSection title="Featured products" href={featured.results.length ? "/shop?featured=1" : "/shop?sort=newest"} products={featuredRow} />
-        ) : (
-          <p className="border border-line p-8 text-center text-muted">New products will appear here soon.</p>
-        )}
-
-        {deals.results.length ? <ProductSection title="Ofa kali deals" href="/shop?deals=1" products={deals.results} /> : null}
-
-        <section aria-label="AGIZA services" className="grid gap-4 md:grid-cols-3">
-          <Promo href="/buy-for-me" icon={Globe} kicker="Buy for me" title="We buy from abroad for you" text="China, Dubai, the USA, the UK and India — AGIZA buys, ships and delivers." tone="yellow" />
-          <Promo href="/deliver-for-me" icon={Truck} kicker="Deliver for me" title="Already bought it abroad?" text="AGIZA collects, clears and delivers it to your door in Tanzania." tone="dark" />
-          <Promo href="/stores" icon={StoreIcon} kicker="Stores" title="Shop Tanzania's trusted stores" text="Every store is checked by AGIZA. One cart, one payment, one delivery." tone="grey" />
-        </section>
-
-        {popular.results.length ? <ProductSection title="Popular right now" href="/shop?sort=popular" products={popular.results} /> : null}
-
-        {tiles.length ? (
-          <section>
-            <BlockTitle title="Top Categories" />
-            <ul className="flex flex-wrap justify-center gap-3 sm:gap-5">
-              {tiles.map(({ category, image }) => {
-                const Icon = categoryIcon(category.name);
-                return (
-                  <li key={category.id} className="w-[calc((100%-24px)/3)] sm:w-[150px]">
-                    <Link href={categoryHref(category)} className="group block border border-line-strong p-2.5 text-center hover:border-ink">
-                      <span className="relative block aspect-square overflow-hidden bg-surface">
-                        {image ? (
-                          <ProductImage src={image} alt="" sizes="(min-width: 1280px) 150px, (min-width: 640px) 22vw, 30vw" className="object-contain" />
-                        ) : (
-                          <span className="flex h-full items-center justify-center text-muted">
-                            <Icon className="size-10" aria-hidden />
-                          </span>
-                        )}
-                      </span>
-                      <span className="mt-2 block truncate text-[14px] font-medium text-muted group-hover:text-ink sm:text-[15px]">{category.name}</span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ) : null}
-
-        {departmentRows.map(({ category, products: items }) => (
-          <ProductSection
-            key={category.id}
-            title={category.name}
-            href={categoryHref(category)}
-            products={items}
-            links={category.children.slice(0, 3).map((s) => ({ href: categoryHref(s), label: s.name }))}
-          />
-        ))}
-
-        {latest.results.length && featured.results.length ? <ProductSection title="New arrivals" href="/shop?sort=newest" products={latest.results} /> : null}
-
-        {stores.results.length ? (
-          <section>
-            <SectionTitle title="Stores on AGIZA" action={<ViewAll href="/stores" />} />
-            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {stores.results.slice(0, 6).map((s) => (
-                <li key={s.slug}>
-                  <StoreCard store={s} />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
+        {sections.length ? sections.map((section) => <HomeBlock key={`${section.kind}-${section.id}`} section={section} />) : <DefaultSections />}
 
         <section className="grid gap-4 lg:grid-cols-2">
           <div className="flex flex-col justify-between gap-5 bg-canvas p-6 sm:p-8 xl:flex-row xl:items-center">
@@ -182,6 +104,163 @@ export default async function HomePage() {
   );
 }
 
+/** One staff-managed section; renders nothing when it has no items. */
+function HomeBlock({ section }: { section: HomeSection }) {
+  switch (section.kind) {
+    case "banners":
+      return section.banners.length ? (
+        <BannerCarousel label={section.title || "Featured offers"} banners={section.banners.map((b) => ({ ...b, image: bannerSrc(b.image) }))} />
+      ) : null;
+    case "products": {
+      if (!section.products.length) return null;
+      const title = section.title || section.category?.name || "Products";
+      const href = section.category ? categoryHref(section.category) : section.href;
+      return <ProductSection title={title} href={href} products={section.products} />;
+    }
+    case "categories":
+      return section.tiles.length ? <CategoryTiles title={section.title || "Top Categories"} tiles={section.tiles} /> : null;
+    case "category_rows":
+      return section.rows.length ? (
+        <>
+          {section.rows
+            .filter((r) => r.products.length)
+            .map(({ category, products: items }) => (
+              <ProductSection
+                key={category.id}
+                title={category.name}
+                href={categoryHref(category)}
+                products={items}
+                links={category.children.slice(0, 3).map((s) => ({ href: categoryHref(s), label: s.name }))}
+              />
+            ))}
+        </>
+      ) : null;
+    case "services":
+      return <Services />;
+    case "stores":
+      return section.stores.length ? <Stores title={section.title || "Stores on AGIZA"} stores={section.stores} /> : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Banner images are served by Django; the browser loads them from this website (the CSP only
+ * allows our own origin), through the cached /img/b/<id> route like product images.
+ */
+function bannerSrc(url: string): string {
+  const match = url.match(/\/api\/app\/sliders\/(\d+)\/image\/?$/);
+  return match ? `/img/b/${match[1]}` : url;
+}
+
+/**
+ * The built-in layout, used when /app/home/ is unavailable (e.g. an API that predates it):
+ * rows of products under grey section bars, the AGIZA services, top categories and stores.
+ */
+async function DefaultSections() {
+  const [featured, deals, popular, latest, stores, categories] = await Promise.all([
+    products({ featured: 1 }),
+    products({ deals: 1 }),
+    products({ ordering: "popular" }),
+    products({ ordering: "newest" }),
+    safe(publicGet<Page<Store>>("stores/", { page_size: 6 }), EMPTY as Page<Store>),
+    safe(publicGet<Category[]>("categories/", undefined, 300), [] as Category[]),
+  ]);
+  // The first row is always full: featured products first, then the newest ones.
+  const seen = new Set(featured.results.map((p) => p.id));
+  const featuredRow = [...featured.results, ...latest.results.filter((p) => !seen.has(p.id))].slice(0, 12);
+  const departments = categories.slice(0, 8);
+  const byDepartment = await Promise.all(departments.map((c) => products({ category: c.id })));
+  const tiles = departments.map((c, i) => ({ category: c, image: byDepartment[i].results.find((p) => p.image)?.image ?? null, count: byDepartment[i].count }));
+  const departmentRows = departments.map((c, i) => ({ category: c, products: byDepartment[i].results })).filter((d) => d.products.length >= 2).slice(0, 3);
+
+  return (
+    <>
+      {featuredRow.length ? (
+        <ProductSection title="Featured products" href={featured.results.length ? "/shop?featured=1" : "/shop?sort=newest"} products={featuredRow} />
+      ) : (
+        <p className="border border-line p-8 text-center text-muted">New products will appear here soon.</p>
+      )}
+
+      {deals.results.length ? <ProductSection title="Ofa kali deals" href="/shop?deals=1" products={deals.results} /> : null}
+
+      <Services />
+
+      {popular.results.length ? <ProductSection title="Popular right now" href="/shop?sort=popular" products={popular.results} /> : null}
+
+      {tiles.length ? <CategoryTiles title="Top Categories" tiles={tiles} /> : null}
+
+      {departmentRows.map(({ category, products: items }) => (
+        <ProductSection
+          key={category.id}
+          title={category.name}
+          href={categoryHref(category)}
+          products={items}
+          links={category.children.slice(0, 3).map((s) => ({ href: categoryHref(s), label: s.name }))}
+        />
+      ))}
+
+      {latest.results.length && featured.results.length ? <ProductSection title="New arrivals" href="/shop?sort=newest" products={latest.results} /> : null}
+
+      {stores.results.length ? <Stores title="Stores on AGIZA" stores={stores.results.slice(0, 6)} /> : null}
+    </>
+  );
+}
+
+function Services() {
+  return (
+    <section aria-label="AGIZA services" className="grid gap-4 md:grid-cols-3">
+      <Promo href="/buy-for-me" icon={Globe} kicker="Buy for me" title="We buy from abroad for you" text="China, Dubai, the USA, the UK and India — AGIZA buys, ships and delivers." tone="yellow" />
+      <Promo href="/deliver-for-me" icon={Truck} kicker="Deliver for me" title="Already bought it abroad?" text="AGIZA collects, clears and delivers it to your door in Tanzania." tone="dark" />
+      <Promo href="/stores" icon={StoreIcon} kicker="Stores" title="Shop Tanzania's trusted stores" text="Every store is checked by AGIZA. One cart, one payment, one delivery." tone="grey" />
+    </section>
+  );
+}
+
+function CategoryTiles({ title, tiles }: { title: string; tiles: { category: Category; image: string | null }[] }) {
+  return (
+    <section>
+      <BlockTitle title={title} />
+      <ul className="flex flex-wrap justify-center gap-3 sm:gap-5">
+        {tiles.map(({ category, image }) => {
+          const Icon = categoryIcon(category.name);
+          return (
+            <li key={category.id} className="w-[calc((100%-24px)/3)] sm:w-[150px]">
+              <Link href={categoryHref(category)} className="group block border border-line-strong p-2.5 text-center hover:border-ink">
+                <span className="relative block aspect-square overflow-hidden bg-surface">
+                  {image ? (
+                    <ProductImage src={image} alt="" sizes="(min-width: 1280px) 150px, (min-width: 640px) 22vw, 30vw" className="object-contain" />
+                  ) : (
+                    <span className="flex h-full items-center justify-center text-muted">
+                      <Icon className="size-10" aria-hidden />
+                    </span>
+                  )}
+                </span>
+                <span className="mt-2 block truncate text-[14px] font-medium text-muted group-hover:text-ink sm:text-[15px]">{category.name}</span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function Stores({ title, stores }: { title: string; stores: Store[] }) {
+  return (
+    <section>
+      <SectionTitle title={title} action={<ViewAll href="/stores" />} />
+      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {stores.map((s) => (
+          <li key={s.slug}>
+            <StoreCard store={s} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function ViewAll({ href }: { href: string }) {
   return (
     <Link href={href} className="text-[14px] text-muted hover:text-ink">
@@ -190,7 +269,7 @@ function ViewAll({ href }: { href: string }) {
   );
 }
 
-function ProductSection({ title, href, products: items, links = [] }: { title: string; href: string; products: ProductCard[]; links?: { href: string; label: string }[] }) {
+function ProductSection({ title, href, products: items, links = [] }: { title: string; href?: string | null; products: ProductCard[]; links?: { href: string; label: string }[] }) {
   return (
     <section>
       <SectionTitle
@@ -202,7 +281,7 @@ function ProductSection({ title, href, products: items, links = [] }: { title: s
                 {l.label}
               </Link>
             ))}
-            <ViewAll href={href} />
+            {href ? <ViewAll href={href} /> : null}
           </nav>
         }
       />
