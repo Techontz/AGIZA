@@ -3,6 +3,8 @@
  * from httpOnly cookies) and every failure becomes an ApiError carrying the backend's
  * `{error: {code, message, details}}`.
  */
+import { shrinkImage } from "../shrink-image";
+
 export type FieldErrors = Record<string, string[] | string>;
 
 export class ApiError extends Error {
@@ -77,9 +79,10 @@ export const api = {
   post: <T>(path: string, body?: unknown) => send<T>(PROXY, path, "POST", body ?? {}),
   patch: <T>(path: string, body?: unknown) => send<T>(PROXY, path, "PATCH", body ?? {}),
   delete: <T>(path: string) => send<T>(PROXY, path, "DELETE"),
-  upload: <T>(path: string, file: File) => {
+  /** Photos are shrunk first (see shrinkImage) so they fit the proxy's request limit. */
+  upload: async <T>(path: string, file: File) => {
     const form = new FormData();
-    form.append("file", file);
+    form.append("file", await shrinkImage(file));
     return send<T>(PROXY, path, "POST", form);
   },
   /** Session endpoints handled by this website (cookies). */

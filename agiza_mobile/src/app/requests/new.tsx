@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Upload, X } from 'lucide-react-native';
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { FormScreen } from '@/components/form-screen';
 import { LOCAL_DELIVERY_FIELDS, useLocalDeliveryForm } from '@/components/local-delivery-form';
@@ -80,13 +80,24 @@ export default function NewRequestScreen() {
               details: form.details.trim(),
             },
       );
-      // The request already exists, so a failed photo upload doesn't undo it; staff can ask for it in chat.
-      for (const photo of photos) await requestApi.addPhoto(quote.id, photo).catch(() => null);
-      return quote;
+      // The request already exists, so a failed photo upload doesn't undo it, but the customer is
+      // told (instead of the photo disappearing silently) and can send it in the request's chat.
+      let photosFailed = 0;
+      for (const photo of photos)
+        await requestApi.addPhoto(quote.id, photo).catch(() => {
+          photosFailed += 1;
+        });
+      return { quote, photosFailed };
     },
-    onSuccess: (quote) => {
+    onSuccess: ({ quote, photosFailed }) => {
       queryClient.invalidateQueries({ queryKey: keys.requests });
       router.replace({ pathname: '/requests/[id]', params: { id: quote.id, created: '1' } });
+      if (photosFailed) {
+        Alert.alert(
+          photosFailed === 1 ? "A photo couldn't be uploaded" : `${photosFailed} photos couldn't be uploaded`,
+          'Your request was sent. Check your internet connection, then send the photo to AGIZA in the chat.',
+        );
+      }
     },
   });
   const shipTo = warehouses.data?.results.find((w) => w.country.code === origin);

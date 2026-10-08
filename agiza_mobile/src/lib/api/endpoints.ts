@@ -1,3 +1,4 @@
+import { type PickedPhoto, shrinkPhoto } from '../shrink-photo';
 import { api } from './client';
 import type {
   ChatRoom,
@@ -153,11 +154,11 @@ export const requestApi = {
   list: () => api.get<Paginated<QuoteRequest>>('requests/', { page_size: 50 }),
   get: (id: number) => api.get<QuoteRequest>(`requests/${id}/`),
   create: (data: RequestInput) => api.post<QuoteRequest>('requests/', data),
-  addPhoto: (id: number, photo: { uri: string; mimeType?: string | null; fileName?: string | null }) => {
+  addPhoto: async (id: number, photo: PickedPhoto) => {
+    const small = await shrinkPhoto(photo); // a few hundred KB instead of several MB
     const form = new FormData();
-    const type = photo.mimeType ?? 'image/jpeg';
     // React Native's FormData takes a {uri, name, type} file descriptor.
-    form.append('file', { uri: photo.uri, name: photo.fileName ?? `photo.${type.split('/')[1] ?? 'jpg'}`, type } as unknown as Blob);
+    form.append('file', { uri: small.uri, name: small.fileName, type: small.mimeType } as unknown as Blob);
     return api.upload<QuoteRequest>(`requests/${id}/photos/`, form);
   },
   accept: (id: number, note = '') => api.post<QuoteRequest>(`requests/${id}/accept/`, { note }),

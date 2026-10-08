@@ -3,6 +3,8 @@
  * Every call goes through the Next.js proxy (/api/proxy/*), which attaches the
  * httpOnly-cookie JWT. Components never call fetch() directly.
  */
+import { shrinkImage } from "../shrink-image";
+
 import type { ApiErrorBody } from "./types";
 
 export class ApiError extends Error {
@@ -53,8 +55,22 @@ function redirectToLogin() {
   window.location.assign(`/login?next=${encodeURIComponent(next)}`);
 }
 
+/** Photos in an upload are shrunk first (see shrinkImage) so they fit the proxy's 4.5 MB request limit. */
+async function shrinkFormImages(form: FormData): Promise<FormData> {
+  const out = new FormData();
+  for (const [key, value] of form.entries()) {
+    if (typeof value === "string") out.append(key, value);
+    else {
+      const file = value instanceof File ? await shrinkImage(value) : value;
+      out.append(key, file, value instanceof File ? file.name : undefined);
+    }
+  }
+  return out;
+}
+
 async function request<T>(url: string, { method = "GET", query, body, signal }: RequestOptions = {}): Promise<T> {
   const isForm = typeof FormData !== "undefined" && body instanceof FormData;
+  if (isForm) body = await shrinkFormImages(body as FormData);
   let res: Response;
   try {
     res = await fetch(`${url}${buildQuery(query)}`, {

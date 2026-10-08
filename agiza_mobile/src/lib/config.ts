@@ -20,3 +20,4 @@ function resolveApiUrl(): string {
 
 export const API_URL = resolveApiUrl();
 export const REQUEST_TIMEOUT_MS = 20_000;
+export const UPLOAD_TIMEOUT_MS = 120_000;

@@ -66,10 +66,14 @@ export function RequestForm({ type }: { type: RequestInput["request_type"] }) {
               details: form.details || undefined,
             },
       );
-      // Photos are optional: the request already exists, so a failed upload doesn't undo it.
+      // Photos are optional: the request already exists, so a failed upload doesn't undo it,
+      // but the customer is told which photos didn't arrive (instead of losing them silently).
+      let photosFailed = 0;
       for (const { file } of photos)
-        await requestApi.addPhoto(quote.id, file).catch(() => null);
-      return quote;
+        await requestApi.addPhoto(quote.id, file).catch(() => {
+          photosFailed += 1;
+        });
+      return { ...quote, photosFailed };
     },
     onSuccess: () => client.invalidateQueries({ queryKey: ["requests"] }),
   });
@@ -113,6 +117,14 @@ export function RequestForm({ type }: { type: RequestInput["request_type"] }) {
           AGIZA will reply with a quotation. You&apos;ll find it under your
           requests.
         </p>
+        {submit.data.photosFailed > 0 ? (
+          <p className="rounded-lg bg-warning-soft px-3 py-2 text-[14px] text-warning">
+            {submit.data.photosFailed === 1
+              ? "One photo couldn't be uploaded."
+              : `${submit.data.photosFailed} photos couldn't be uploaded.`}{" "}
+            Your request was still sent — you can send the photo to AGIZA in chat.
+          </p>
+        ) : null}
         <Link
           href="/account/requests"
           className="font-semibold text-primary hover:underline"

@@ -3,7 +3,7 @@
  * (concurrent requests share one refresh), times out slow requests and turns every failure
  * into an ApiError carrying the backend's `{error: {code, message, details}}`.
  */
-import { API_URL, REQUEST_TIMEOUT_MS } from '../config';
+import { API_URL, REQUEST_TIMEOUT_MS, UPLOAD_TIMEOUT_MS } from '../config';
 import { tokenStore } from '../auth/token-store';
 
 export type FieldErrors = Record<string, string[] | string>;
@@ -31,7 +31,14 @@ export class ApiError extends Error {
   }
 }
 
-type Options = { method?: string; body?: unknown; auth?: boolean; query?: Record<string, string | number | boolean | undefined> };
+type Options = {
+  method?: string;
+  body?: unknown;
+  auth?: boolean;
+  query?: Record<string, string | number | boolean | undefined>;
+  /** Uploads get longer than ordinary calls: a photo over mobile data can take a while. */
+  timeoutMs?: number;
+};
 
 let onSessionExpired: () => void = () => {};
 export function setSessionExpiredHandler(handler: () => void) {
@@ -60,7 +67,7 @@ function url(path: string, query?: Options['query']) {
   return `${API_URL}/app/${path}${qs ? `?${qs}` : ''}`;
 }
 
-async function send(path: string, { method = 'GET', body, auth = true, query }: Options) {
+async function send(path: string, { method = 'GET', body, auth = true, query, timeoutMs }: Options) {
   const isForm = body instanceof FormData;
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
@@ -69,7 +76,7 @@ async function send(path: string, { method = 'GET', body, auth = true, query }: 
     if (access) headers.Authorization = `Bearer ${access}`;
   }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs ?? REQUEST_TIMEOUT_MS);
   let res: Response;
   try {
     res = await fetch(url(path, query), {
@@ -122,6 +129,6 @@ export const api = {
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body: body ?? {} }),
   patch: <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
-  upload: <T>(path: string, form: FormData) => request<T>(path, { method: 'POST', body: form }),
+  upload: <T>(path: string, form: FormData) => request<T>(path, { method: 'POST', body: form, timeoutMs: UPLOAD_TIMEOUT_MS }),
   public: <T>(path: string, body?: unknown) => request<T>(path, { method: body ? 'POST' : 'GET', body, auth: false }),
 };
