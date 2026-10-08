@@ -413,6 +413,7 @@ class ShopOrderSerializer(OrderSerializer):
             "prepayment_required": d.prepayment_required,
             "payment_due_at": d.payment_due_at,
             "delivery_fee_pending": d.delivery_fee_pending,
+            "delivery_issue": d.delivery_issue,
             "customs_fee": _dec(d.customs_fee),
             "customs_status": d.customs_status,
             "customs_charges": d.customs_charges or None,

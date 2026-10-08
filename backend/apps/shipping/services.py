@@ -349,7 +349,7 @@ def remove_parcel(shipment: Shipment, parcel: CargoParcel, *, user, request=None
 
 @transaction.atomic
 def transition(shipment: Shipment, to_status: str, *, user, note: str = "", location: str = "",
-               occurred_at=None, request=None) -> Shipment:
+               occurred_at=None, arrival_warehouse=None, request=None) -> Shipment:
     """Move the shipment to a later milestone (or cancel it while still open).
 
     Jumping forward over milestones applies each skipped one in order — its event, departure / arrival
@@ -416,10 +416,13 @@ def transition(shipment: Shipment, to_status: str, *, user, note: str = "", loca
     if to_status == S.COMPLETED:
         from apps.deliveries import services as deliveries
 
+        if arrival_warehouse is not None:  # staff chose where the goods were received
+            shipment.arrival_warehouse = arrival_warehouse
+            shipment.save(update_fields=["arrival_warehouse", "updated_at"])
         for p in parcels:
             p.stage = ParcelStage.ARRIVED
             p.save(update_fields=["stage", "updated_at"])
-            deliveries.create_for_arrival(p, user)
+            deliveries.create_for_arrival(p, user, warehouse=shipment.arrival_warehouse)
     return shipment
 
 

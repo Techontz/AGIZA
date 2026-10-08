@@ -129,6 +129,10 @@ def test_manual_quote_order_waits_for_the_delivery_cost_then_is_paid(app, shop, 
     staff = client_for("admin_l2")
     row = staff.get(f"/api/orders/shop/{order.pk}/").json()
     assert row["details"]["delivery_fee_pending"] is True
+    # Staff see what is missing in the Shipping Engine for this address (never shown to the customer).
+    issue = row["details"]["delivery_issue"]
+    assert issue.startswith("Delivery to Mwanza has no price set up.") and "manual" in issue.lower(), issue
+    assert "delivery_issue" not in body["order"] and "has no price set up" not in str(body)
     listed = staff.get("/api/orders/shop/", {"delivery_fee_pending": "true"}).json()["results"]
     assert [r["reference"] for r in listed] == [order.reference]
     assert staff.get("/api/orders/shop/stats/").json()["delivery_fee_pending"] == 1

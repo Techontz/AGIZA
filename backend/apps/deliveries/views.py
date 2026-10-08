@@ -34,6 +34,7 @@ from .serializers import (
     DeliverySerializer,
     DeliveryTransitionSerializer,
     DeliveryUpdateSerializer,
+    ItemLabelSerializer,
     driver_payload,
     stock_bins,
 )
@@ -281,6 +282,16 @@ class DeliveryViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.C
                        signature_name=s.validated_data["signature_name"], notes=s.validated_data["notes"],
                        completed_at=s.validated_data.get("completed_at"), signature_image=signature,
                        signature_content_type=sig_type, photos=photos)
+        return self._respond(delivery)
+
+    @extend_schema(request=ItemLabelSerializer)
+    @action(detail=True, methods=["post"], url_path="item-label")
+    def item_label(self, request, pk=None):
+        """Correct an item's SKU / bin code for this delivery (drivers on their own deliveries too)."""
+        delivery = self.get_object()
+        s = ItemLabelSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        delivery = run(services.set_item_label, delivery, user=request.user, request=request, **s.validated_data)
         return self._respond(delivery)
 
     @action(detail=True, methods=["post"], parser_classes=[MultiPartParser, FormParser, JSONParser])

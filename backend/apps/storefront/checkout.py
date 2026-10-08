@@ -46,7 +46,16 @@ from apps.shipping_engine.models import EngineSettings, ShippingMethod
 
 from . import cart as carts
 from .models import CheckoutRequest
-from .shipping import Line, allocation, combined_eta, delivery_options, import_options, origin_country, store_hub
+from .shipping import (
+    Line,
+    allocation,
+    combined_eta,
+    delivery_options,
+    import_options,
+    manual_quote_reasons,
+    origin_country,
+    store_hub,
+)
 
 logger = logging.getLogger("apps.storefront")
 
@@ -89,6 +98,7 @@ class Quote:
     payment_methods: list[dict] = field(default_factory=list)
     estimated_delivery: str = ""
     customs: Charges = field(default_factory=Charges)
+    destination: object = None  # the delivery City (for the staff note when the cost must be set by hand)
 
     @property
     def delivery_fee_pending(self) -> bool:
@@ -156,7 +166,8 @@ def _quote(summary: dict, city, method_id: int | None, import_method_id: int | N
     eta = combined_eta(import_selected, selected) if selected else ""
     return Quote(summary, options, selected, fee, total, issues, import_options=import_opts,
                  import_selected=import_selected, import_fee=import_fee, delivery_fee=delivery_fee,
-                 prepayment_required=imported, payment_methods=methods, estimated_delivery=eta, customs=charges)
+                 prepayment_required=imported, payment_methods=methods, estimated_delivery=eta, customs=charges,
+                 destination=city)
 
 
 def _customs(summary: dict, currency: str, import_fee: Decimal, issues: list[str]) -> Charges:
@@ -183,6 +194,18 @@ def _order_lines(quote: Quote) -> list[dict]:
             for line in quote.summary["lines"]]
 
 
+def _delivery_issue(quote: Quote) -> str:
+    """Why staff must set the delivery cost by hand (what is missing in the Shipping Engine)."""
+    lines = [Line(line["item"].variant, line["item"].quantity) for line in quote.summary["lines"] if not line["issue"]]
+    if not lines or quote.destination is None:
+        return ""
+    try:
+        return manual_quote_reasons(lines, quote.destination, currency=quote.summary["currency"])[:2000]
+    except Exception:  # never let the staff note stop the customer's order
+        logger.exception("Couldn't explain the manual delivery quote")
+        return ""
+
+
 def _shipping_fields(quote: Quote) -> dict:
     """What create_shop_order records about delivery: both legs, the fee split by seller, pay-first."""
     shares = allocation(quote.selected)
@@ -202,6 +225,7 @@ def _shipping_fields(quote: Quote) -> dict:
         # No deadline while the delivery cost is pending: it starts when staff set the cost.
         "payment_due_at": payment_deadline() if quote.prepayment_required and not quote.delivery_fee_pending else None,
         "delivery_fee_pending": quote.delivery_fee_pending,
+        "delivery_issue": _delivery_issue(quote) if quote.delivery_fee_pending else "",
         "customs_fee": quote.customs.included,
         "customs_status": quote.customs.status or "",
         "customs_charges": quote.customs.as_dict() if quote.customs.status else {},

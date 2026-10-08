@@ -92,8 +92,9 @@ def create_delivery(order, *, user, delivery_address: str, delivery_type: str = 
     return delivery
 
 
-def create_for_arrival(parcel, user) -> Delivery | None:
-    """A shipment completed: prepare the last-mile delivery of each order."""
+def create_for_arrival(parcel, user, warehouse=None) -> Delivery | None:
+    """A shipment completed: prepare the last-mile delivery of each order, from the warehouse the goods
+    arrived at when staff chose one (otherwise the parcel's warehouse, as before)."""
     order = parcel.order
     if order.deliveries.exclude(status__in=FINISHED).exists():
         return None
@@ -105,7 +106,8 @@ def create_for_arrival(parcel, user) -> Delivery | None:
         order, user=user, delivery_type=delivery_type,
         delivery_address=address.line1 if address else "To be confirmed with the customer",
         destination_city=city, destination_area=address.area if address else "",
-        pickup_point=parcel.warehouse.name if parcel.warehouse_id else "Agiza Warehouse",
+        pickup_point=warehouse.name if warehouse else (parcel.warehouse.name if parcel.warehouse_id else "Agiza Warehouse"),
+        pickup_warehouse=warehouse,
         notes="Created when the shipment arrived",
     )
 
@@ -272,6 +274,37 @@ def complete(delivery: Delivery, *, user, signature_name: str, notes: str = "", 
         from apps.orders import shop
 
         shop.on_delivered(order, user, request)
+    return delivery
+
+
+def _item_keys(delivery: Delivery) -> set[str]:
+    """Keys of the rows the Deliveries screen shows for this delivery (see serializers.delivery_items)."""
+    order = delivery.order
+    lines = list(order.items.values_list("id", flat=True))
+    if lines:
+        return {f"line:{pk}" for pk in lines}
+    return {"cargo"} if getattr(order, "cargo", None) is not None else {"item"}
+
+
+@transaction.atomic
+def set_item_label(delivery: Delivery, *, user, key: str, sku: str | None = None, bin_code: str | None = None,
+                   request=None) -> Delivery:
+    """The delivery team corrects an item's SKU / bin code for this delivery (stock records stay as they are)."""
+    delivery = Delivery.objects.select_for_update().get(pk=delivery.pk)
+    if key not in _item_keys(delivery):
+        raise WorkflowError("That item isn't part of this delivery.")
+    labels = dict(delivery.item_labels or {})
+    before = dict(labels.get(key) or {})
+    after = dict(before)
+    if sku is not None:
+        after["sku"] = sku.strip()
+    if bin_code is not None:
+        after["bin_code"] = bin_code.strip()
+    labels[key] = after
+    delivery.item_labels = labels
+    delivery.save(update_fields=["item_labels", "updated_at"])
+    record_audit(action="update", request=request, instance=delivery, actor=user,
+                 changes={f"item_labels.{key}": [before or None, after]})
     return delivery
 
 

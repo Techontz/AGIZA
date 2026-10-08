@@ -29,7 +29,8 @@ def create_shop_order(*, customer, items: list[dict], shipping_address: str, use
                       import_shipping_method=None, import_fee: Decimal = Decimal("0"),
                       prepayment_required: bool = False, payment_due_at=None,
                       customs_fee: Decimal = Decimal("0"), customs_status: str = "",
-                      customs_charges: dict | None = None, delivery_fee_pending: bool = False) -> Order:
+                      customs_charges: dict | None = None, delivery_fee_pending: bool = False,
+                      delivery_issue: str = "") -> Order:
     """
     items: [{"variant": ProductVariant, "quantity": int, "unit_price": Decimal | None, "sourced_abroad": bool}]
     shipping_allocation: {vendor_id or None: fee} — which seller's items each part of the delivery fee is for.
@@ -68,7 +69,8 @@ def create_shop_order(*, customer, items: list[dict], shipping_address: str, use
                  "import_shipping_method": import_shipping_method, "import_fee": import_fee,
                  "prepayment_required": prepayment_required, "payment_due_at": payment_due_at,
                  "customs_fee": customs_fee, "customs_status": customs_status,
-                 "customs_charges": customs_charges or {}, "delivery_fee_pending": delivery_fee_pending},
+                 "customs_charges": customs_charges or {}, "delivery_fee_pending": delivery_fee_pending,
+                 "delivery_issue": delivery_issue},
     )
     for variant, qty, price, total, abroad in lines:
         try:

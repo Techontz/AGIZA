@@ -187,6 +187,7 @@ class ShipmentSerializer(serializers.ModelSerializer):
     shipping_method = serializers.SerializerMethodField()
     origin = serializers.SerializerMethodField()
     origin_warehouse = serializers.SerializerMethodField()
+    arrival_warehouse = serializers.SerializerMethodField()
     destination = serializers.SerializerMethodField()
     weight_kg = serializers.SerializerMethodField()
     cbm = serializers.SerializerMethodField()
@@ -197,7 +198,7 @@ class ShipmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Shipment
         fields = ["id", "cargo_id", "shipment_number", "shipper", "shipping_method", "origin", "origin_warehouse",
-                  "destination", "status", "status_display", "weight_kg", "cbm", "eta", "departed_at", "arrived_at",
+                  "arrival_warehouse", "destination", "status", "status_display", "weight_kg", "cbm", "eta", "departed_at", "arrived_at",
                   "alert", "alert_display", "master_tracking_number", "notes", "orders", "documents",
                   "allowed_transitions", "created_at", "updated_at"]
 
@@ -212,6 +213,10 @@ class ShipmentSerializer(serializers.ModelSerializer):
 
     def get_origin_warehouse(self, obj) -> dict | None:
         w = obj.origin_warehouse
+        return {"id": w.id, "name": w.name, "code": w.code} if w else None
+
+    def get_arrival_warehouse(self, obj) -> dict | None:
+        w = obj.arrival_warehouse
         return {"id": w.id, "name": w.name, "code": w.code} if w else None
 
     def get_destination(self, obj) -> dict:
@@ -275,6 +280,10 @@ class RemoveParcelSerializer(serializers.Serializer):
 
 class ShipmentTransitionSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=ShipmentStatus.choices)
+    # Ready for collection: the warehouse in the destination country where the goods were received.
+    arrival_warehouse = serializers.PrimaryKeyRelatedField(
+        queryset=Warehouse.objects.filter(status="active").exclude(type="consolidation"), required=False,
+        allow_null=True)
     note = serializers.CharField(required=False, allow_blank=True, default="")
     location = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
     occurred_at = serializers.DateTimeField(required=False)

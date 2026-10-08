@@ -79,6 +79,9 @@ class Delivery(TimeStampedModel):
     delivered_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                    related_name="+")
+    # SKU / bin code the delivery team corrected for this delivery, keyed by item ("line:<id>", "cargo", "item"):
+    # {"line:12": {"sku": "D4", "bin_code": "A-03"}}. Stock records are not changed.
+    item_labels = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ["-created_at", "-id"]

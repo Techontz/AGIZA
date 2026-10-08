@@ -312,3 +312,25 @@ def test_shipment_can_jump_straight_to_ready_for_collection(ops, paid_order, car
     statuses = list(OrderStatusHistory.objects.filter(order=order).values_list("to_status", flat=True))
     assert statuses[-4:] == ["sent_to_consolidation", "shipping_to_destination", "clearance", "ready_for_collection"]
     assert ops.get(f"/api/deliveries/?order={order.id}").json()["results"][0]["status"] == "pending"
+
+
+def test_ready_for_collection_records_the_arrival_warehouse(ops, paid_order, carrier, sea, dar):
+    from apps.deliveries.models import Delivery
+    from apps.locations.models import Warehouse
+
+    order = paid_order()
+    receive(ops, order)
+    sid = create(ops, [order], carrier, sea, dar).json()["id"]
+    hub = Warehouse.objects.create(name="Mwanza Pickup", type="pickup_point", country=dar.country, city=dar)
+    abroad = Warehouse.objects.filter(type="consolidation").first()
+    if abroad is not None:  # goods can't be "received" at a warehouse abroad
+        bad = ops.post(f"{SHIP}/{sid}/transition/", {"status": "completed", "arrival_warehouse": abroad.id},
+                       format="json")
+        assert bad.status_code == 400
+    res = ops.post(f"{SHIP}/{sid}/transition/", {"status": "completed", "arrival_warehouse": hub.id}, format="json")
+    assert res.status_code == 200, res.json()
+    assert res.json()["arrival_warehouse"]["name"] == "Mwanza Pickup"
+    delivery = Delivery.objects.get(order=order)
+    assert delivery.pickup_warehouse_id == hub.id and delivery.pickup_point == "Mwanza Pickup"
+    row = ops.get(f"/api/deliveries/{delivery.id}/").json()
+    assert row["items"][0]["warehouse"] == "Mwanza Pickup"

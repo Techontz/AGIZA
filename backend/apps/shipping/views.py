@@ -149,7 +149,7 @@ class ShipmentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.C
         parcels = CargoParcel.objects.select_related("order", "order__customer").order_by("id")
         return (
             Shipment.objects.select_related("shipper", "shipping_method", "origin_country", "origin_warehouse",
-                                            "destination_city", "destination_city__country")
+                                            "arrival_warehouse", "destination_city", "destination_city__country")
             .prefetch_related(Prefetch("parcels", queryset=parcels), "documents",
                               Prefetch("events", queryset=ShipmentEvent.objects.order_by("occurred_at", "id")))
             .distinct()
@@ -220,7 +220,8 @@ class ShipmentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.C
         s.is_valid(raise_exception=True)
         data = s.validated_data
         shipment = run(services.transition, self.get_object(), data["status"], user=request.user, note=data["note"],
-                       location=data["location"], occurred_at=data.get("occurred_at"), request=request)
+                       location=data["location"], occurred_at=data.get("occurred_at"),
+                       arrival_warehouse=data.get("arrival_warehouse"), request=request)
         return self._respond(shipment)
 
     @extend_schema(request=TrackingUpdateSerializer, responses=ShipmentEventSerializer(many=True))

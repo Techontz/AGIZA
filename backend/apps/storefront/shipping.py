@@ -264,9 +264,27 @@ def import_options(lines: list[Line], *, currency: str) -> list[dict]:
     return options
 
 
+def manual_quote_reasons(lines: list[Line], destination: City, *, currency: str) -> str:
+    """
+    For staff: why delivery to this city couldn't be priced (missing route / rule, manual-quote profile…),
+    one line per delivery method, from the Shipping Engine's own explanations. Never shown to customers.
+    """
+    hub = store_hub()
+    local, _ = split_imported(lines, hub)
+    try:
+        groups = _groups(lines, onward=True)
+    except RateCalculationError as exc:
+        return exc.message
+    reasons: dict[str, str] = {}
+    _price_options(groups, candidate_methods(local, with_local=True), destination, currency, reasons=reasons)
+    lines_out = [f"{name}: {why}" for name, why in reasons.items()]
+    return f"Delivery to {destination.name} has no price set up.\n" + "\n".join(lines_out) if lines_out else ""
+
+
 def _price_options(groups: list[_Group], methods: list[ShippingMethod], destination: City, currency: str, *,
-                   skip_unrouted: bool = False) -> list[dict]:
-    """Each method priced for every group. skip_unrouted: leave out methods with no route at all for these goods."""
+                   skip_unrouted: bool = False, reasons: dict | None = None) -> list[dict]:
+    """Each method priced for every group. skip_unrouted: leave out methods with no route at all for these goods.
+    reasons: when given, filled with {method name: the engine's explanation} for methods that weren't priced."""
     calculator = RateCalculator(EngineSettings.load())
     options = []
     for method in methods:
@@ -280,7 +298,11 @@ def _price_options(groups: list[_Group], methods: list[ShippingMethod], destinat
                 result = _price_group(calculator, method, group, destination)
                 if result["status"] == "manual_quote":
                     manual = True  # the other shipments must still be deliverable with this method
+                    if reasons is not None:
+                        reasons[method.name] = result["message"]
                     continue
+                if result["status"] != "priced" and reasons is not None:
+                    reasons[method.name] = result["message"]
                 if result["status"] != "priced":
                     raise RateCalculationError(UNAVAILABLE_MESSAGES.get(result["status"], result["message"]),
                                                code=f"unpriced:{result['status']}")
@@ -300,6 +322,8 @@ def _price_options(groups: list[_Group], methods: list[ShippingMethod], destinat
                 option["message"] = exc.message
             else:  # engine configuration problems are for staff, not customers
                 logger.error("Shipping Engine configuration error for %s: %s", method.code, exc.message)
+                if reasons is not None:
+                    reasons[method.name] = exc.message
                 option["message"] = "Delivery pricing is being updated. Please try again later."
             options.append(option)
             continue

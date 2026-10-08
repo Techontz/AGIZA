@@ -42,21 +42,30 @@ def stock_bins(deliveries) -> dict:
 
 
 def delivery_items(delivery, bins: dict) -> list[dict]:
-    """What is being delivered: shop lines with SKU and bin, or the single item of other orders."""
+    """What is being delivered: shop lines with SKU and bin, or the single item of other orders.
+
+    Each row has a `key`; SKU / bin code the delivery team corrected (Delivery.item_labels) win over the
+    stock records. Arrived cargo shows the warehouse it arrived at, not where it was consolidated abroad.
+    """
     order = delivery.order
+    pickup = delivery.pickup_warehouse.name if delivery.pickup_warehouse_id else ""
     lines = list(order.items.all())
     if lines:
-        return [{"product_name": i.product_name, "variant_name": i.variant_name, "sku": i.sku,
+        rows = [{"key": f"line:{i.id}", "product_name": i.product_name, "variant_name": i.variant_name, "sku": i.sku,
                  "quantity": i.quantity, "warehouse": i.warehouse.name if i.warehouse_id else "",
                  "bin_code": bins.get((i.variant_id, i.warehouse_id)) or i.variant.product.bin_code or ""}
                 for i in lines]
-    cargo = getattr(order, "cargo", None)
-    if cargo is not None:
-        return [{"product_name": cargo.item_name or order.item_details, "variant_name": "", "sku": "",
-                 "quantity": cargo.packages_quantity, "warehouse": cargo.warehouse.name if cargo.warehouse_id else "",
-                 "bin_code": ""}]
-    return [{"product_name": order.item_details, "variant_name": "", "sku": "", "quantity": 1,
-             "warehouse": delivery.pickup_warehouse.name if delivery.pickup_warehouse_id else "", "bin_code": ""}]
+    elif (cargo := getattr(order, "cargo", None)) is not None:
+        rows = [{"key": "cargo", "product_name": cargo.item_name or order.item_details, "variant_name": "", "sku": "",
+                 "quantity": cargo.packages_quantity,
+                 "warehouse": pickup or (cargo.warehouse.name if cargo.warehouse_id else ""), "bin_code": ""}]
+    else:
+        rows = [{"key": "item", "product_name": order.item_details, "variant_name": "", "sku": "", "quantity": 1,
+                 "warehouse": pickup, "bin_code": ""}]
+    labels = delivery.item_labels or {}
+    for row in rows:
+        row.update({k: v for k, v in (labels.get(row["key"]) or {}).items() if k in ("sku", "bin_code")})
+    return rows
 
 
 class DeliverySerializer(serializers.ModelSerializer):
@@ -176,6 +185,17 @@ class DeliveryTransitionSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, default="")
     exception_flag = serializers.ChoiceField(choices=ExceptionFlag.choices, required=False, allow_blank=True)
     scheduled_at = serializers.DateTimeField(required=False, allow_null=True)
+
+
+class ItemLabelSerializer(serializers.Serializer):
+    key = serializers.CharField(max_length=40)
+    sku = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    bin_code = serializers.CharField(max_length=60, required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        if "sku" not in attrs and "bin_code" not in attrs:
+            raise serializers.ValidationError("Send an SKU, a bin code or both.")
+        return attrs
 
 
 class CompleteSerializer(serializers.Serializer):

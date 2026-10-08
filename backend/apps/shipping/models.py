@@ -92,6 +92,10 @@ class Shipment(TimeStampedModel):
     origin_warehouse = models.ForeignKey("locations.Warehouse", null=True, blank=True, on_delete=models.PROTECT,
                                          related_name="outbound_shipments")
     destination_city = models.ForeignKey("locations.City", on_delete=models.PROTECT, related_name="+")
+    # Where the goods were received when the shipment was marked Ready for collection; the orders'
+    # deliveries start from here.
+    arrival_warehouse = models.ForeignKey("locations.Warehouse", null=True, blank=True, on_delete=models.PROTECT,
+                                          related_name="inbound_shipments")
     status = models.CharField(max_length=24, choices=ShipmentStatus.choices, default=ShipmentStatus.CREATED,
                               db_index=True)
     master_tracking_number = models.CharField(max_length=80, blank=True, help_text="Bill of lading / air waybill")

@@ -301,6 +301,9 @@ class ShopDetails(models.Model):
     # cost and can't pay until staff set it (orders.shop.set_delivery_fee). delivery_fee then holds only import_fee.
     delivery_fee_pending = models.BooleanField(
         default=False, help_text="Waiting for staff to set the delivery cost; the order can't be paid until then")
+    # Why: what the Shipping Engine is missing for this address (route, rule, manual-quote profile), so staff
+    # can set the cost now and fix the setup for the next customers.
+    delivery_issue = models.TextField(blank=True)
 
     def __str__(self) -> str:
         return f"{self._meta.verbose_name} #{self.pk}"

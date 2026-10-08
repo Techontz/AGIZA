@@ -133,3 +133,25 @@ def test_bulk_complete_applies_one_proof_to_every_delivery(ops, deliver, buyer, 
     again = ops.post(f"{DEL}/bulk-complete/", {"deliveries": [c.id], "signature_name": "Fatuma"},
                      format="multipart")
     assert again.status_code == 409 and Delivery.objects.get(pk=c.pk).status == "pending"
+
+
+def test_delivery_team_corrects_item_sku_and_bin_code(ops, deliver, buyer, other, client_for):
+    d = deliver(buyer, "Phones")
+    key = ops.get(f"{DEL}/{d.id}/").json()["items"][0]["key"]
+    assert key == "item"
+    res = ops.post(f"{DEL}/{d.id}/item-label/", {"key": key, "sku": " SKU-77 ", "bin_code": "A-03"}, format="json")
+    assert res.status_code == 200, res.json()
+    item = res.json()["items"][0]
+    assert (item["sku"], item["bin_code"]) == ("SKU-77", "A-03")
+    item = ops.post(f"{DEL}/{d.id}/item-label/", {"key": key, "bin_code": "B-11"}, format="json").json()["items"][0]
+    assert (item["sku"], item["bin_code"]) == ("SKU-77", "B-11")  # only what was sent changes
+    assert ops.post(f"{DEL}/{d.id}/item-label/", {"key": "line:999", "sku": "X"}, format="json").status_code in (400, 409)
+    assert ops.post(f"{DEL}/{d.id}/item-label/", {"key": key}, format="json").status_code == 400
+
+    # A driver edits only the deliveries assigned to them.
+    mine = client_for(StaffLevel.DRIVER, full_name="Juma Ali", phone="+255700333444")
+    stranger = client_for(StaffLevel.DRIVER, full_name="Neema Joseph", phone="+255700555666")
+    ops.post(f"{DEL}/{d.id}/assign-driver/", {"driver": mine.user.id}, format="json")
+    assert mine.post(f"{DEL}/{d.id}/item-label/", {"key": key, "bin_code": "C-01"}, format="json").status_code == 200
+    assert stranger.post(f"{DEL}/{d.id}/item-label/", {"key": key, "bin_code": "Z"}, format="json").status_code == 404
+    assert Delivery.objects.get(pk=d.pk).item_labels == {key: {"sku": "SKU-77", "bin_code": "C-01"}}
