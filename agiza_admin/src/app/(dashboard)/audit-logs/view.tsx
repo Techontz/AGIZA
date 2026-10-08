@@ -1,10 +1,11 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { BarChart3, ScrollText } from "lucide-react";
+import { BarChart3, ScrollText, TrendingUp } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { AuditLogTable } from "@/components/audit/audit-log-table";
+import { ProfitLossTab } from "@/components/reports/profit-loss";
 import { ReportsDashboardTab } from "@/components/reports/reports-dashboard";
 import { Card } from "@/components/ui/card";
 import { Input, SearchInput, Select } from "@/components/ui/form";
@@ -13,6 +14,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { ErrorState } from "@/components/ui/states";
 import { UnderlineTabs } from "@/components/ui/tabs";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { can, useMe } from "@/hooks/use-me";
 import { useUrlFilters } from "@/hooks/use-url-filters";
 import { queryKeys } from "@/lib/api/query-keys";
 import { auditEntitiesService, auditService } from "@/lib/api/services/audit";
@@ -32,13 +34,15 @@ const ACTIONS = [
 
 const PAGE_SIZE = 20;
 
-type Tab = "dashboard" | "audit";
+type Tab = "dashboard" | "profit-loss" | "audit";
 
-/** Reporting page: the Dashboard (default) and the Audit Trail. */
+/** Reporting page: the Dashboard (default), Profit & Loss (finance access) and the Audit Trail. */
 export function AuditLogsView() {
   const meta = pageMeta["/audit-logs"];
+  const { data: me } = useMe();
+  const canSeeProfit = can(me, "finance", "view"); // the report's figures come from Finance
   const [f, setF] = useUrlFilters({ tab: "dashboard" });
-  const tab: Tab = f.tab === "audit" ? "audit" : "dashboard";
+  const tab: Tab = f.tab === "audit" ? "audit" : f.tab === "profit-loss" && canSeeProfit ? "profit-loss" : "dashboard";
 
   return (
     <PageContainer>
@@ -49,10 +53,13 @@ export function AuditLogsView() {
         onChange={(t) => setF({ tab: t })}
         options={[
           { value: "dashboard", label: <><BarChart3 className="size-4" />Dashboard</> },
+          ...(canSeeProfit
+            ? [{ value: "profit-loss" as const, label: <><TrendingUp className="size-4" />Profit &amp; Loss</> }]
+            : []),
           { value: "audit", label: <><ScrollText className="size-4" />Audit Trail</> },
         ]}
       />
-      {tab === "dashboard" ? <ReportsDashboardTab /> : <AuditTrailTab />}
+      {tab === "dashboard" ? <ReportsDashboardTab /> : tab === "profit-loss" ? <ProfitLossTab /> : <AuditTrailTab />}
     </PageContainer>
   );
 }

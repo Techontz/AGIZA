@@ -1,17 +1,6 @@
-import { Suspense } from "react";
+import { redirect } from "next/navigation";
 
-import { ModuleGuard } from "@/components/layout/module-guard";
-
-import { ProfitLossView } from "./view";
-
-export const metadata = { title: "Profit & Loss" };
-
+/** Profit & Loss moved to Reporting & Audit Logs; old links still work. */
 export default function Page() {
-  return (
-    <ModuleGuard module="finance">
-      <Suspense>
-        <ProfitLossView />
-      </Suspense>
-    </ModuleGuard>
-  );
+  redirect("/audit-logs?tab=profit-loss");
 }

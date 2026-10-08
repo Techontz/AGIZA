@@ -5,7 +5,6 @@ import { DollarSign, Download, Package, Ship, TrendingDown, TrendingUp, X } from
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { FinanceShell } from "@/components/finance/finance-shell";
 import { ORDER_TYPES, formatDay, formatMillions, th } from "@/components/finance/shared";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -58,7 +57,8 @@ function presetRange(preset: string, from: string, to: string): { date_from: str
 const marginText = (margin: string | null) => (margin === null ? "—" : `${Number(margin).toFixed(1)}%`);
 const isLoss = (value: string | null | undefined) => Number(value ?? 0) < 0;
 
-export function ProfitLossView() {
+/** Profit & loss per order (total − purchase cost − shipping cost), a tab of Reporting & Audit Logs. */
+export function ProfitLossTab() {
   const [f, setF] = useUrlFilters(DEFAULTS);
   const [search, setSearch] = useState(f.search);
   const debounced = useDebouncedValue(search);
@@ -107,7 +107,7 @@ export function ProfitLossView() {
     value === undefined ? "—" : <span title={formatTSh(value)}>{formatMillions(value)}</span>;
 
   return (
-    <FinanceShell active="profit-loss">
+    <>
       {/* Period + filters */}
       <Card className="p-6 mb-6">
         <div className="flex flex-col gap-4">
@@ -273,7 +273,7 @@ export function ProfitLossView() {
           </>
         )}
       </Card>
-    </FinanceShell>
+    </>
   );
 }
 

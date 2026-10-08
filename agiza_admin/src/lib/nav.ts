@@ -81,7 +81,6 @@ export const navigation: NavItem[] = [
       { id: "invoices", label: "Create Invoice", icon: FileText, href: "/finance/invoices", module: "finance" },
       { id: "payments", label: "Order Payments", icon: FileText, href: "/finance/payments", module: "finance" },
       { id: "wallets", label: "Wallets & Installments", icon: Wallet, href: "/finance/wallets", module: "finance" },
-      { id: "profit-loss", label: "Profit & Loss", icon: TrendingUp, href: "/finance/profit-loss", module: "finance" },
     ],
   },
   { id: "warehouse", label: "Warehouse & Pick Up Points", icon: Warehouse, href: "/warehouse", module: "warehouse" },
@@ -138,7 +137,7 @@ export const pageMeta: Record<string, { title: string; description: string; icon
   "/shipping-engine/test-rate": { title: "Test Shipping Rate", description: "Enter a shipment scenario to see which rule the engine selects — and why. Use this to debug incorrect shipping calculations without a developer.", icon: FlaskConical, module: "shipping_engine" },
   "/shipping-engine/methods": { title: "Shipping Methods", description: "Manage the available shipping methods that can be assigned to routes, zones, and rules.", icon: List, module: "shipping_engine" },
   "/shipping-engine/settings": { title: "Shipping Engine Settings", description: "Configure global defaults and engine behavior", icon: Settings, module: "shipping_engine" },
-  "/audit-logs": { title: "Reporting & Audit Logs", description: "Clients and orders at a glance, compared with the previous period, plus the audit trail of every platform activity", icon: BarChart, module: "audit_logs" },
+  "/audit-logs": { title: "Reporting & Audit Logs", description: "Clients and orders at a glance, profit & loss, and the audit trail of every platform activity", icon: BarChart, module: "audit_logs" },
   "/settings": { title: "Settings", description: "Configure tag rules, role permissions, mobile app home sliders and chat settings", icon: Settings, module: "settings" },
 };
 

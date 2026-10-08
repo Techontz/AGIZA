@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { DollarSign, FileText, Receipt, TrendingUp, Wallet, type LucideIcon } from "lucide-react";
+import { DollarSign, FileText, Receipt, Wallet, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 
 import { PageContainer } from "@/components/ui/page";
@@ -11,13 +11,12 @@ import { formatTSh } from "@/lib/format";
 
 import { formatMillions } from "./shared";
 
-export type FinanceTab = "invoices" | "payments" | "wallets" | "profit-loss";
+export type FinanceTab = "invoices" | "payments" | "wallets";
 
 const TABS: { id: FinanceTab; label: string; href: string; icon: LucideIcon }[] = [
   { id: "invoices", label: "Create Invoice", href: "/finance/invoices", icon: FileText },
   { id: "payments", label: "Order Payments", href: "/finance/payments", icon: Receipt },
   { id: "wallets", label: "Wallets & Installments", href: "/finance/wallets", icon: Wallet },
-  { id: "profit-loss", label: "Profit & Loss", href: "/finance/profit-loss", icon: TrendingUp },
 ];
 
 const CARDS = [
