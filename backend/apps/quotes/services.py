@@ -213,6 +213,10 @@ def approve_orders(quote: QuoteRequest, *, user, order_details: dict, request=No
             item.created_order = order
             item.save(update_fields=["created_order", "updated_at"])
             orders.append(order)
+    # The quotation's chat continues as the order's chat (same messages, one conversation, not two).
+    from apps.chat.models import Conversation
+
+    Conversation.objects.filter(quote=quote, order__isnull=True).update(order=orders[0], updated_at=timezone.now())
     quote.approved_by = user
     quote.approved_at = timezone.now()
     refs = ", ".join(o.reference for o in orders)

@@ -219,7 +219,11 @@ class _SupportView(WriteThrottleMixin, CustomerAPIView):
         if kind == "order":
             return {"order": get_object_or_404(Order, customer=self.customer, reference=value)}
         if kind == "quote" and value.isdigit():
-            return {"quote": get_object_or_404(QuoteRequest, customer=self.customer, pk=int(value))}
+            quote = get_object_or_404(QuoteRequest.objects.select_related("created_order"), customer=self.customer,
+                                      pk=int(value))
+            order = getattr(quote, "created_order", None)
+            # Once approved, a quotation's chat is its order's chat.
+            return {"order": order} if order else {"quote": quote}
         if kind == "return":
             return {"return_request": get_object_or_404(ReturnRequest, order__customer=self.customer, reference=value)}
         raise ValidationError({"room": ["Unknown chat room."]})

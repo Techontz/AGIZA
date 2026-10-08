@@ -289,3 +289,28 @@ def test_out_of_stock_product_request_tells_staff_which_product(app, shop):
     assert f"Shop product (out of stock): Galaxy A54 (#{shop.product.pk}, SKU A54)" in quote.description
     assert app.post(f"{APP}/requests/", {"request_type": "buy_for_me", "item_name": "x", "product": 999999},
                     format="json").status_code == 400
+
+
+def test_a_quotation_chat_becomes_the_order_chat_once_approved(app, request_payload, client_for):
+    quote_id = app.post(f"{APP}/requests/", request_payload, format="json").json()["id"]
+    room = f"quote:{quote_id}"
+    app.post(f"{APP}/support/messages/", {"body": "Which colour?", "room": room}, format="json")
+
+    staff = client_for("admin_l2")
+    staff.post(f"/api/quotes/{quote_id}/respond/", {"quoted_amount": "90000"}, format="json")
+    app.post(f"{APP}/requests/{quote_id}/accept/")
+    defaults = staff.get(f"/api/quotes/{quote_id}/approval-defaults/").json()
+    res = staff.post(f"/api/quotes/{quote_id}/approve/", {"source_country": defaults["source_country"],
+                                                          "service_type": "full_service"}, format="json")
+    assert res.status_code in (200, 201), res.json()
+    order = app.get(f"{APP}/requests/{quote_id}/").json()["order"]
+
+    # One room, now the order's, with the earlier messages; the old quotation room leads to it.
+    rooms = [r for r in app.get(f"{APP}/support/rooms/").json()["rooms"] if r["key"]]
+    assert [(r["key"], r["kind"], r["title"]) for r in rooms] == [(f"order:{order}", "order", f"Order {order}")]
+    assert [m["body"] for m in app.get(f"{APP}/support/messages/", {"room": f"order:{order}"}).json()["messages"]] \
+        == ["Which colour?"]
+    app.post(f"{APP}/support/messages/", {"body": "Thanks!", "room": room}, format="json")
+    assert Conversation.objects.filter(customer=app.account.customer, quote_id=quote_id).count() == 1
+    assert [m["body"] for m in app.get(f"{APP}/support/messages/", {"room": f"order:{order}"}).json()["messages"]] \
+        == ["Which colour?", "Thanks!"]

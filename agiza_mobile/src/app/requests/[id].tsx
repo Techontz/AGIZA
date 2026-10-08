@@ -15,7 +15,7 @@ import type { Paginated, QuoteRequest } from '@/lib/api/types';
 import { date, dateTime, money } from '@/lib/format';
 import { keys } from '@/lib/query';
 import { QUOTE_TONE, requestKind, requestTitle } from '@/lib/requests';
-import { openChatRoom, quoteRoom } from '@/lib/chat';
+import { openChatRoom, orderRoom, quoteRoom } from '@/lib/chat';
 import { colors, space, themed } from '@/theme/tokens';
 
 const NEXT_STEP: Record<string, string> = {
@@ -141,11 +141,15 @@ export default function RequestScreen() {
           />
         </View>
       ) : null}
+      {/* Once approved, the quotation's chat continues as its order's chat (one conversation). */}
       <Button
-        title="Chat with AGIZA about this quotation"
+        title={q.order ? `Chat with AGIZA about order ${q.order}` : 'Chat with AGIZA about this quotation'}
         variant="secondary"
         icon={<MessageCircle size={18} color={colors.ink} />}
-        onPress={() => openChatRoom(...quoteRoom(q.id, q.reference))}
+        onPress={() => {
+          const [room, title] = q.order ? orderRoom(q.order) : quoteRoom(q.id, q.reference);
+          openChatRoom(room, title);
+        }}
       />
       {q.order ? (
         <Button title={`View order ${q.order}`} onPress={() => router.push({ pathname: '/order/[reference]', params: { reference: q.order! } })} />
