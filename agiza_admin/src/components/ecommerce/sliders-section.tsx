@@ -8,19 +8,26 @@ import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
 import { fileSrc } from "@/lib/api/files";
-import { catalogApi, catalogKeys, type MobileSlider } from "@/lib/api/services/catalog";
+import { catalogApi, catalogKeys, type MobileSlider, type SliderPlacement } from "@/lib/api/services/catalog";
 
 import { DeleteDialog, IconSwitch, miniInput, miniLabel, useCatalogMutation, type Errors } from "./shared";
 
+const PLACEMENTS: { value: SliderPlacement; label: string }[] = [
+  { value: "app", label: "App" },
+  { value: "website", label: "Website" },
+  { value: "both", label: "App and website" },
+];
+
 /**
- * Banners on the AGIZA customer app's home screen: an image, an optional title and link.
- * Shown under Settings; the API grants access through Settings or E-commerce permissions.
+ * Home banners of the AGIZA customer app and/or website: an image, an optional title and link,
+ * and where it shows. Shown under Settings; the API grants access through Settings or E-commerce permissions.
  */
 export function SlidersSection({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: catalogKeys.sliders, queryFn: ({ signal }) => catalogApi.sliders.list(signal) });
   const [title, setTitle] = useState("");
   const [link, setLink] = useState("");
+  const [placement, setPlacement] = useState<SliderPlacement>("app");
   const [file, setFile] = useState<File | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [busy, setBusy] = useState(false);
@@ -29,6 +36,10 @@ export function SlidersSection({ canEdit }: { canEdit: boolean }) {
   const toggle = useCatalogMutation((s: MobileSlider) => catalogApi.sliders.update(s.id, { is_active: !s.is_active }), {
     success: (s) => `${s.title || "Slider"} is now ${s.is_active ? "shown" : "hidden"}`,
   });
+  const place = useCatalogMutation(
+    ({ slider, placement }: { slider: MobileSlider; placement: SliderPlacement }) => catalogApi.sliders.update(slider.id, { placement }),
+    { success: (s) => `${s.title || "Slider"} now shows on: ${PLACEMENTS.find((p) => p.value === s.placement)?.label ?? s.placement}` },
+  );
 
   const refresh = () => qc.invalidateQueries({ queryKey: catalogKeys.sliders });
 
@@ -41,12 +52,13 @@ export function SlidersSection({ canEdit }: { canEdit: boolean }) {
     setErrors({});
     setBusy(true);
     try {
-      const slider = await catalogApi.sliders.create({ title: title.trim(), link: link.trim(), is_active: true, sort_order: (list.data?.length ?? 0) + 1 });
+      const slider = await catalogApi.sliders.create({ title: title.trim(), link: link.trim(), placement, is_active: true, sort_order: (list.data?.length ?? 0) + 1 });
       await catalogApi.sliders.uploadImage(slider.id, file);
       setTitle("");
       setLink("");
       setFile(null);
-      toast.success("Slider added to the app");
+      setPlacement("app");
+      toast.success("Banner added");
       refresh();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not add the slider";
@@ -85,6 +97,16 @@ export function SlidersSection({ canEdit }: { canEdit: boolean }) {
               <input id="slider-link" type="url" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://…" className={`${miniInput} w-64`} />
             </div>
             <div>
+              <label htmlFor="slider-placement" className={miniLabel}>Show on</label>
+              <select id="slider-placement" value={placement} onChange={(e) => setPlacement(e.target.value as SliderPlacement)} className={miniInput}>
+                {PLACEMENTS.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
               <label htmlFor="slider-file" className={miniLabel}>Image *</label>
               <input id="slider-file" type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="text-sm" />
             </div>
@@ -110,7 +132,7 @@ export function SlidersSection({ canEdit }: { canEdit: boolean }) {
           ))}
         </div>
       ) : sliders.length === 0 ? (
-        <EmptyState icon={ImageIcon} title="No sliders yet" description="Add a banner to show it at the top of the AGIZA app's home screen." />
+        <EmptyState icon={ImageIcon} title="No sliders yet" description="Add a banner to show it at the top of the AGIZA app's or website's home page." />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {sliders.map((slider) => (
@@ -120,7 +142,7 @@ export function SlidersSection({ canEdit }: { canEdit: boolean }) {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={`${fileSrc(`catalog/sliders/${slider.id}/image`)}?v=${encodeURIComponent(slider.updated_at)}`} alt="" className="w-full h-full object-cover" />
                 ) : (
-                  <span className="text-xs text-red-600">No image: not shown in the app</span>
+                  <span className="text-xs text-red-600">No image: not shown</span>
                 )}
               </div>
               <div className="p-4 flex items-center justify-between gap-3">
@@ -128,6 +150,24 @@ export function SlidersSection({ canEdit }: { canEdit: boolean }) {
                   <p className="text-sm font-semibold text-gray-900 truncate">{slider.title || "Untitled"}</p>
                   {slider.link && <p className="text-xs text-gray-500 truncate">{slider.link}</p>}
                   <p className={`text-xs font-medium mt-0.5 ${slider.is_active ? "text-green-600" : "text-gray-400"}`}>{slider.is_active ? "Shown" : "Hidden"}</p>
+                  {canEdit ? (
+                    <select
+                      value={slider.placement}
+                      onChange={(e) => place.mutate({ slider, placement: e.target.value as SliderPlacement })}
+                      disabled={place.isPending && place.variables?.slider.id === slider.id}
+                      aria-label={`Where ${slider.title || "this slider"} shows`}
+                      title="Show on"
+                      className="mt-1.5 px-2 py-1 border border-gray-300 rounded-md text-xs bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                    >
+                      {PLACEMENTS.map((p) => (
+                        <option key={p.value} value={p.value}>
+                          Show on: {p.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-xs text-gray-500 mt-0.5">Show on: {PLACEMENTS.find((p) => p.value === slider.placement)?.label ?? slider.placement}</p>
+                  )}
                 </div>
                 {canEdit && (
                   <div className="flex items-center gap-1">

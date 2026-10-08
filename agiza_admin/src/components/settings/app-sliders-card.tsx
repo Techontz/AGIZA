@@ -5,7 +5,7 @@ import { ImageIcon } from "lucide-react";
 import { SlidersSection } from "@/components/ecommerce/sliders-section";
 import { Card } from "@/components/ui/card";
 
-/** Mobile app home sliders (managed with Settings or E-commerce permissions). */
+/** Home banners of the app and website (managed with Settings or E-commerce permissions). */
 export function AppSlidersCard({ canView, canEdit }: { canView: boolean; canEdit: boolean }) {
   return (
     <Card className="p-6 mb-6">
@@ -14,8 +14,8 @@ export function AppSlidersCard({ canView, canEdit }: { canView: boolean; canEdit
           <ImageIcon className="size-6 text-fuchsia-600" />
         </div>
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Mobile App Home Sliders</h2>
-          <p className="text-sm text-gray-600">Banners at the top of the AGIZA customer app&apos;s home screen</p>
+          <h2 className="text-xl font-bold text-gray-900">Home Banners (app &amp; website)</h2>
+          <p className="text-sm text-gray-600">Banners at the top of the AGIZA customer app&apos;s and website&apos;s home page</p>
         </div>
       </div>
 

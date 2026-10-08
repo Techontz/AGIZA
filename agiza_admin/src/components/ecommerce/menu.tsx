@@ -5,6 +5,8 @@ import {
   ChevronRight,
   DollarSign,
   Flag,
+  Flame,
+  LayoutTemplate,
   Package,
   Percent,
   Settings,
@@ -41,7 +43,9 @@ export type Section =
   | "reviews"
   | "options"
   | "labels"
-  | "brands";
+  | "brands"
+  | "homepage"
+  | "hotsales";
 
 interface MenuItem {
   title: string;
@@ -83,6 +87,10 @@ const MENU: MenuItem[] = [
     border: "hover:border-rose-500", tile: "bg-rose-100 group-hover:bg-rose-200", iconColor: "text-rose-600", chevron: "group-hover:text-rose-600" },
   { title: "Brands", description: "Add and manage product brands with logos and descriptions", icon: DollarSign, section: "brands",
     border: "hover:border-yellow-500", tile: "bg-yellow-100 group-hover:bg-yellow-200", iconColor: "text-yellow-600", chevron: "group-hover:text-yellow-600" },
+  { title: "Hot Sales", description: "Choose the products in the app's Hot Sales and the order they appear in", icon: Flame, section: "hotsales",
+    border: "hover:border-orange-500", tile: "bg-orange-100 group-hover:bg-orange-200", iconColor: "text-orange-600", chevron: "group-hover:text-orange-600" },
+  { title: "Website Homepage", description: "Arrange the blocks and product rows on the website's home page", icon: LayoutTemplate, section: "homepage",
+    border: "hover:border-fuchsia-500", tile: "bg-fuchsia-100 group-hover:bg-fuchsia-200", iconColor: "text-fuchsia-600", chevron: "group-hover:text-fuchsia-600" },
 ];
 
 export function EcommerceMenu({ onOpen }: { onOpen: (section: Section) => void }) {

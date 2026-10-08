@@ -234,18 +234,70 @@ export interface ProductStats {
 
 /* ------------------------------------------------------------------ keys */
 
-/** A banner on the customer app's home screen. */
+/** Where a home banner is shown. */
+export type SliderPlacement = "app" | "website" | "both";
+
+/** A home banner: on the customer app, the website, or both. */
 export interface MobileSlider {
   id: number;
   title: string;
   link: string;
+  placement: SliderPlacement;
   is_active: boolean;
   sort_order: number;
   has_image: boolean;
   created_at: string;
   updated_at: string;
 }
-export type MobileSliderInput = Pick<MobileSlider, "title" | "link" | "is_active" | "sort_order">;
+export type MobileSliderInput = Pick<MobileSlider, "title" | "link" | "placement" | "is_active" | "sort_order">;
+
+export type HomeSectionKind = "banners" | "products" | "categories" | "category_rows" | "services" | "stores";
+export type HomeSectionSource = "" | "manual" | "featured" | "deals" | "popular" | "newest" | "category";
+
+/** One block of the customer website's home page (in display order). */
+export interface HomeSection {
+  id: number;
+  kind: HomeSectionKind;
+  kind_display: string;
+  title: string;
+  is_active: boolean;
+  sort_order: number;
+  source: HomeSectionSource;
+  source_display: string;
+  category: number | null;
+  category_name: string | null;
+  fill_with_newest: boolean;
+  limit: number;
+  /** Hand-picked products (source "manual"), in order. */
+  products: { id: number; name: string; sku: string; status: string }[];
+  /** Categories of a "categories" block (empty = the main categories). */
+  category_ids: number[];
+  categories_detail: { id: number; name: string }[];
+  created_at: string;
+  updated_at: string;
+}
+export interface HomeSectionInput {
+  kind: HomeSectionKind;
+  title: string;
+  is_active: boolean;
+  sort_order: number;
+  source: HomeSectionSource;
+  category: number | null;
+  fill_with_newest: boolean;
+  limit: number;
+  /** Write-only: hand-picked product ids in display order. */
+  product_ids: number[];
+  category_ids: number[];
+}
+
+export interface HotSalesProduct {
+  id: number;
+  name: string;
+  sku: string;
+  price: string;
+  status: string;
+  image: string | null;
+}
 
 export const catalogKeys = {
   all: ["catalog"] as const,
@@ -254,6 +306,8 @@ export const catalogKeys = {
   brands: ["catalog", "brands"] as const,
   labels: ["catalog", "labels"] as const,
   sliders: ["catalog", "sliders"] as const,
+  homeSections: ["catalog", "home-sections"] as const,
+  hotSales: ["catalog", "hot-sales"] as const,
   options: ["catalog", "options"] as const,
   vendors: ["catalog", "vendors"] as const,
   vendorList: (query: object) => ["catalog", "vendors", query] as const,
@@ -300,6 +354,22 @@ export const catalogApi = {
       return api.post<MobileSlider>(`catalog/sliders/${id}/image`, form);
     },
   },
+  /** Featured products in display order ("Hot Sales" in the app, the website's featured row). */
+  hotSales: {
+    list: (signal?: AbortSignal) => api.get<HotSalesProduct[]>("catalog/hot-sales", undefined, signal),
+    /** Saves the whole list in this order; products left out stop being featured. */
+    save: (ids: number[]) => api.post<HotSalesProduct[]>("catalog/hot-sales", { ids }),
+  },
+  homeSections: {
+    list: (signal?: AbortSignal) => api.get<HomeSection[]>("catalog/home-sections", undefined, signal),
+    create: (body: Partial<HomeSectionInput> & { kind: HomeSectionKind }) =>
+      api.post<HomeSection>("catalog/home-sections", body),
+    update: (id: number, body: Partial<HomeSectionInput>) => api.patch<HomeSection>(`catalog/home-sections/${id}`, body),
+    remove: (id: number) => api.delete(`catalog/home-sections/${id}`),
+    /** Saves the order of every block: `ids` top to bottom. */
+    reorder: (ids: number[]) => api.post<HomeSection[]>("catalog/home-sections/reorder", { ids }),
+  },
+
   labels: {
     list: (signal?: AbortSignal) => api.get<Label[]>("catalog/labels", undefined, signal),
     create: (body: LabelInput) => api.post<Label>("catalog/labels", body),
