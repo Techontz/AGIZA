@@ -83,19 +83,25 @@ export default function NewRequestScreen() {
       // The request already exists, so a failed photo upload doesn't undo it, but the customer is
       // told (instead of the photo disappearing silently) and can send it in the request's chat.
       let photosFailed = 0;
+      let reason = '';
       for (const photo of photos)
-        await requestApi.addPhoto(quote.id, photo).catch(() => {
+        await requestApi.addPhoto(quote.id, photo).catch((e: unknown) => {
           photosFailed += 1;
+          // Keep the server's own reason (e.g. file type, size, server error) to show the customer.
+          if (!reason && e instanceof ApiError) {
+            const field = e.field('file');
+            reason = field ?? (e.status ? `${e.message} (error ${e.status})` : e.message);
+          }
         });
-      return { quote, photosFailed };
+      return { quote, photosFailed, reason };
     },
-    onSuccess: ({ quote, photosFailed }) => {
+    onSuccess: ({ quote, photosFailed, reason }) => {
       queryClient.invalidateQueries({ queryKey: keys.requests });
       router.replace({ pathname: '/requests/[id]', params: { id: quote.id, created: '1' } });
       if (photosFailed) {
         Alert.alert(
           photosFailed === 1 ? "A photo couldn't be uploaded" : `${photosFailed} photos couldn't be uploaded`,
-          'Your request was sent. Check your internet connection, then send the photo to AGIZA in the chat.',
+          `Your request was sent.${reason ? `\n\nReason: ${reason}` : ''}\n\nYou can send the photo to AGIZA in this request's chat.`,
         );
       }
     },

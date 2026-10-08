@@ -67,6 +67,49 @@ function url(path: string, query?: Options['query']) {
   return `${API_URL}/app/${path}${qs ? `?${qs}` : ''}`;
 }
 
+async function sendJson(target: string, method: string, headers: Record<string, string>, body: unknown, timeout: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const res = await fetch(target, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const data = res.status === 204 ? null : await res.json().catch(() => null);
+    return { status: res.status, ok: res.ok, data };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * File uploads go through React Native's XMLHttpRequest, not `fetch`: Expo replaces the global
+ * `fetch` with one that can't send React Native file parts (`{ uri, name, type }`), so photos
+ * never left the phone. XMLHttpRequest uses React Native's networking, which streams the file.
+ */
+function sendForm(target: string, method: string, headers: Record<string, string>, form: FormData, timeout: number) {
+  return new Promise<{ status: number; ok: boolean; data: unknown }>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, target);
+    for (const [key, value] of Object.entries(headers)) xhr.setRequestHeader(key, value);
+    xhr.timeout = timeout;
+    xhr.onload = () => {
+      let data: unknown = null;
+      try {
+        data = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+      } catch {
+        data = null;
+      }
+      resolve({ status: xhr.status, ok: xhr.status >= 200 && xhr.status < 300, data });
+    };
+    xhr.onerror = () => reject(new Error('network'));
+    xhr.ontimeout = () => reject(Object.assign(new Error('timeout'), { name: 'AbortError' }));
+    xhr.send(form);
+  });
+}
+
 async function send(path: string, { method = 'GET', body, auth = true, query, timeoutMs }: Options) {
   const isForm = body instanceof FormData;
   const headers: Record<string, string> = { Accept: 'application/json' };
@@ -75,16 +118,12 @@ async function send(path: string, { method = 'GET', body, auth = true, query, ti
     const access = await tokenStore.getAccess();
     if (access) headers.Authorization = `Bearer ${access}`;
   }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs ?? REQUEST_TIMEOUT_MS);
-  let res: Response;
+  const timeout = timeoutMs ?? REQUEST_TIMEOUT_MS;
+  let res: { status: number; ok: boolean; data: any };
   try {
-    res = await fetch(url(path, query), {
-      method,
-      headers,
-      body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
-      signal: controller.signal,
-    });
+    res = isForm
+      ? await sendForm(url(path, query), method, headers, body as FormData, timeout)
+      : await sendJson(url(path, query), method, headers, body, timeout);
   } catch (e) {
     const timedOut = e instanceof Error && e.name === 'AbortError';
     throw new ApiError(
@@ -92,11 +131,9 @@ async function send(path: string, { method = 'GET', body, auth = true, query, ti
       0,
       timedOut ? 'timeout' : 'network_error',
     );
-  } finally {
-    clearTimeout(timer);
   }
   if (res.status === 204) return null;
-  const data = await res.json().catch(() => null);
+  const data = res.data;
   if (!res.ok) {
     const err = data?.error;
     throw new ApiError(
