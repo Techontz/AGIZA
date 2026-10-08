@@ -23,7 +23,9 @@ import { useUrlFilters } from "@/hooks/use-url-filters";
 import { shippingApi, shippingKeys, type Parcel } from "@/lib/api/services/shipping";
 import { pageMeta } from "@/lib/nav";
 
-type Tab = "ready" | "shipments" | "waiting" | "lost";
+type Tab = "ready" | "shipments" | "delivered" | "waiting" | "lost";
+// Shipments still moving; finished ones are under Delivered.
+const ACTIVE_STATUSES = STATUS_OPTIONS.map(([v]) => v).filter((v) => v !== "completed" && v !== "cancelled");
 const select = "w-auto bg-white";
 const PAGE_SIZE = 20;
 
@@ -40,7 +42,11 @@ export function ShippingView() {
 
   const base = { search: f.search, shipper: f.shipper, origin: f.origin, method: f.method, page: Number(f.page), page_size: PAGE_SIZE };
   const parcelQuery = { ...base, stage: tab === "waiting" || tab === "lost" ? tab : "ready" };
-  const shipmentQuery = { ...base, status: f.status };
+  const shipmentList = tab === "shipments" || tab === "delivered";
+  const shipmentQuery = {
+    ...base,
+    status: tab === "delivered" ? "completed" : f.status === "all" ? ACTIVE_STATUSES.join(",") : f.status,
+  };
 
   const stats = useQuery({ queryKey: shippingKeys.stats, queryFn: shippingApi.shipments.stats });
   const parcels = useQuery({
@@ -48,13 +54,13 @@ export function ShippingView() {
     queryFn: ({ signal }) => shippingApi.parcels.list(parcelQuery, signal),
     // Keep the previous page while paging/filtering, but never show Ready rows under Waiting (or vice versa).
     placeholderData: (prev, prevQuery) => ((prevQuery?.queryKey[2] as { stage?: string } | undefined)?.stage === parcelQuery.stage ? prev : undefined),
-    enabled: tab !== "shipments",
+    enabled: !shipmentList,
   });
   const shipments = useQuery({
     queryKey: shippingKeys.shipments(shipmentQuery),
     queryFn: ({ signal }) => shippingApi.shipments.list(shipmentQuery, signal),
     placeholderData: keepPreviousData,
-    enabled: tab === "shipments",
+    enabled: shipmentList,
   });
   const carriers = useCarriers();
   const origins = useOriginCountries();
@@ -81,7 +87,7 @@ export function ShippingView() {
   const expanded = f.open ? Number(f.open) : null;
 
   const s = stats.data;
-  const list = tab === "shipments" ? shipments : parcels;
+  const list = shipmentList ? shipments : parcels;
   const data = list.data;
   const pagination = data && data.total_pages > 1 && (
     <Pagination page={data.page} pageSize={data.page_size} count={data.count} totalPages={data.total_pages} onPageChange={(p) => setF({ page: String(p) })} disabled={list.isFetching} />
@@ -91,7 +97,8 @@ export function ShippingView() {
 
   const empty = {
     ready: { icon: Package2, title: "No orders ready for shipment", description: "Orders appear here once their goods are received at the consolidation warehouse." },
-    shipments: { icon: Ship, title: "No shipments found", description: "Select orders in Ready for Shipment to create a shipment." },
+    shipments: { icon: Ship, title: "No active shipments", description: "Select orders in Ready for Shipment to create a shipment. Finished shipments are under Delivered." },
+    delivered: { icon: Ship, title: "No delivered shipments yet", description: "Shipments move here once their goods are ready for collection." },
     waiting: { icon: PackageSearch, title: "No orders waiting to be received", description: "Goods on their way to the consolidation warehouse appear here." },
     lost: { icon: PackageX, title: "No lost parcels", description: "Parcels marked lost from Waiting to Receive appear here." },
   }[tab];
@@ -128,7 +135,7 @@ export function ShippingView() {
             {tab === "shipments" && (
               <Select className={select} aria-label="Filter by status" value={f.status} onChange={(e) => setF({ status: e.target.value })}>
                 <option value="all">All Statuses</option>
-                {STATUS_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                {STATUS_OPTIONS.filter(([v]) => v !== "completed").map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </Select>
             )}
           </div>
@@ -139,7 +146,8 @@ export function ShippingView() {
             onChange={(t) => setF({ tab: t, open: "", status: t === "shipments" ? f.status : "all" })}
             options={[
               { value: "ready", label: `Ready for Shipment (${s?.ready ?? "…"})` },
-              { value: "shipments", label: `Shipments (${s?.total ?? "…"})` },
+              { value: "shipments", label: `Shipments (${s?.active ?? "…"})` },
+              { value: "delivered", label: `Delivered (${s?.delivered ?? "…"})` },
               { value: "waiting", label: `Waiting to Receive (${s?.waiting ?? "…"})` },
               { value: "lost", label: `Lost (${s?.lost ?? "…"})` },
             ]}

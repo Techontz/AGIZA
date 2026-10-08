@@ -151,6 +151,8 @@ export interface Shipment {
 
 export interface ShippingStats {
   total: number;
+  /** Shipments that reached the end of their journey (Ready for collection). */
+  delivered?: number;
   active: number;
   in_transit: number;
   alerts: number;

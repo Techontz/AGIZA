@@ -191,6 +191,8 @@ def test_milestones_move_orders_and_complete_creates_deliveries(ops, paid_order,
     body = res.json()
     assert body["status"] == "completed" and body["allowed_transitions"] == []
     assert body["departed_at"] and body["arrived_at"]
+    stats = ops.get(f"{SHIP}/stats/").json()  # it leaves the active list and counts as delivered
+    assert stats["active"] == 0 and stats["delivered"] == 1
     timeline = body["orders"][0]["timeline"]
     assert [m["status"] for m in timeline] == ["completed"] * 7
     assert timeline[2]["label"] == "Loaded on Vessel"

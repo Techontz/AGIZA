@@ -257,6 +257,7 @@ class ShipmentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.C
         shipments = Shipment.objects.aggregate(
             total=Count("id", filter=~Q(status=ShipmentStatus.CANCELLED)),
             active=Count("id", filter=~Q(status__in=[ShipmentStatus.COMPLETED, ShipmentStatus.CANCELLED])),
+            delivered=Count("id", filter=Q(status=ShipmentStatus.COMPLETED)),
             in_transit=Count("id", filter=Q(status=ShipmentStatus.SHIPPING_TO_DESTINATION)),
             alerts=Count("id", filter=~Q(alert="") & ~Q(status__in=[ShipmentStatus.COMPLETED,
                                                                      ShipmentStatus.CANCELLED])),
