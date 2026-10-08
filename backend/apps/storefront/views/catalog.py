@@ -31,7 +31,9 @@ from ..shipping import Line, delivery_options, import_options, is_imported, orig
 from .base import PublicAPIView
 
 ORDERING = {"newest": ("-created_at", "-id"), "price": ("price", "id"), "-price": ("-price", "id"),
-            "name": ("name", "id"), "popular": ("-popularity", "-created_at", "-id")}
+            "name": ("name", "id"), "popular": ("-popularity", "-created_at", "-id"),
+            # featured products in the order staff set (E-commerce → Hot Sales), newest first among equals
+            "featured": ("featured_position", "-created_at", "-id")}
 
 
 def _price(value: str | None) -> Decimal | None:
@@ -158,7 +160,7 @@ class ProductListView(PublicAPIView):
             qs = qs.filter(featured=True)
         if params.get("deals") in ("1", "true"):
             qs = qs.filter(ofa_kali=True)
-        ordering = params.get("ordering", "newest")
+        ordering = params.get("ordering", "featured" if params.get("featured") in ("1", "true") else "newest")
         if params.get("for_you") in ("1", "true"):
             picked = _for_you(request)
             if picked is None:
@@ -364,9 +366,11 @@ class SliderListView(PublicAPIView):
     """Home-screen banners (staff manage them in the admin)."""
 
     def get(self, request):
-        from apps.catalog.models import MobileSlider
+        from apps.catalog.models import MobileSlider, SliderPlacement
 
-        rows = MobileSlider.objects.filter(is_active=True).exclude(image="")
+        # The app shows app banners (and those for both); website-only ones are on the site's home page.
+        rows = MobileSlider.objects.filter(is_active=True, placement__in=[SliderPlacement.APP, SliderPlacement.BOTH]) \
+            .exclude(image="")
         return Response([{
             "id": s.id, "title": s.title, "link": s.link or None, "is_active": True,
             "image": request.build_absolute_uri(reverse("storefront:slider-image", kwargs={"pk": s.pk})),

@@ -7,6 +7,8 @@ from .views import (
     CategoryViewSet,
     DeliveryEstimateView,
     EstimateRouteViewSet,
+    HomeSectionViewSet,
+    HotSalesView,
     ImageFileView,
     LabelViewSet,
     MobileSliderViewSet,
@@ -23,6 +25,7 @@ router.register("catalog/categories", CategoryViewSet, basename="category")
 router.register("catalog/brands", BrandViewSet, basename="brand")
 router.register("catalog/labels", LabelViewSet, basename="label")
 router.register("catalog/sliders", MobileSliderViewSet, basename="mobile-slider")
+router.register("catalog/home-sections", HomeSectionViewSet, basename="home-section")
 router.register("catalog/options", OptionViewSet, basename="product-option")
 router.register("catalog/vendors", VendorViewSet, basename="vendor")
 router.register("catalog/products", ProductViewSet, basename="product")
@@ -34,6 +37,7 @@ urlpatterns = [
     path("catalog/brands/<int:pk>/logo/file/", BrandLogoView.as_view(), name="brand-logo"),
     path("catalog/vendors/<int:pk>/<str:kind>/file/", VendorMediaFileView.as_view(), name="vendor-media-file"),
     path("catalog/settings/", StoreSettingsView.as_view(), name="store-settings"),
+    path("catalog/hot-sales/", HotSalesView.as_view(), name="hot-sales"),
     path("catalog/delivery-estimate/", DeliveryEstimateView.as_view(), name="delivery-estimate"),
     *router.urls,
 ]

@@ -393,6 +393,8 @@ class Product(TimeStampedModel):
                                               validators=POSITIVE)
     # 10. Shop & discovery
     featured = models.BooleanField(default=False)
+    # Order of featured products ("Hot Sales" in the app, the website's featured row): lowest first.
+    featured_position = models.PositiveIntegerField(default=0)
     ofa_kali = models.BooleanField(default=False)
     allow_save = models.BooleanField(default=True)
     allow_chat = models.BooleanField(default=True)
@@ -605,13 +607,20 @@ def slider_image_path(instance, filename):
     return f"catalog/sliders/{safe_filename(filename)}"
 
 
+class SliderPlacement(models.TextChoices):
+    APP = "app", "App"
+    WEBSITE = "website", "Website"
+    BOTH = "both", "App and website"
+
+
 class MobileSlider(TimeStampedModel):
-    """A banner on the customer app's home screen, managed by staff."""
+    """A home banner managed by staff: on the customer app, the website, or both."""
 
     title = models.CharField(max_length=120, blank=True)
     image = models.FileField(upload_to=slider_image_path, blank=True)
     image_content_type = models.CharField(max_length=100, blank=True)
     link = models.URLField(blank=True, help_text="Opened when the banner is tapped (optional)")
+    placement = models.CharField(max_length=10, choices=SliderPlacement.choices, default=SliderPlacement.APP)
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveSmallIntegerField(default=0)
 
@@ -620,3 +629,63 @@ class MobileSlider(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.title or f"Slider #{self.pk}"
+
+
+class HomeSection(TimeStampedModel):
+    """
+    One block of the website's home page, in order (staff arrange them under E-commerce → Website Homepage).
+    Product rows take their products from a source: hand-picked products, featured, deals, popular,
+    newest or one category.
+    """
+
+    class Kind(models.TextChoices):
+        BANNERS = "banners", "Banners"
+        PRODUCTS = "products", "Product row"
+        CATEGORIES = "categories", "Top categories"
+        CATEGORY_ROWS = "category_rows", "A row per category"
+        SERVICES = "services", "AGIZA services (Buy for me, Deliver for me, Stores)"
+        STORES = "stores", "Stores"
+
+    class Source(models.TextChoices):
+        MANUAL = "manual", "Hand-picked products"
+        FEATURED = "featured", "Featured products"
+        DEALS = "deals", "Ofa kali deals"
+        POPULAR = "popular", "Popular"
+        NEWEST = "newest", "Newest"
+        CATEGORY = "category", "A category"
+
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    title = models.CharField(max_length=120, blank=True)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    source = models.CharField(max_length=10, choices=Source.choices, blank=True,
+                              help_text="Product rows: where the products come from")
+    category = models.ForeignKey(Category, null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+                                 help_text="Product rows with source 'category'")
+    fill_with_newest = models.BooleanField(default=False,
+                                           help_text="Top the row up with the newest products when it has too few")
+    limit = models.PositiveSmallIntegerField(default=12, help_text="Products (or categories / rows) to show")
+    products = models.ManyToManyField(Product, through="HomeSectionProduct", blank=True, related_name="+")
+    categories = models.ManyToManyField(Category, blank=True, related_name="+",
+                                        help_text="Top categories: the ones to show (empty = the main categories)")
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+
+    def __str__(self) -> str:
+        return self.title or self.get_kind_display()
+
+
+class HomeSectionProduct(models.Model):
+    """A hand-picked product of a home product row, in the order staff chose."""
+
+    section = models.ForeignKey(HomeSection, on_delete=models.CASCADE, related_name="picks")
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="+")
+    position = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["position", "id"]
+        constraints = [models.UniqueConstraint(fields=["section", "product"], name="uniq_home_section_product")]
+
+    def __str__(self) -> str:
+        return f"{self.section} · {self.product_id}"

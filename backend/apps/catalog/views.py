@@ -27,6 +27,7 @@ from .models import (
     Brand,
     Category,
     DeliveryEstimateRoute,
+    HomeSection,
     Label,
     MobileSlider,
     OriginEstimate,
@@ -44,6 +45,7 @@ from .serializers import (
     CategorySerializer,
     EstimateQuerySerializer,
     EstimateRouteSerializer,
+    HomeSectionSerializer,
     LabelSerializer,
     MobileSliderSerializer,
     OptionSerializer,
@@ -54,6 +56,7 @@ from .serializers import (
     ProductWriteSerializer,
     StoreSettingsSerializer,
     VendorSerializer,
+    image_url,
 )
 
 
@@ -113,6 +116,31 @@ class SliderPermission(HasModulePermission):
 
 
 @extend_schema(tags=["catalog"])
+class HomeSectionViewSet(CatalogViewSet):
+    """Blocks of the website's home page, in order (E-commerce → Website Homepage)."""
+
+    serializer_class = HomeSectionSerializer
+    pagination_class = None
+    filterset_fields = ["kind", "is_active"]
+
+    def get_queryset(self):
+        return HomeSection.objects.select_related("category").prefetch_related("categories", "picks__product")
+
+    @action(detail=False, methods=["post"])
+    def reorder(self, request):
+        """{"ids": [section ids in their new order]}."""
+        ids = request.data.get("ids") if isinstance(request.data, dict) else None
+        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+            return Response({"error": {"code": "validation_error", "message": "Send the section ids in order.",
+                                       "details": {"ids": ["A list of section ids."]}}}, status=400)
+        sections = {s.pk: s for s in HomeSection.objects.filter(pk__in=ids)}
+        for position, pk in enumerate(ids, start=1):
+            if (section := sections.get(pk)) and section.sort_order != position:
+                section.sort_order = position
+                section.save(update_fields=["sort_order", "updated_at"])
+        return Response(HomeSectionSerializer(self.get_queryset(), many=True).data)
+
+
 class MobileSliderViewSet(CatalogViewSet):
     """Home-screen banners of the customer app (managed under Settings or E-commerce)."""
 
@@ -563,3 +591,55 @@ class DeliveryEstimateView(APIView):
         s = EstimateQuerySerializer(data=request.query_params)
         s.is_valid(raise_exception=True)
         return Response(s.estimate())
+
+
+@extend_schema(tags=["catalog"], request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT)
+class HotSalesView(APIView):
+    """
+    Featured products in their display order: "Hot Sales" on the app's home and the featured row of
+    the website. GET lists them; POST {"ids": [...]} saves the whole list in that order (products left
+    out stop being featured, new ones become featured).
+    """
+
+    module = Module.ECOMMERCE
+    permission_classes = [HasModulePermission]
+
+    @staticmethod
+    def _rows():
+        products = (Product.objects.filter(featured=True).prefetch_related("images")
+                    .order_by("featured_position", "-created_at", "-id"))
+        rows = []
+        for p in products:
+            images = [i for i in p.images.all() if i.variant_id is None]
+            primary = next((i for i in images if i.is_primary), images[0] if images else None)
+            rows.append({"id": p.id, "name": p.name, "sku": p.sku, "price": str(p.price), "status": p.status,
+                         "image": image_url(primary) if primary else None})
+        return rows
+
+    def get(self, request):
+        return Response(self._rows())
+
+    @transaction.atomic
+    def post(self, request):
+        ids = request.data.get("ids") if isinstance(request.data, dict) else None
+        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids) or len(ids) != len(set(ids)):
+            return Response({"error": {"code": "validation_error", "message": "Send the product ids in order.",
+                                       "details": {"ids": ["A list of different product ids."]}}}, status=400)
+        if len(ids) > 60:
+            return Response({"error": {"code": "validation_error", "message": "Hot Sales can hold up to 60 products.",
+                                       "details": {"ids": ["Up to 60 products."]}}}, status=400)
+        found = {p.pk: p for p in Product.objects.select_for_update().filter(pk__in=ids)}
+        if missing := [i for i in ids if i not in found]:
+            return Response({"error": {"code": "validation_error", "message": f"Unknown products: {missing}",
+                                       "details": {"ids": [f"Unknown products: {missing}"]}}}, status=400)
+        before = list(Product.objects.filter(featured=True).order_by("featured_position", "-created_at")
+                      .values_list("id", flat=True))
+        Product.objects.filter(featured=True).exclude(pk__in=ids).update(featured=False, featured_position=0)
+        for position, pk in enumerate(ids, start=1):
+            product = found[pk]
+            if not product.featured or product.featured_position != position:
+                product.featured, product.featured_position = True, position
+                product.save(update_fields=["featured", "featured_position", "updated_at"])
+        record_audit(action="update", request=request, object_repr="Hot Sales (featured products)",
+                     changes={"hot_sales": [before, ids]})
+        return Response(self._rows())

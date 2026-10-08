@@ -13,6 +13,8 @@ from .models import (
     Category,
     Condition,
     DeliveryEstimateRoute,
+    HomeSection,
+    HomeSectionProduct,
     Label,
     LocationKind,
     MobileSlider,
@@ -79,11 +81,79 @@ class MobileSliderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MobileSlider
-        fields = ["id", "title", "link", "is_active", "sort_order", "has_image", "created_at", "updated_at"]
+        fields = ["id", "title", "link", "placement", "is_active", "sort_order", "has_image", "created_at", "updated_at"]
         read_only_fields = ["id", "has_image", "created_at", "updated_at"]
 
     def get_has_image(self, obj) -> bool:
         return bool(obj.image)
+
+
+class HomeSectionSerializer(serializers.ModelSerializer):
+    """A website home page block. Hand-picked products are written as `product_ids` (in display order)."""
+
+    kind_display = serializers.CharField(source="get_kind_display", read_only=True)
+    source_display = serializers.CharField(source="get_source_display", read_only=True)
+    category_name = serializers.CharField(source="category.name", read_only=True, default=None)
+    product_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False,
+                                        max_length=48)
+    products = serializers.SerializerMethodField()
+    category_ids = serializers.PrimaryKeyRelatedField(source="categories", many=True, required=False,
+                                                      queryset=Category.objects.all())
+    categories_detail = serializers.SerializerMethodField()
+
+    class Meta:
+        model = HomeSection
+        fields = ["id", "kind", "kind_display", "title", "is_active", "sort_order", "source", "source_display",
+                  "category", "category_name", "fill_with_newest", "limit", "product_ids", "products",
+                  "category_ids", "categories_detail", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
+        extra_kwargs = {"limit": {"min_value": 1, "max_value": 48}}
+
+    def get_products(self, obj) -> list[dict]:
+        return [{"id": p.product_id, "name": p.product.name, "sku": p.product.sku, "status": p.product.status}
+                for p in obj.picks.select_related("product")]
+
+    def get_categories_detail(self, obj) -> list[dict]:
+        return [{"id": c.id, "name": c.name} for c in obj.categories.all()]
+
+    def validate(self, attrs):
+        kind = attrs.get("kind", getattr(self.instance, "kind", None))
+        source = attrs.get("source", getattr(self.instance, "source", ""))
+        category = attrs.get("category", getattr(self.instance, "category", None))
+        if kind == HomeSection.Kind.PRODUCTS:
+            if not source:
+                raise serializers.ValidationError({"source": "Choose where this row's products come from."})
+            if source == HomeSection.Source.CATEGORY and category is None:
+                raise serializers.ValidationError({"category": "Choose the category."})
+            if source == HomeSection.Source.MANUAL and "product_ids" in attrs and not attrs["product_ids"]:
+                raise serializers.ValidationError({"product_ids": "Pick at least one product."})
+        ids = attrs.get("product_ids")
+        if ids:
+            if len(set(ids)) != len(ids):
+                raise serializers.ValidationError({"product_ids": "A product is picked twice."})
+            found = set(Product.objects.filter(pk__in=ids).values_list("pk", flat=True))
+            if missing := [i for i in ids if i not in found]:
+                raise serializers.ValidationError({"product_ids": f"Unknown products: {missing}"})
+        return attrs
+
+    def _save_picks(self, section, ids):
+        if ids is None:
+            return
+        HomeSectionProduct.objects.filter(section=section).delete()
+        HomeSectionProduct.objects.bulk_create(
+            [HomeSectionProduct(section=section, product_id=pid, position=n) for n, pid in enumerate(ids)])
+
+    def create(self, validated_data):
+        ids = validated_data.pop("product_ids", None)
+        section = super().create(validated_data)
+        self._save_picks(section, ids)
+        return section
+
+    def update(self, instance, validated_data):
+        ids = validated_data.pop("product_ids", None)
+        section = super().update(instance, validated_data)
+        self._save_picks(section, ids)
+        return section
 
 
 class LabelSerializer(serializers.ModelSerializer):

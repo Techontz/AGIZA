@@ -3,7 +3,7 @@ from django.urls import path, register_converter
 
 from apps.marketplace import seller
 
-from .views import account, catalog, engagement, guest, orders, requests, shopping
+from .views import account, catalog, engagement, guest, home, orders, requests, shopping
 
 
 class MediaKind:
@@ -46,6 +46,7 @@ urlpatterns = [
     path("stores/<slug:slug>/<store_media:kind>/", catalog.StoreMediaView.as_view(), name="store-media"),
     path("cities/", catalog.CityListView.as_view(), name="cities"),
     path("sliders/", catalog.SliderListView.as_view(), name="sliders"),
+    path("home/", home.HomeView.as_view(), name="home"),
     path("sliders/<int:pk>/image/", catalog.SliderImageView.as_view(), name="slider-image"),
     path("warehouse-addresses/", catalog.WarehouseAddressListView.as_view(), name="warehouse-addresses"),
     path("import-rates/", catalog.ImportRatesView.as_view(), name="import-rates"),
