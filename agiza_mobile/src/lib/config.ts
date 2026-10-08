@@ -21,3 +21,6 @@ function resolveApiUrl(): string {
 export const API_URL = resolveApiUrl();
 export const REQUEST_TIMEOUT_MS = 20_000;
 export const UPLOAD_TIMEOUT_MS = 120_000;
+
+/** The public AGIZA website ("https://…"), used for links people share. Empty when not configured. */
+export const SITE_URL = (process.env.EXPO_PUBLIC_SITE_URL ?? '').trim().replace(/\/+$/, '');

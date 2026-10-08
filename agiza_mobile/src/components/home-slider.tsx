@@ -8,6 +8,7 @@ import { FlatList, Pressable, View, type NativeScrollEvent, type NativeSynthetic
 
 import { Text } from '@/components/ui/text';
 import { shopApi } from '@/lib/api/endpoints';
+import { appRouteFor } from '@/lib/links';
 import { keys } from '@/lib/query';
 import { colors, fonts, radius, space, themed } from '@/theme/tokens';
 
@@ -28,7 +29,7 @@ type Promo = {
 type Remote = { kind: 'image'; id: string; title: string; link: string | null; image: string };
 type Slide = Promo | Remote;
 
-/** Shown until staff add banners in the admin (E-commerce → App Home Sliders). */
+/** Shown until staff add banners in the admin (Settings → App Home Sliders). */
 const BUILT_IN: Promo[] = [
   {
     kind: 'promo',
@@ -94,7 +95,12 @@ export function HomeSlider() {
   };
   const open = (slide: Slide) => {
     if (slide.kind === 'promo') router.push(slide.href);
-    else if (slide.link) WebBrowser.openBrowserAsync(slide.link).catch(() => null);
+    else if (slide.link) {
+      // An AGIZA product / store link (e.g. copied from the app's Share button) opens inside the app.
+      const inApp = appRouteFor(slide.link);
+      if (inApp) router.push(inApp);
+      else WebBrowser.openBrowserAsync(slide.link).catch(() => null);
+    }
   };
   const height = width * ASPECT;
   const current = slides[index];

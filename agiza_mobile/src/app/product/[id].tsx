@@ -17,6 +17,7 @@ import { Card, Divider } from '@/components/ui/card';
 import { QuantityStepper } from '@/components/ui/stepper';
 import { ErrorState, errorMessage, Loading, Notice } from '@/components/ui/states';
 import { Text } from '@/components/ui/text';
+import { ShareButton } from '@/components/share-button';
 import { WishlistButton } from '@/components/wishlist-button';
 import { useCart } from '@/hooks/use-cart';
 import { useRequestProduct } from '@/hooks/use-request-product';
@@ -25,6 +26,7 @@ import type { ProductCard } from '@/lib/api/types';
 import { productPlaceholder } from '@/lib/products';
 import { useAuth } from '@/lib/auth/session';
 import { money } from '@/lib/format';
+import { shareProduct } from '@/lib/links';
 import { keys } from '@/lib/query';
 import { colors, fonts, radius, shadow, space, themed } from '@/theme/tokens';
 
@@ -308,8 +310,13 @@ export default function ProductScreen() {
           style={styles.roundButton}>
           <ArrowLeft size={20} color="#121212" />
         </Pressable>
-        <View style={styles.roundButton}>
-          <WishlistButton productId={p.id} name={p.name} size={44} />
+        <View style={styles.topActions}>
+          <View style={styles.roundButton}>
+            <ShareButton label={`Share ${p.name}`} onPress={() => shareProduct({ id: p.id, name: p.name, price: p.price })} />
+          </View>
+          <View style={styles.roundButton}>
+            <WishlistButton productId={p.id} name={p.name} size={44} />
+          </View>
         </View>
       </View>
 
@@ -383,6 +390,7 @@ const styles = themed(() => ({
   },
   counterText: { fontFamily: fonts.semibold },
   topBar: { position: 'absolute', left: space.lg, right: space.lg, flexDirection: 'row', justifyContent: 'space-between' },
+  topActions: { flexDirection: 'row', gap: space.sm },
   roundButton: {
     width: 44,
     height: 44,

@@ -94,21 +94,25 @@ export default function HomeScreen() {
   const { width } = useWindowDimensions();
   const { status, customer } = useAuth();
   const signedIn = status === 'signedIn';
-  const latest = useQuery({ queryKey: keys.products({}), queryFn: () => shopApi.products({}) });
-  // Below new arrivals: products picked for this customer (staff set their interests in the admin)
-  // and the products AGIZA features. Each row only shows when it has products.
+  // Hot Sales: the products staff mark as Featured in the admin. Until any are featured, the newest
+  // products fill the row so the home page is never empty.
+  const featured = useQuery({ queryKey: keys.products({ featured: true }), queryFn: () => shopApi.products({ featured: true }) });
+  const noFeatured = featured.isSuccess && !featured.data.results.length;
+  const latest = useQuery({ queryKey: keys.products({}), queryFn: () => shopApi.products({}), enabled: noFeatured });
+  const hot = noFeatured ? latest : featured;
+  // Below Hot Sales: products picked for this customer (staff set their interests in the admin).
   const forYou = useQuery({
     queryKey: keys.products({ for_you: true }),
     queryFn: () => shopApi.products({ for_you: true }),
     enabled: signedIn,
   });
-  const featured = useQuery({ queryKey: keys.products({ featured: true }), queryFn: () => shopApi.products({ featured: true }) });
   const tile = Math.min(176, (width - space.lg * 2 - GAP) / 2.15);
   const needsSignIn = (href: Href) => () => router.push(signedIn ? href : '/login');
   const see = (params: Record<string, string>) => () => router.push({ pathname: '/products', params });
 
-  const refreshing = latest.isRefetching || featured.isRefetching || forYou.isRefetching;
-  const refresh = () => Promise.all([latest.refetch(), featured.refetch(), signedIn ? forYou.refetch() : null]);
+  const refreshing = hot.isRefetching || featured.isRefetching || forYou.isRefetching;
+  const refresh = () =>
+    Promise.all([featured.refetch(), noFeatured ? latest.refetch() : null, signedIn ? forYou.refetch() : null]);
   const picked = signedIn ? (forYou.data?.results ?? []) : [];
   const firstName = customer?.full_name.split(' ')[0];
 
@@ -151,14 +155,21 @@ export default function HomeScreen() {
 
         <HomeSlider />
 
-        {latest.isLoading ? (
+        {featured.isLoading || (noFeatured && latest.isLoading) ? (
           <Loading />
-        ) : latest.isError ? (
-          <ErrorState error={latest.error} onRetry={refresh} />
+        ) : hot.isError ? (
+          <ErrorState error={hot.error} onRetry={refresh} />
         ) : (
-          <Section title="New arrivals" action={<SeeAll label="See all new arrivals" onPress={see({ title: 'New arrivals' })} />}>
-            {latest.data?.results.length ? (
-              <ProductRow products={latest.data.results} width={tile} />
+          <Section
+            title="Hot Sales"
+            action={
+              <SeeAll
+                label="See all hot sales"
+                onPress={see(noFeatured ? { title: 'Hot Sales' } : { featured: '1', title: 'Hot Sales' })}
+              />
+            }>
+            {hot.data?.results.length ? (
+              <ProductRow products={hot.data.results} width={tile} />
             ) : (
               <View style={styles.emptyRow}>
                 <PackageSearch size={20} color={colors.textSubtle} />
@@ -179,11 +190,6 @@ export default function HomeScreen() {
           </Section>
         ) : null}
 
-        {featured.data?.results.length ? (
-          <Section title="Featured" action={<SeeAll label="See all featured products" onPress={see({ featured: '1', title: 'Featured' })} />}>
-            <ProductRow products={featured.data.results} width={tile} />
-          </Section>
-        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

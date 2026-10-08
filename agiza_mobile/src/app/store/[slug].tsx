@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { MapPin } from 'lucide-react-native';
+import { MapPin, Share2 } from 'lucide-react-native';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { ProductGrid } from '@/components/product-grid';
 import { RatingInline } from '@/components/rating';
@@ -14,6 +14,7 @@ import { ErrorState, Loading } from '@/components/ui/states';
 import { Text } from '@/components/ui/text';
 import { shopApi } from '@/lib/api/endpoints';
 import type { Store } from '@/lib/api/types';
+import { shareStore } from '@/lib/links';
 import { keys } from '@/lib/query';
 import { colors, radius, shadow, space, themed } from '@/theme/tokens';
 
@@ -82,7 +83,20 @@ export default function StoreScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: store.data.name }} />
+      <Stack.Screen
+        options={{
+          title: store.data.name,
+          headerRight: () => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Share ${store.data.name}`}
+              hitSlop={10}
+              onPress={() => shareStore({ slug, name: store.data.name })}>
+              <Share2 size={20} color={colors.ink} />
+            </Pressable>
+          ),
+        }}
+      />
       <ProductGrid
         query={{ store: slug, search: search || undefined }}
         header={<StoreHeader store={store.data} onSearch={setSearch} />}
