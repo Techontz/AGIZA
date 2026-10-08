@@ -22,7 +22,7 @@ export function ChatView() {
   const meta = pageMeta["/chat"];
   const { data: me } = useMe();
   const canEdit = can(me, "chat", "edit");
-  const [f, setF] = useUrlFilters({ open: "", channel: "all", search: "", view: "open" });
+  const [f, setF] = useUrlFilters({ open: "", channel: "all", search: "", view: "open", about: "all" });
   const [search, setSearch] = useState(f.search);
   const debounced = useDebouncedValue(search);
   useEffect(() => {
@@ -30,7 +30,12 @@ export function ChatView() {
   }, [debounced, f.search, setF]);
   const [starting, setStarting] = useState(false);
 
-  const query = { view: f.view === "open" ? undefined : f.view, channel: f.channel, search: f.search };
+  const query = {
+    view: f.view === "open" ? undefined : f.view,
+    channel: f.channel,
+    search: f.search,
+    about: f.about === "all" ? undefined : f.about,
+  };
   const list = useInfiniteQuery({
     queryKey: chatKeys.list(query),
     queryFn: ({ pageParam, signal }) => chatApi.list({ ...query, page: pageParam, page_size: PAGE_SIZE }, signal),
@@ -66,6 +71,8 @@ export function ChatView() {
           onChannel={(channel) => setF({ channel })}
           view={f.view}
           onView={(view) => setF({ view })}
+          about={f.about}
+          onAbout={(about) => setF({ about })}
           stats={stats.data}
           hasMore={Boolean(list.hasNextPage)}
           loadingMore={list.isFetchingNextPage}
@@ -96,7 +103,7 @@ export function ChatView() {
           onStarted={(c) => {
             setStarting(false);
             setSearch("");
-            setF({ open: String(c.id), view: "open", channel: "all", search: "" });
+            setF({ open: String(c.id), view: "open", channel: "all", search: "", about: "all" });
           }}
         />
       )}

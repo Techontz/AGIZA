@@ -166,10 +166,23 @@ class ConversationFilter(django_filters.FilterSet):
         choices=[("mine", "Mine"), ("unassigned", "Unassigned"), ("waiting", "Waiting for team"),
                  ("urgent", "Urgent"), ("follow_up", "Follow-up due"), ("archived", "Archived")],
         method="filter_view")
+    # What the chat is about. A quotation's chat moves to its order once approved, so "quote" means
+    # quotations still being discussed (no order yet).
+    about = django_filters.ChoiceFilter(
+        choices=[("general", "General"), ("quote", "Quotations"), ("order", "Orders"), ("return", "Returns")],
+        method="filter_about")
 
     class Meta:
         model = Conversation
-        fields = ["channel", "status", "department", "assigned_agent", "customer", "view"]
+        fields = ["channel", "status", "department", "assigned_agent", "customer", "view", "about"]
+
+    def filter_about(self, qs, name, value):
+        return {
+            "general": qs.filter(order__isnull=True, quote__isnull=True, return_request__isnull=True),
+            "quote": qs.filter(quote__isnull=False, order__isnull=True),
+            "order": qs.filter(order__isnull=False),
+            "return": qs.filter(return_request__isnull=False),
+        }[value]
 
     def filter_view(self, qs, name, value):
         user = self.request.user

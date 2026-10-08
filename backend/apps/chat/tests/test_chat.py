@@ -164,3 +164,25 @@ def test_whatsapp_webhook_verification_signature_and_idempotency(api):
     assert conv.contact_name == "John Mwamba"
     assert conv.messages.filter(sender="customer").count() == 1
     assert WebhookEvent.objects.filter(processed=True).count() == 2
+
+
+def test_inbox_filters_chats_by_what_they_are_about(ops, buyer, make_intl):
+    quote = QuoteRequest.objects.create(customer=buyer, service_type="international", description="Phones")
+    order = make_intl()
+    general = services.receive(channel="web", handle="+255700000001", name="A", body="Hi", room={}).conversation
+    about_quote = services.receive(channel="web", handle="+255700000001", name="A", body="Colour?",
+                                   room={"quote": quote}).conversation
+    about_order = services.receive(channel="web", handle="+255700000001", name="A", body="Where is it?",
+                                   room={"order": order}).conversation
+
+    def ids(about):
+        return {c["id"] for c in ops.get(f"{CHAT}/", {"about": about}).json()["results"]}
+
+    assert ids("general") == {general.id}
+    assert ids("quote") == {about_quote.id}
+    assert ids("order") == {about_order.id}
+    assert ids("return") == set()
+    # Once approved, the quotation's chat belongs to its order and leaves the Quotations filter.
+    Conversation.objects.filter(pk=about_quote.pk).update(order=order)
+    assert ids("quote") == set() and ids("order") == {about_quote.id, about_order.id}
+    assert ops.get(f"{CHAT}/", {"about": "nonsense"}).status_code == 400

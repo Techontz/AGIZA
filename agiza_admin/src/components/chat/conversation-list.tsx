@@ -18,6 +18,14 @@ export const VIEW_OPTIONS = [
   ["archived", "Archived"],
 ] as const;
 
+const ABOUT_FILTERS: [string, string][] = [
+  ["all", "All chats"],
+  ["quote", "Quotations"],
+  ["order", "Orders"],
+  ["return", "Returns"],
+  ["general", "General"],
+];
+
 function viewCount(view: string, stats: ChatStats | undefined): number | undefined {
   if (!stats) return undefined;
   return { open: stats.open, mine: stats.mine, unassigned: stats.unassigned, waiting: stats.waiting_team }[view];
@@ -38,6 +46,8 @@ export function ConversationList({
   onChannel,
   view,
   onView,
+  about,
+  onAbout,
   stats,
   hasMore,
   loadingMore,
@@ -58,6 +68,8 @@ export function ConversationList({
   onChannel: (v: string) => void;
   view: string;
   onView: (v: string) => void;
+  about: string;
+  onAbout: (v: string) => void;
   stats: ChatStats | undefined;
   hasMore: boolean;
   loadingMore: boolean;
@@ -66,7 +78,7 @@ export function ConversationList({
   canEdit: boolean;
   className?: string;
 }) {
-  const filtered = search.trim() !== "" || channel !== "all" || view !== "open";
+  const filtered = search.trim() !== "" || channel !== "all" || view !== "open" || about !== "all";
 
   return (
     <div className={cn("bg-white border-r border-slate-200 flex flex-col min-h-0", className)}>
@@ -117,6 +129,27 @@ export function ConversationList({
               );
             })}
           </select>
+        </div>
+
+        {/* What the chat is about: a quotation, an order (an approved quotation's chat moves to its order) or a return. */}
+        <div className="flex gap-1.5 overflow-x-auto" role="group" aria-label="Filter by what the chat is about">
+          {ABOUT_FILTERS.map(([value, label]) => {
+            const active = about === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={active}
+                onClick={() => onAbout(value)}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap border",
+                  active ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100",
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
 
         {/* Channel Filter Tabs */}
