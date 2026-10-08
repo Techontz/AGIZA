@@ -43,15 +43,15 @@ def request_product(client, product):
 # --------------------------------------------------------------------------- #
 # Out-of-stock requests ("Pata Bei")
 # --------------------------------------------------------------------------- #
-def test_can_request_only_when_out_of_stock_and_pata_bei_is_on(api, shop):
-    assert card(api, shop.product)["can_request"] is False  # in stock, Pata Bei off
-    allow_pata_bei(shop.product)
+def test_every_out_of_stock_product_can_be_requested(api, shop):
     assert card(api, shop.product)["can_request"] is False  # in stock
+    allow_pata_bei(shop.product)
+    assert card(api, shop.product)["can_request"] is False  # in stock, whatever Pata Bei says
     sell_out(shop)
     body = card(api, shop.product)
     assert body["available"] == 0 and body["can_request"] is True
     allow_pata_bei(shop.product, False)
-    assert card(api, shop.product)["can_request"] is False  # out of stock, Pata Bei off
+    assert card(api, shop.product)["can_request"] is True  # out of stock: Pata Bei doesn't matter
     listed = api.get(f"{APP}/products/").json()["results"]
     assert all("can_request" in p for p in listed)
 
@@ -72,7 +72,7 @@ def test_request_validation_follows_can_request(app, shop, imported):
     assert res.status_code == 201, res.json()
     assert "Shop product (out of stock): Galaxy A54" in QuoteRequest.objects.get(pk=res.json()["id"]).description
     allow_pata_bei(shop.product, False)
-    assert request_product(app, shop.product).status_code == 400
+    assert request_product(app, shop.product).status_code == 201  # Pata Bei off: still requestable
     allow_pata_bei(imported.drone)
     assert request_product(app, imported.drone).status_code == 400  # imported: orderable now
     allow_pata_bei(shop.draft)

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { router, type Href } from 'expo-router';
-import { ArrowUpRight, Globe2, PackageSearch, Search, Store } from 'lucide-react-native';
+import { ArrowUpRight, Globe2, Search, Store } from 'lucide-react-native';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -94,12 +94,8 @@ export default function HomeScreen() {
   const { width } = useWindowDimensions();
   const { status, customer } = useAuth();
   const signedIn = status === 'signedIn';
-  // Hot Sales: the products staff mark as Featured in the admin. Until any are featured, the newest
-  // products fill the row so the home page is never empty.
+  // Hot Sales: only the products staff mark as Featured in the admin (the row hides when there are none).
   const featured = useQuery({ queryKey: keys.products({ featured: true }), queryFn: () => shopApi.products({ featured: true }) });
-  const noFeatured = featured.isSuccess && !featured.data.results.length;
-  const latest = useQuery({ queryKey: keys.products({}), queryFn: () => shopApi.products({}), enabled: noFeatured });
-  const hot = noFeatured ? latest : featured;
   // Below Hot Sales: products picked for this customer (staff set their interests in the admin).
   const forYou = useQuery({
     queryKey: keys.products({ for_you: true }),
@@ -110,9 +106,8 @@ export default function HomeScreen() {
   const needsSignIn = (href: Href) => () => router.push(signedIn ? href : '/login');
   const see = (params: Record<string, string>) => () => router.push({ pathname: '/products', params });
 
-  const refreshing = hot.isRefetching || featured.isRefetching || forYou.isRefetching;
-  const refresh = () =>
-    Promise.all([featured.refetch(), noFeatured ? latest.refetch() : null, signedIn ? forYou.refetch() : null]);
+  const refreshing = featured.isRefetching || forYou.isRefetching;
+  const refresh = () => Promise.all([featured.refetch(), signedIn ? forYou.refetch() : null]);
   const picked = signedIn ? (forYou.data?.results ?? []) : [];
   const firstName = customer?.full_name.split(' ')[0];
 
@@ -155,31 +150,17 @@ export default function HomeScreen() {
 
         <HomeSlider />
 
-        {featured.isLoading || (noFeatured && latest.isLoading) ? (
+        {featured.isLoading ? (
           <Loading />
-        ) : hot.isError ? (
-          <ErrorState error={hot.error} onRetry={refresh} />
-        ) : (
+        ) : featured.isError ? (
+          <ErrorState error={featured.error} onRetry={refresh} />
+        ) : featured.data?.results.length ? (
           <Section
             title="Hot Sales"
-            action={
-              <SeeAll
-                label="See all hot sales"
-                onPress={see(noFeatured ? { title: 'Hot Sales' } : { featured: '1', title: 'Hot Sales' })}
-              />
-            }>
-            {hot.data?.results.length ? (
-              <ProductRow products={hot.data.results} width={tile} />
-            ) : (
-              <View style={styles.emptyRow}>
-                <PackageSearch size={20} color={colors.textSubtle} />
-                <Text variant="small" color={colors.textMuted}>
-                  New products will appear here soon.
-                </Text>
-              </View>
-            )}
+            action={<SeeAll label="See all hot sales" onPress={see({ featured: '1', title: 'Hot Sales' })} />}>
+            <ProductRow products={featured.data.results} width={tile} />
           </Section>
-        )}
+        ) : null}
 
         {picked.length ? (
           <Section
@@ -249,5 +230,4 @@ const styles = themed(() => ({
   ctaText: { fontFamily: fonts.semibold, fontSize: 14 },
   bleed: { marginHorizontal: -space.lg },
   hscroll: { gap: GAP, paddingHorizontal: space.lg, paddingBottom: space.md, paddingTop: 2 },
-  emptyRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
 }));

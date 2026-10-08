@@ -217,9 +217,9 @@ class ProductCardSerializer(serializers.ModelSerializer):
         return sum(max(stock.get(v.pk, 0), 0) for v in getattr(product, "shop_variants", []))
 
     def get_can_request(self, product) -> bool:
-        """Out of stock (nothing to buy now; imported products are always orderable) and staff allow
-        "Pata Bei" requests for it: the customer can ask AGIZA to source it (Intake & Quotes)."""
-        return bool(product.pata_bei) and self.get_available(product) == 0
+        """Out of stock (nothing to buy now; imported products are always orderable): the customer can
+        ask AGIZA to source it (Intake & Quotes). Every out-of-stock product can be requested."""
+        return self.get_available(product) == 0
 
     def get_labels(self, product) -> list[dict]:
         return [{"name": lb.name, "color": lb.color} for lb in product.labels.all() if lb.visible]
@@ -228,14 +228,14 @@ class ProductCardSerializer(serializers.ModelSerializer):
 def product_requestable(product) -> bool:
     """
     Whether a customer may ask AGIZA for this shop product (the out-of-stock "Request" button):
-    shown in the shop, "Pata Bei" allowed by staff, and out of stock now. Same rule as
-    ProductCardSerializer.can_request: imported products are bought abroad, so never out of stock.
+    shown in the shop and out of stock now. Same rule as ProductCardSerializer.can_request:
+    imported products are bought abroad, so never out of stock.
     """
     from .catalog import available_by_variant, visible_products
     from .shipping import is_imported, store_hub
 
     product = visible_products().filter(pk=product.pk).first()
-    if product is None or not product.pata_bei:
+    if product is None:
         return False
     if product.status != "active":
         return True
