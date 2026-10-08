@@ -1,14 +1,16 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, DollarSign, Edit2, PackageCheck, Truck, XCircle } from "lucide-react";
+import { CheckCircle2, DollarSign, Edit2, ImageIcon, PackageCheck, Truck, XCircle } from "lucide-react";
 import { useState } from "react";
 
 import { StatusHistoryList } from "@/components/orders/shared";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { PhotoViewer } from "@/components/ui/photo-viewer";
 import { can, useMe } from "@/hooks/use-me";
-import { procurementApi, procurementKeys, type ProcurementOrder } from "@/lib/api/services/procurement";
+import { fileSrc } from "@/lib/api/files";
+import { procurementApi, procurementKeys, type ProcurementOrder, type ProcurementPhoto } from "@/lib/api/services/procurement";
 import { formatDate, formatDateTime, formatTSh } from "@/lib/format";
 
 import { ExceptionBadge, ProcurementOriginBadge, ProcurementStatusBadge } from "./badges";
@@ -25,6 +27,50 @@ function Info({ label, children }: { label: string; children: React.ReactNode })
     <div>
       <p className="text-sm font-semibold text-gray-700">{label}</p>
       <div className="text-gray-900">{children}</div>
+    </div>
+  );
+}
+
+/** Reference photos: what the customer sent with the request and what AGIZA staff added. Click to enlarge. */
+function ReferencePhotos({ photos }: { photos: ProcurementPhoto[] }) {
+  const [open, setOpen] = useState<number | null>(null);
+  const urls = photos.map((p) => fileSrc(p.url));
+  const groups: [string, string, ProcurementPhoto[]][] = [
+    ["From the customer", "No photos from the customer.", photos.filter((p) => p.from_customer)],
+    ["Added by AGIZA staff", "No photos from staff.", photos.filter((p) => !p.from_customer)],
+  ];
+  return (
+    <div>
+      <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+        <ImageIcon className="size-5 text-blue-600" />
+        Reference Photos
+        {photos.length > 0 && <span className="text-sm font-normal text-gray-500">({photos.length})</span>}
+      </h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {groups.map(([title, empty, list]) => (
+          <div key={title} className="border border-gray-200 rounded-lg p-4">
+            <p className="text-sm font-semibold text-gray-700 mb-3">
+              {title} <span className="font-normal text-gray-500">({list.length})</span>
+            </p>
+            {list.length ? (
+              <div className="flex flex-wrap gap-3">
+                {list.map((p) => {
+                  const i = photos.indexOf(p);
+                  return (
+                    <button key={p.id} type="button" onClick={() => setOpen(i)} aria-label={`View photo ${i + 1}`}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={urls[i]} alt={p.caption || `Photo ${i + 1}`} className="size-24 rounded-lg object-cover border border-gray-200 hover:ring-2 hover:ring-blue-400" />
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">{empty}</p>
+            )}
+          </div>
+        ))}
+      </div>
+      <PhotoViewer urls={urls} index={open} onClose={() => setOpen(null)} />
     </div>
   );
 }
@@ -138,6 +184,8 @@ export function ProcurementDetailsModal({ proc, onClose }: { proc: ProcurementOr
               {proc.received_at && <Info label="Received at Cargo">{formatDateTime(proc.received_at)}</Info>}
             </div>
           </div>
+
+          <ReferencePhotos photos={proc.photos ?? []} />
 
           {proc.notes && (
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">

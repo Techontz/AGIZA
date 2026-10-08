@@ -4,6 +4,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Clock, FileText, MessageSquare, Phone, Plus, Send, ThumbsDown, ThumbsUp } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { DeliveryQuotesTab } from "@/components/orders/delivery-quotes-tab";
 import { ApproveDialog, NewQuoteDialog, RespondDialog, ServiceTypeBadge } from "@/components/orders/quote-dialogs";
 import { useOrderAccess, useOrderMutation } from "@/components/orders/shared";
 import { Button } from "@/components/ui/button";
@@ -16,14 +17,16 @@ import { ErrorState } from "@/components/ui/states";
 import { PhotoThumb } from "@/components/ui/photo-viewer";
 import { PillTabs } from "@/components/ui/tabs";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { can, useMe } from "@/hooks/use-me";
 import { useUrlFilters } from "@/hooks/use-url-filters";
 import { fileSrc } from "@/lib/api/files";
 import { orderKeys, quotesApi, type Quote } from "@/lib/api/services/orders";
+import { shopOrderKeys, shopOrdersApi } from "@/lib/api/services/shop-orders";
 import { formatDate, formatDateTime, formatTSh } from "@/lib/format";
 import { pageMeta } from "@/lib/nav";
 
-type Tab = "new" | "answered" | "waiting_reply";
-const TAB_STATUS: Record<Tab, string> = { new: "new,declined", answered: "answered", waiting_reply: "waiting_reply" };
+type Tab = "new" | "answered" | "waiting_reply" | "delivery";
+const TAB_STATUS: Record<Exclude<Tab, "delivery">, string> = { new: "new,declined", answered: "answered", waiting_reply: "waiting_reply" };
 const th = "px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase whitespace-nowrap";
 
 // Requests from the customer app start with a marker line, e.g. "[Buy for me] DJI RS5"; the list shows
@@ -64,12 +67,19 @@ export function IntakeView() {
     if (debounced !== f.search) setF({ search: debounced });
   }, [debounced, f.search, setF]);
 
-  const query = { status: TAB_STATUS[tab], search: f.search, page: Number(f.page), page_size: 20 };
+  const isDelivery = tab === "delivery";
+  const query = { status: isDelivery ? "" : TAB_STATUS[tab], search: f.search, page: Number(f.page), page_size: 20 };
   const list = useQuery({
     queryKey: [...orderKeys.quotes, "list", query],
     queryFn: ({ signal }) => quotesApi.list(query, signal),
     placeholderData: keepPreviousData,
+    enabled: !isDelivery,
   });
+  // Shop orders waiting for staff to set a delivery cost (needs access to Orders).
+  const { data: me } = useMe();
+  const canSeeShop = can(me, "orders", "view");
+  const shopStats = useQuery({ queryKey: shopOrderKeys.stats, queryFn: shopOrdersApi.stats, enabled: canSeeShop });
+  const deliveryCount = shopStats.data?.delivery_fee_pending;
   const stats = useQuery({ queryKey: [...orderKeys.quotes, "stats"], queryFn: quotesApi.stats });
   const counts = stats.data
     ? { new: stats.data.new + stats.data.declined, answered: stats.data.answered, waiting_reply: stats.data.waiting_reply }
@@ -106,13 +116,18 @@ export function IntakeView() {
               { value: "new", label: `New Quotations (${counts?.new ?? "…"})`, activeClass: "bg-orange-600" },
               { value: "answered", label: `Answered Quotations (${counts?.answered ?? "…"})`, activeClass: "bg-green-600" },
               { value: "waiting_reply", label: `Waiting for Reply (${counts?.waiting_reply ?? "…"})`, activeClass: "bg-yellow-600" },
+              ...(canSeeShop
+                ? [{ value: "delivery" as const, label: `Delivery Quotes (${deliveryCount ?? "…"})`, activeClass: "bg-purple-600" }]
+                : []),
             ]}
           />
-          <SearchInput placeholder="Search quotations..." value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search quotations" className="lg:max-w-xs" />
+          <SearchInput placeholder={isDelivery ? "Search orders..." : "Search quotations..."} value={search} onChange={(e) => setSearch(e.target.value)} aria-label={isDelivery ? "Search orders" : "Search quotations"} className="lg:max-w-xs" />
         </div>
       </Card>
 
-      {list.isError && !list.data ? (
+      {isDelivery ? (
+        <DeliveryQuotesTab search={f.search} page={Number(f.page)} onPageChange={(p) => setF({ page: String(p) })} />
+      ) : list.isError && !list.data ? (
         <ErrorState message={(list.error as Error).message} onRetry={() => list.refetch()} />
       ) : (
         <Card className="overflow-hidden">
@@ -266,7 +281,7 @@ export function IntakeView() {
         </Card>
       )}
 
-      {list.data && rows.length === 0 && (
+      {!isDelivery && list.data && rows.length === 0 && (
         <Card className="p-12 text-center mt-6">
           <MessageSquare className="size-12 text-gray-400 mx-auto mb-4" />
           <p className="text-gray-600 text-lg">No quotations in this category</p>

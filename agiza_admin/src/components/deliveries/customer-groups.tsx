@@ -15,6 +15,7 @@ import { deliveriesApi, deliveryKeys, type Delivery, type DeliveryGroup, type De
 import { useDeliveryAccess } from "./access";
 import { BulkAssignDriverDialog, BulkCompleteDialog } from "./action-dialogs";
 import { DELIVERY_STATUS, DeliveryExceptionBadge, DeliveryStatusBadge, OrderSourceBadge } from "./badges";
+import { EditItemLabelsButton } from "./item-labels-dialog";
 import { DeliveryItemsTable, DeliveryRowDetails } from "./row-details";
 
 const th = "px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase whitespace-nowrap";
@@ -250,6 +251,7 @@ function GroupDetails({ group: g }: { group: DeliveryGroup }) {
 }
 
 function DeliveryCard({ delivery: d, checked, onCheck, open, onToggle }: { delivery: Delivery; checked: boolean; onCheck: () => void; open: boolean; onToggle: () => void }) {
+  const { canEdit } = useDeliveryAccess();
   return (
     <div className="bg-white rounded-lg border border-gray-200">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 p-4">
@@ -275,12 +277,18 @@ function DeliveryCard({ delivery: d, checked, onCheck, open, onToggle }: { deliv
             <span className="italic text-gray-500">No driver</span>
           )}
         </div>
+        {canEdit && (
+          <EditItemLabelsButton
+            delivery={d}
+            className="ml-auto px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 text-sm font-medium transition-colors whitespace-nowrap"
+          />
+        )}
         <button
           type="button"
           onClick={onToggle}
           aria-expanded={open}
           aria-label={`${open ? "Hide" : "Show"} details for ${d.reference}`}
-          className="ml-auto text-blue-600 hover:text-blue-800 font-medium text-sm flex items-center gap-1"
+          className={cn(canEdit && d.items.length > 0 ? "" : "ml-auto", "text-blue-600 hover:text-blue-800 font-medium text-sm flex items-center gap-1")}
         >
           {open ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
           {open ? "Less" : "Details"}

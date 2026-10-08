@@ -1,11 +1,14 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Clock, Package2, User } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, Package2, Plus, User } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { DepartmentBadge, ORIGIN, OrderTypeBadge, OriginBadge, PaymentBadge, ServiceBadge, StatusBadge } from "@/components/orders/international/badges";
 import { InternationalDetailsModal } from "@/components/orders/international/details-modal";
+import { QuickOrderDialog } from "@/components/orders/international/quick-order-dialog";
+import { useOrderAccess } from "@/components/orders/shared";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { SearchInput, Select } from "@/components/ui/form";
 import { PageContainer, PageHeader } from "@/components/ui/page";
@@ -31,6 +34,8 @@ type Tab = "active" | "attention" | "completed";
 
 export function InternationalView() {
   const meta = pageMeta["/orders/international"];
+  const { canEdit } = useOrderAccess();
+  const [creating, setCreating] = useState(false);
   const [f, setF] = useUrlFilters({ tab: "active", search: "", origin: "all", handler: "all", status: "all", service_type: "all", department: "all", page: "1", open: "" });
   const [search, setSearch] = useState(f.search);
   const debounced = useDebouncedValue(search);
@@ -53,7 +58,17 @@ export function InternationalView() {
 
   return (
     <PageContainer>
-      <PageHeader title={meta.title} description={meta.description} />
+      <PageHeader
+        title={meta.title}
+        description={meta.description}
+        actions={
+          canEdit && (
+            <Button onClick={() => setCreating(true)}>
+              <Plus className="size-5" /> New Order
+            </Button>
+          )
+        }
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-8">
         <StatCard label="Active Orders" value={s?.active} icon={Package2} tone="blue" loading={!s} />
@@ -177,6 +192,7 @@ export function InternationalView() {
       )}
 
       {openOrder.data && <InternationalDetailsModal order={openOrder.data} onClose={() => setF({ open: "" })} />}
+      <QuickOrderDialog open={creating} onClose={() => setCreating(false)} />
     </PageContainer>
   );
 }

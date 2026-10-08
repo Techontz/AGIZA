@@ -510,7 +510,8 @@ function CancelDialog({ order: o, open, onClose }: { order: ShopOrder; open: boo
   );
 }
 
-function DeliveryFeeDialog({ order: o, open, onClose }: { order: ShopOrder; open: boolean; onClose: () => void }) {
+/** "Set Delivery Cost" for an order placed while the Shipping Engine had no rule for its address (also used by Intake & Quotes). */
+export function DeliveryFeeDialog({ order: o, open, onClose }: { order: ShopOrder; open: boolean; onClose: () => void }) {
   const methods = useQuery({ queryKey: shopOrderKeys.methods, queryFn: shopOrdersApi.methods, enabled: open, staleTime: 60_000 });
   const [fee, setFee] = useState("");
   const [method, setMethod] = useState("");

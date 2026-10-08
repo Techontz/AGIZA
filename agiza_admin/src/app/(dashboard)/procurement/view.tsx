@@ -10,6 +10,7 @@ import { SuppliersModal } from "@/components/procurement/suppliers-modal";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { SearchInput, Select } from "@/components/ui/form";
+import { PhotoThumb } from "@/components/ui/photo-viewer";
 import { PageContainer, PageHeader } from "@/components/ui/page";
 import { Pagination } from "@/components/ui/pagination";
 import { StatCard } from "@/components/ui/stat-card";
@@ -18,6 +19,7 @@ import { TBody, THead, Table, TableSkeletonRows, Td, Th, Tr } from "@/components
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useUrlFilters } from "@/hooks/use-url-filters";
 import { errorText } from "@/lib/api/errors";
+import { fileSrc } from "@/lib/api/files";
 import { PROCUREMENT_ORIGINS, procurementApi, procurementKeys } from "@/lib/api/services/procurement";
 import { formatDate, formatTSh } from "@/lib/format";
 import { pageMeta } from "@/lib/nav";
@@ -31,7 +33,7 @@ const STATUS_OPTIONS: [string, string][] = [
   ["supplier_cancelled", "Supplier Canceled"],
   ["received_at_cargo", "Received at Cargo"],
 ];
-const COLUMNS = ["Order ID", "Item/Summary", "Origin", "Supplier", "Tracking #", "Status", "Assigned Operator", "Costs", "Last Update", "Exception Flag", "Expected to Cargo"];
+const COLUMNS = ["Order ID", "Photos", "Item/Summary", "Origin", "Supplier", "Tracking #", "Status", "Assigned Operator", "Costs", "Last Update", "Exception Flag", "Expected to Cargo"];
 
 /** Design total value: "12.3M". */
 function millions(value: string | undefined): string {
@@ -123,6 +125,7 @@ export function ProcurementView() {
                       </button>
                       <div className="text-xs text-gray-500">{formatDate(p.created_at)}</div>
                     </Td>
+                    <Td><PhotoThumb urls={(p.photos ?? []).map((ph) => fileSrc(ph.url))} alt={p.order.item_details} /></Td>
                     <Td><div className="text-gray-900 max-w-xs">{p.order.item_details}</div></Td>
                     <Td><ProcurementOriginBadge iso2={p.origin.iso2} name={p.origin.name} /></Td>
                     <Td className="text-gray-900">{p.supplier?.name ?? <span className="text-gray-400">—</span>}</Td>

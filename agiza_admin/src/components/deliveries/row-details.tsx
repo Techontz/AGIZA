@@ -12,6 +12,7 @@ import { deliveriesApi, deliveryKeys, type Delivery, type DeliveryStatus } from 
 import { formatDateTime } from "@/lib/format";
 
 import { useDeliveryAccess } from "./access";
+import { EditItemLabelsButton } from "./item-labels-dialog";
 import { AddProofDialog, AssignDriverDialog, CompleteDeliveryDialog, StatusDialog, type StatusMode } from "./action-dialogs";
 
 const DOT: Record<DeliveryStatus, string> = {
@@ -289,6 +290,8 @@ function Actions({ delivery }: { delivery: Delivery }) {
         {delivery.proof?.signature_name ? "Add Delivery Photos" : "Add Delivery Proof"}
       </button>,
     );
+
+  if (delivery.items.length > 0) buttons.push(<EditItemLabelsButton key="labels" delivery={delivery} className={btnSecondary} />);
 
   return (
     <>

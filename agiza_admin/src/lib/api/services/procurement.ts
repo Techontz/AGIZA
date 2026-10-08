@@ -56,8 +56,18 @@ export interface ProcurementOrder {
   received_at: string | null;
   notes: string;
   actions: ProcurementAction[];
+  /** The order's photos for reference: the customer's request photos and the ones staff added. */
+  photos: ProcurementPhoto[];
   created_at: string;
   updated_at: string;
+}
+
+export interface ProcurementPhoto {
+  id: number;
+  /** Relative to the API root; open it through `fileSrc`. */
+  url: string;
+  caption: string;
+  from_customer: boolean;
 }
 
 export interface ProcurementStats {
