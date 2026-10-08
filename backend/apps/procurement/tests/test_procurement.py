@@ -211,3 +211,26 @@ def test_procurement_list_filters_stats_and_permissions(ops, client_for, make_in
     assert sales.post(f"{PROC}/{proc_of(a).id}/mark-paid/", {}, format="json").status_code == 403
     assert client_for(StaffLevel.PROCUREMENT).post(f"{PROC}/{proc_of(a).id}/mark-paid/", {},
                                                    format="json").status_code == 200
+
+
+def test_procurement_shows_the_customer_and_staff_photos(ops, client_for, make_intl):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from apps.orders.models import OrderAttachment
+
+    order = make_intl()
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 32
+    mine = OrderAttachment.objects.create(order=order, file=SimpleUploadedFile("a.png", png), content_type="image/png",
+                                          caption="Customer photo")
+    OrderAttachment.objects.create(order=order, file=SimpleUploadedFile("b.png", png), content_type="image/png",
+                                   caption="AGIZA quotation photo")
+    proc = proc_of(order)
+    photos = ops.get(f"{PROC}/{proc.id}/").json()["photos"]
+    assert [p["from_customer"] for p in photos] == [True, False]
+    assert ops.get(f"{PROC}/").json()["results"][0]["photos"][0]["id"] == mine.id
+    procurement = client_for(StaffLevel.PROCUREMENT)
+    res = procurement.get(f"/api/{photos[0]['url']}/")
+    assert res.status_code == 200 and b"".join(res.streaming_content if res.streaming else [res.content]) == png
+    other = make_intl()
+    assert procurement.get(f"{PROC}/{proc_of(other).id}/photos/{mine.id}/file/").status_code == 404
+    assert client_for(StaffLevel.DRIVER).get(f"/api/{photos[0]['url']}/").status_code == 403

@@ -9,6 +9,7 @@ from apps.orders.workflows import status_label
 
 from .models import ExceptionFlag, ProcurementOrder, ProcurementStatusHistory, Supplier
 
+CUSTOMER_PHOTO = "Customer photo"  # the caption a customer's request photo carries on its order
 MONEY = {"max_digits": 14, "decimal_places": 2, "min_value": Decimal("0")}
 
 
@@ -37,13 +38,14 @@ class ProcurementSerializer(serializers.ModelSerializer):
     unit_cost = serializers.SerializerMethodField()
     item_cost = serializers.SerializerMethodField()
     actions = serializers.SerializerMethodField()
+    photos = serializers.SerializerMethodField()
 
     class Meta:
         model = ProcurementOrder
         fields = ["id", "order", "origin", "status", "status_display", "supplier", "supplier_order_number",
                   "supplier_tracking_number", "operator", "quantity", "unit_cost", "item_cost", "currency",
                   "payment_reference", "exception_flag", "exception_flag_display", "expected_at_cargo", "paid_at",
-                  "shipped_at", "received_at", "notes", "actions", "created_at", "updated_at"]
+                  "shipped_at", "received_at", "notes", "actions", "photos", "created_at", "updated_at"]
 
     def get_order(self, obj) -> dict:
         o = obj.order
@@ -68,6 +70,12 @@ class ProcurementSerializer(serializers.ModelSerializer):
 
     def get_item_cost(self, obj) -> str | None:
         return _dec(obj.item_cost)
+
+    def get_photos(self, obj) -> list[dict]:
+        """The order's photos for reference: the customer's (from their request) and the ones AGIZA staff added."""
+        return [{"id": a.id, "url": f"procurement/orders/{obj.id}/photos/{a.id}/file", "caption": a.caption,
+                 "from_customer": a.caption == CUSTOMER_PHOTO} for a in obj.order.attachments.all()
+                if (a.content_type or "").startswith("image/") or not a.content_type]
 
     def get_actions(self, obj) -> list[str]:
         """Workflow actions available in the current status."""

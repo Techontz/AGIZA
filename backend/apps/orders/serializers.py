@@ -267,8 +267,16 @@ class InternationalCreateSerializer(_CreateBase):
                                            default=InternationalDetails.ServiceType.FULL_SERVICE)
     total_amount = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"), required=False)
     installment_plan = serializers.BooleanField(default=False)
+    # Quick orders entered by staff (no quotation): Deliver for me needs the supplier's tracking number.
+    tracking_number = serializers.CharField(max_length=80, required=False, allow_blank=True, default="")
+    supplier_name = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
 
-    DETAIL_FIELDS = ["source_country", "order_class", "service_type"]
+    DETAIL_FIELDS = ["source_country", "order_class", "service_type", "tracking_number", "supplier_name"]
+
+    def validate(self, attrs):
+        attrs["tracking_number"] = attrs.get("tracking_number", "").strip()
+        attrs["supplier_name"] = attrs.get("supplier_name", "").strip()
+        return attrs
 
 
 class EquipmentCreateSerializer(_CreateBase):

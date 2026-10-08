@@ -162,3 +162,20 @@ def test_equipment_tabs_stats_and_search(admin, new_equipment):
     assert admin.get(f"{EQUIP}/?tab=attention").json()["count"] == 1
     assert admin.get(f"{EQUIP}/?search=cctv").json()["count"] == 1
     assert admin.get(f"{EQUIP}/?service_type=maintenance").json()["count"] == 1
+
+
+def test_staff_quick_order_without_a_quotation(admin, customer, china):
+    """Staff enter Buy for me / Deliver for me orders directly, with the supplier's tracking number."""
+    from apps.shipping.models import CargoParcel
+
+    payload = {"customer": customer.id, "item_details": "Sneakers × 2", "source_country": china.id,
+               "service_type": "deliver_for_me"}
+    res = admin.post(f"{INTL}/", {**payload, "tracking_number": " YT998877CN ", "supplier_name": "Shein"},
+                     format="json")
+    assert res.status_code == 201, res.json()
+    order = res.json()
+    assert order["status"] == "waiting_to_receive"
+    assert CargoParcel.objects.get(order_id=order["id"]).supplier_tracking_number == "YT998877CN"
+    buy = admin.post(f"{INTL}/", {"customer": customer.id, "item_details": "Phone case", "source_country": china.id},
+                     format="json")
+    assert buy.status_code == 201 and buy.json()["status"] == "pending_payment"

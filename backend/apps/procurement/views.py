@@ -1,5 +1,6 @@
 import django_filters
 from django.db.models import Count, Q, Sum
+from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
@@ -10,6 +11,7 @@ from apps.accounts.models import User
 from apps.accounts.permissions import HasModulePermission
 from apps.core.audit import AuditedViewSetMixin, diff, record_audit, snapshot
 from apps.core.exceptions import ConflictError
+from apps.core.uploads import file_response
 from apps.core.workflow import run
 
 from . import services
@@ -87,7 +89,7 @@ class ProcurementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixin
         return ProcurementOrder.objects.select_related(
             "order", "order__customer", "order__international", "order__international__source_country",
             "supplier", "operator",
-        )
+        ).prefetch_related("order__attachments")
 
     def _respond(self, proc):
         return Response(ProcurementSerializer(self.get_queryset().get(pk=proc.pk)).data)
@@ -161,6 +163,13 @@ class ProcurementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixin
     def history(self, request, pk=None):
         rows = self.get_object().history.select_related("changed_by")
         return Response(ProcurementHistorySerializer(rows, many=True).data)
+
+    @extend_schema(responses={200: bytes})
+    @action(detail=True, url_path=r"photos/(?P<photo_id>\d+)/file")
+    def photo(self, request, pk=None, photo_id=None):
+        """One of the order's photos, for procurement staff (who may not see the Orders module)."""
+        att = get_object_or_404(self.get_object().order.attachments, pk=photo_id)
+        return file_response(att.file, att.content_type)
 
     @action(detail=False)
     def stats(self, request):
