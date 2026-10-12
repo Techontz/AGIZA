@@ -287,7 +287,7 @@ class ProductListSerializer(serializers.ModelSerializer):
         model = Product
         fields = ["id", "reference", "name", "sku", "brand", "category", "status", "status_display", "price",
                   "compare_at_price", "description", "origin", "image", "stock", "low_stock_threshold", "labels",
-                  "has_variations", "variants_count", "featured", "updated_at", "seller", "review_status",
+                  "has_variations", "variants_count", "featured", "created_at", "updated_at", "seller", "review_status",
                   "review_status_display", "review_note"]
 
     def get_seller(self, obj) -> dict:
@@ -486,7 +486,7 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
         model = StoreSettings
         fields = ["store_name", "description", "location", "location_name", "currency", "same_city_min_days",
                   "same_city_max_days", "regional_min_days", "regional_max_days", "guest_checkout",
-                  "product_reviews", "updated_at"]
+                  "product_reviews", "split_checkout", "updated_at"]
         read_only_fields = ["updated_at"]
 
     def validate(self, attrs):

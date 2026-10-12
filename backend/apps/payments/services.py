@@ -36,14 +36,35 @@ def available() -> bool:
     return selcom.configured()
 
 
-def start_checkout(order: Order, *, phone: str) -> GatewayPayment:
+def _together(order: Order) -> list[Order]:
+    """The live orders of the order's checkout (one order per product), paid together at checkout."""
+    from apps.orders import shop
+
+    return [o for o in shop.checkout_orders(order) if o.status != "cancelled"]
+
+
+def _checkout_reference(order: Order) -> str:
+    details = getattr(order, "shop", None) if order.order_type == "shop" else None
+    return details.checkout_reference if details else ""
+
+
+def start_checkout(order: Order, *, phone: str, together: bool = False) -> GatewayPayment:
+    """Open Selcom's checkout for what is due on the order — or, with `together`, on every order of its
+    checkout (one cart split into an order per product), paid in one go right after ordering."""
+    group = _checkout_reference(order) if together else ""
+    if group:
+        return _start(order, phone=phone, orders=_together(order), label=group)
+    return _start(order, phone=phone, orders=[order], label=order.reference)
+
+
+def _start(order: Order, *, phone: str, orders: list[Order], label: str) -> GatewayPayment:
     if not available():
         raise WorkflowError("Mobile money payment isn't available right now. Choose Pay later.", conflict=True)
     if order.status == "cancelled":
         raise WorkflowError("This order was cancelled.", conflict=True)
     if payment_deadline_passed(order):
         raise WorkflowError("The payment deadline for this order has passed.", conflict=True)
-    due = order_services.payment_summary(order).due
+    due = sum((order_services.payment_summary(o).due or Decimal("0") for o in orders), Decimal("0"))
     if not due or due <= 0:
         raise WorkflowError("This order has nothing left to pay.", conflict=True)
     amount = due.quantize(Decimal("1"))  # Selcom takes whole shillings
@@ -55,14 +76,15 @@ def start_checkout(order: Order, *, phone: str) -> GatewayPayment:
 
     gateway = GatewayPayment.objects.create(
         order=order, amount=amount, currency=order.currency, phone=phone,
-        provider_order_id=f"AGIZA-{order.reference}-{uuid.uuid4().hex[:8].upper()}",
+        provider_order_id=f"AGIZA-{label}-{uuid.uuid4().hex[:8].upper()}",
     )
     customer = order.customer
     try:
         payload, response = selcom.create_order(
             order_id=gateway.provider_order_id, amount=f"{amount:.0f}", currency=order.currency,
             buyer_name=customer.full_name, buyer_email=customer.email or settings.SELCOM_FALLBACK_BUYER_EMAIL,
-            buyer_phone=phone, remarks=f"AGIZA order {order.reference}", items=max(order.items.count(), 1),
+            buyer_phone=phone, remarks=f"AGIZA order {label}",
+            items=max(sum(o.items.count() for o in orders), 1),
         )
     except selcom.SelcomError as exc:
         _fail(gateway, f"Gateway unreachable: {exc}")
@@ -122,6 +144,10 @@ def _complete(gateway: GatewayPayment, answer: dict):
     gateway.provider_reference = reference
     gateway.completed_at = timezone.now()
     gateway.status = GatewayPayment.Status.COMPLETED
+    group = _checkout_reference(order)
+    if group and gateway.provider_order_id.startswith(f"AGIZA-{group}-"):
+        _complete_together(gateway, received, reference, group)
+        return
     due = order_services.payment_summary(order).due or Decimal("0")
     amount = min(received, due)
     if amount <= 0:
@@ -141,6 +167,34 @@ def _complete(gateway: GatewayPayment, answer: dict):
     gateway.payment = payment
     if received > amount:
         _needs_attention(gateway, f"Received {received} {gateway.currency}; only {amount} was due. Refund the difference.")
+
+
+def _complete_together(gateway: GatewayPayment, received: Decimal, reference: str, group: str):
+    """One payment for a whole checkout: recorded on each of its orders, up to what each one owes."""
+    left, first = received, None
+    for order in _together(gateway.order):
+        due = order_services.payment_summary(order).due or Decimal("0")
+        amount = min(left, due)
+        if amount <= 0:
+            continue
+        try:
+            payment = order_services.record_payment(
+                order, amount=amount, method=Payment.Method.MOBILE_MONEY, user=None, reference=reference,
+                kind=Payment.Kind.BALANCE if amount >= due else Payment.Kind.ADVANCE,
+                notes=f"Paid in the AGIZA app via Selcom ({gateway.provider_order_id}, checkout {group})",
+            )
+        except WorkflowError as exc:
+            _needs_attention(gateway, f"Received {received} {gateway.currency} for checkout {group}; "
+                                      f"{order.reference} couldn't take its part: {exc.message}")
+            continue
+        first = first or payment
+        left -= amount
+    gateway.payment = first
+    if first is None:
+        _needs_attention(gateway, f"Received {received} {gateway.currency} but nothing was due on checkout {group}.")
+    elif left > 0:
+        _needs_attention(gateway, f"Received {received} {gateway.currency}; {left} more than checkout {group} owed. "
+                                  f"Refund the difference.")
 
 
 def payment_deadline_passed(order) -> bool:

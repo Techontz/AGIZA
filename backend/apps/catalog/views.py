@@ -394,6 +394,33 @@ class ProductViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cr
         self.action = "retrieve"
         return Response(ProductDetailSerializer(self.get_queryset().get(pk=product.pk)).data, status=code)
 
+
+    @extend_schema(request=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["post"])
+    def relist(self, request, pk=None):
+        """Show the product as newly uploaded: its upload date becomes now (or {"date": "YYYY-MM-DD[THH:MM]"})."""
+        from datetime import datetime
+
+        from django.utils import timezone
+        from django.utils.dateparse import parse_date, parse_datetime
+
+        product = self.get_object()
+        raw = str((request.data.get("date") or "") if isinstance(request.data, dict) else "")
+        when = timezone.now()
+        if raw:
+            day = parse_date(raw) if len(raw) == 10 else None
+            parsed = datetime.combine(day, timezone.localtime().time()) if day else parse_datetime(raw)
+            if not parsed:
+                raise ValidationError({"date": ["Enter a date like 2026-10-12."]})
+            when = parsed if timezone.is_aware(parsed) else timezone.make_aware(parsed)
+            if when > timezone.now():
+                raise ValidationError({"date": ["The upload date can't be in the future."]})
+        before = product.created_at
+        Product.objects.filter(pk=product.pk).update(created_at=when, updated_at=timezone.now())
+        record_audit(action="update", request=request, instance=product,
+                     changes={"upload_date": [before.isoformat(), when.isoformat()]})
+        return Response({"id": product.pk, "created_at": when})
+
     @extend_schema(request=ProductWriteSerializer, responses={201: ProductDetailSerializer})
     def create(self, request, *args, **kwargs):
         s = ProductWriteSerializer(data=request.data)

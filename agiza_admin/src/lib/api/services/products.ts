@@ -97,6 +97,8 @@ export interface ProductRow {
   has_variations: boolean;
   variants_count: number;
   featured: boolean;
+  /** Upload date: the shop lists products newest first ("Re-list as new" moves it to now). */
+  created_at?: string;
   updated_at: string;
   seller: ProductSeller;
   review_status: ReviewStatus;
@@ -364,6 +366,8 @@ export const productsApi = {
   create: (data: ProductWrite) => api.post<ProductDetail>(P, data),
   update: (id: number, data: Partial<ProductWrite>) => api.patch<ProductDetail>(`${P}/${id}`, data),
   remove: (id: number) => api.delete(`${P}/${id}`),
+  /** Shows the product as newly uploaded: upload date = now, or the given day (YYYY-MM-DD). */
+  relist: (id: number, date?: string) => api.post<{ id: number; created_at: string }>(`${P}/${id}/relist`, date ? { date } : {}),
   stats: () => api.get<ProductStats>(`${P}/stats`),
   /** Review a self-service vendor's product; `note` is required to reject or disable. */
   moderate: (id: number, body: { action: ModerationAction; note: string }) =>

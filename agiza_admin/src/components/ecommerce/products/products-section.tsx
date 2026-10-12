@@ -1,7 +1,7 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Clock, Edit, Eye, Image as ImageIcon, Package, Plus, Trash2 } from "lucide-react";
+import { Clock, Edit, Eye, Image as ImageIcon, Package, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -26,6 +26,7 @@ import {
   type ProductRow,
 } from "@/lib/api/services/products";
 import { cn } from "@/lib/cn";
+import { formatDate } from "@/lib/format";
 
 import { ReviewStatusBadge, SellerKindTag } from "../marketplace-ui";
 
@@ -105,6 +106,16 @@ export function ProductsSection() {
 
   /* ---- delete (409 → offer Inactive) ---- */
   const [toDelete, setToDelete] = useState<ProductRow | null>(null);
+  const [relisting, setRelisting] = useState<ProductRow | null>(null);
+  const [relistDate, setRelistDate] = useState("");
+  const relist = useApiMutation((p: ProductRow) => productsApi.relist(p.id, relistDate || undefined), {
+    invalidate: [productKeys.all],
+    success: (r) => `Upload date set to ${formatDate(r.created_at)} — it now shows as ${relistDate ? "uploaded then" : "new"}`,
+    onSuccess: () => {
+      setRelisting(null);
+      setRelistDate("");
+    },
+  });
   const [blocked, setBlocked] = useState<{ row: ProductRow; message: string } | null>(null);
   const remove = useApiMutation((p: ProductRow) => productsApi.remove(p.id), {
     invalidate: [productKeys.all],
@@ -292,6 +303,11 @@ export function ProductsSection() {
                         </td>
                         <td className="px-4 py-3">
                           <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded whitespace-nowrap">{p.sku}</span>
+                          {p.created_at && (
+                            <span className="block mt-1 text-[11px] text-gray-400 whitespace-nowrap" title="Upload date (the shop shows newest first)">
+                              Uploaded {formatDate(p.created_at)}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-gray-600 text-xs">{p.category?.name ?? "—"}</td>
                         <td className="px-4 py-3">
@@ -329,6 +345,16 @@ export function ProductsSection() {
                               {canEdit ? <Edit className="size-3.5" /> : <Eye className="size-3.5" />}
                               {canEdit ? "Edit" : "View"}
                             </button>
+                            {canEdit && (
+                              <button
+                                type="button"
+                                onClick={() => setRelisting(p)}
+                                className="flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors text-xs font-medium whitespace-nowrap"
+                                title="Show it as newly uploaded on the website and app"
+                              >
+                                <RefreshCw className="size-3.5" /> Re-list as new
+                              </button>
+                            )}
                             {canEdit && <ProductModerationButtons product={p} />}
                             {canDelete && (
                               <button
@@ -388,6 +414,40 @@ export function ProductsSection() {
         }
         onConfirm={() => toDelete && remove.mutate(toDelete)}
         onClose={() => !remove.isPending && setToDelete(null)}
+      />
+
+      <ConfirmDialog
+        open={relisting !== null}
+        title="Re-list as new"
+        confirmLabel={relistDate ? "Set upload date" : "Show as new now"}
+        pending={relist.isPending}
+        message={
+          <>
+            <p>
+              <strong>{relisting?.name}</strong> will show as newly uploaded, so it appears with the newest products on the website
+              and app.
+            </p>
+            {relisting?.created_at && <p className="mt-1 text-sm text-gray-500">Uploaded now: {formatDate(relisting.created_at)}</p>}
+            <label className="mt-3 block text-sm font-medium text-gray-700" htmlFor="relist-date">
+              Or choose an upload date (optional)
+            </label>
+            <input
+              id="relist-date"
+              type="date"
+              max={new Date().toISOString().slice(0, 10)}
+              value={relistDate}
+              onChange={(e) => setRelistDate(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+          </>
+        }
+        onConfirm={() => relisting && relist.mutate(relisting)}
+        onClose={() => {
+          if (!relist.isPending) {
+            setRelisting(null);
+            setRelistDate("");
+          }
+        }}
       />
 
       <ConfirmDialog

@@ -2,7 +2,7 @@
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ChevronDown, ChevronUp, Clock, Globe, Package2, Plus, ShoppingCart, TrendingUp, User } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import { OpenProblemsNotice } from "@/components/ecommerce/fulfillment-issues";
 import { useOrderAccess } from "@/components/orders/shared";
@@ -39,9 +39,20 @@ export function EcommerceOrdersView() {
   const [search, setSearch] = useState(f.search);
   const [creating, setCreating] = useState(false);
   const debounced = useDebouncedValue(search);
+  // Typing updates the URL; a link that sets ?search= (e.g. "Show all orders of this checkout") updates the box.
+  const synced = useRef(f.search);
   useEffect(() => {
-    if (debounced !== f.search) setF({ search: debounced, open: "" });
-  }, [debounced, f.search, setF]);
+    if (debounced !== synced.current) {
+      synced.current = debounced;
+      setF({ search: debounced, open: "" });
+    }
+  }, [debounced, setF]);
+  useEffect(() => {
+    if (f.search !== synced.current) {
+      synced.current = f.search;
+      setSearch(f.search);
+    }
+  }, [f.search]);
 
   const query = {
     search: f.search,

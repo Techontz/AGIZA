@@ -125,3 +125,30 @@ def test_staff_pin_products_to_the_top_of_the_shop_and_order_categories(api, sho
     child = Category.objects.create(name="Kid", slug="kid", parent=a)
     assert staff.post("/api/catalog/categories/reorder/", {"ids": [a.pk, child.pk]},
                       format="json").status_code == 400  # one level at a time
+
+
+def test_staff_relist_an_older_product_as_new_and_cards_carry_the_variant(api, shop, client_for):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.catalog.models import Product
+
+    Product.objects.filter(pk=shop.product.pk).update(created_at=timezone.now() - timedelta(days=30))
+    newest = lambda: api.get(f"{APP}/products/", {"ordering": "newest"}).json()["results"][0]["name"]  # noqa: E731
+    assert newest() != "Galaxy A54"
+    staff = client_for("admin_l2")
+    res = staff.post(f"/api/catalog/products/{shop.product.pk}/relist/", {}, format="json")
+    assert res.status_code == 200, res.json()
+    assert newest() == "Galaxy A54"
+    assert staff.post(f"/api/catalog/products/{shop.product.pk}/relist/", {"date": "2026-01-05"},
+                      format="json").status_code == 200
+    assert Product.objects.get(pk=shop.product.pk).created_at.date().isoformat() == "2026-01-05"
+    assert staff.post(f"/api/catalog/products/{shop.product.pk}/relist/", {"date": "nope"},
+                      format="json").status_code == 400
+    assert staff.post(f"/api/catalog/products/{shop.product.pk}/relist/", {"date": "2999-01-01"},
+                      format="json").status_code == 400
+    assert client_for("driver").post(f"/api/catalog/products/{shop.product.pk}/relist/", {},
+                                     format="json").status_code == 403
+    card = next(p for p in api.get(f"{APP}/products/").json()["results"] if p["name"] == "USB-C Cable")
+    assert card["variant"] == shop.cable_variant.pk and card["in_stock"] is True

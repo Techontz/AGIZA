@@ -172,12 +172,19 @@ class ProductCardSerializer(serializers.ModelSerializer):
     rating_count = serializers.SerializerMethodField()
     ships_from = serializers.SerializerMethodField()
     can_request = serializers.SerializerMethodField()
+    variant = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
         fields = ["id", "name", "price", "price_max", "compare_at_price", "image", "brand", "category",
                   "condition", "featured", "ofa_kali", "in_stock", "available", "labels", "vendor", "created_at", "rating",
-                  "rating_count", "ships_from", "can_request"]
+                  "rating_count", "ships_from", "can_request", "variant"]
+
+    def get_variant(self, product) -> int | None:
+        """The variant "Add to cart" / "Buy now" on the card buy: the only one; null when the customer must
+        choose options (size, colour…) on the product page first."""
+        variants = getattr(product, "shop_variants", [])
+        return variants[0].pk if len(variants) == 1 else None
 
     def get_ships_from(self, product) -> str | None:
         """The country an imported product ships from (e.g. "China"); null for products held in Tanzania."""

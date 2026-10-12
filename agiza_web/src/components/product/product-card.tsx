@@ -5,6 +5,7 @@ import { cn } from "@/lib/cn";
 import { money, productHref } from "@/lib/format";
 
 import { Verified } from "../store/store-avatar";
+import { CardActions } from "./card-actions";
 import { CompareButton } from "./compare-button";
 import { ProductImage } from "./product-image";
 import { RatingCount } from "./stars";
@@ -51,6 +52,7 @@ export function ProductCard({ product, priority, sizes = GRID_SIZES, className }
           {compare ? <p className="text-[14px] leading-5 text-muted line-through tabular-nums">{money(compare)}</p> : null}
         </div>
       </Link>
+      <CardActions product={product} />
       <div className="absolute top-2 right-2 flex flex-col gap-1.5 sm:top-3 sm:right-3">
         <WishlistButton productId={product.id} name={product.name} reveal />
         <CompareButton productId={product.id} name={product.name} reveal className="max-lg:hidden" />

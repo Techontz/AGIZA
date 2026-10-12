@@ -63,6 +63,8 @@ export type ProductCard = {
   available?: number;
   /** Out of stock but customers may ask AGIZA to source it ("Pata bei"). Missing = allowed. */
   can_request?: boolean;
+  /** The variant the tile's Add to cart / Buy now buy; null when options must be chosen on the product page. */
+  variant?: number | null;
 };
 
 export type Variant = {

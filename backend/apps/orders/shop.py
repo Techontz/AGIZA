@@ -30,7 +30,7 @@ def create_shop_order(*, customer, items: list[dict], shipping_address: str, use
                       prepayment_required: bool = False, payment_due_at=None,
                       customs_fee: Decimal = Decimal("0"), customs_status: str = "",
                       customs_charges: dict | None = None, delivery_fee_pending: bool = False,
-                      delivery_issue: str = "") -> Order:
+                      delivery_issue: str = "", checkout_reference: str = "") -> Order:
     """
     items: [{"variant": ProductVariant, "quantity": int, "unit_price": Decimal | None, "sourced_abroad": bool}]
     shipping_allocation: {vendor_id or None: fee} — which seller's items each part of the delivery fee is for.
@@ -70,7 +70,7 @@ def create_shop_order(*, customer, items: list[dict], shipping_address: str, use
                  "prepayment_required": prepayment_required, "payment_due_at": payment_due_at,
                  "customs_fee": customs_fee, "customs_status": customs_status,
                  "customs_charges": customs_charges or {}, "delivery_fee_pending": delivery_fee_pending,
-                 "delivery_issue": delivery_issue},
+                 "delivery_issue": delivery_issue, "checkout_reference": checkout_reference},
     )
     for variant, qty, price, total, abroad in lines:
         try:
@@ -93,6 +93,15 @@ def create_shop_order(*, customer, items: list[dict], shipping_address: str, use
 
     pickups.plan(order)
     return order
+
+
+def checkout_orders(order: Order) -> list[Order]:
+    """The orders placed in the same checkout as this one (just this one when it had a single product)."""
+    details = getattr(order, "shop", None)
+    if details is None or not details.checkout_reference:
+        return [order]
+    return list(Order.objects.filter(order_type=OrderType.SHOP, shop__checkout_reference=details.checkout_reference,
+                                     customer_id=order.customer_id).select_related("shop").order_by("id"))
 
 
 DELIVERY_FEE_SET_TITLE = "Delivery cost confirmed — you can now pay"

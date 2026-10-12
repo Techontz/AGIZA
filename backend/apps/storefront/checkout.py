@@ -26,13 +26,15 @@ which tells the customer to pay.
 from __future__ import annotations
 
 import logging
+import secrets
 from dataclasses import dataclass, field
 from datetime import timedelta
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from apps.catalog.models import StoreSettings
 from apps.chat.services import find_customer
 from apps.core.workflow import WorkflowError
 from apps.orders import shop
@@ -232,6 +234,55 @@ def _shipping_fields(quote: Quote) -> dict:
     }
 
 
+def _shares(amount: Decimal, weights: list[Decimal]) -> list[Decimal]:
+    """`amount` split in proportion to `weights` (to the cent; the rounding goes to the last weighted part)."""
+    parts = [Decimal("0")] * len(weights)
+    if not amount or not weights:
+        return parts
+    total = sum(weights, Decimal("0"))
+    if total <= 0:
+        parts[-1] = amount
+        return parts
+    last = max(i for i, w in enumerate(weights) if w > 0)
+    for i, w in enumerate(weights):
+        if i != last:
+            parts[i] = (amount * w / total).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+    parts[last] = amount - sum(parts, Decimal("0"))
+    return parts
+
+
+def _create_orders(quote: Quote, **common) -> Order:
+    """
+    One order per product, so staff handle each separately (its own status, supplier, tracking and delivery).
+    The delivery, import and customs charges are shared out by value; the orders share a checkout reference
+    and are paid together. Returns the first order.
+    """
+    fields = _shipping_fields(quote)
+    lines = quote.summary["lines"]
+    if len(lines) == 1 or not StoreSettings.load().split_checkout:
+        orders = [shop.create_shop_order(items=_order_lines(quote), **fields, **common)]
+    else:
+        reference = f"CHK-{secrets.token_hex(4).upper()}"
+        values = [line["line_total"] for line in lines]
+        imported = [line["line_total"] if line["imported"] else Decimal("0") for line in lines]
+        local = _shares(fields["delivery_fee"] - quote.import_fee, values)
+        imports = _shares(quote.import_fee, imported)
+        duties = _shares(fields["customs_fee"], imported)
+        orders = []
+        for i, line in enumerate(lines):
+            part = {**fields, "delivery_fee": local[i] + imports[i], "import_fee": imports[i],
+                    "customs_fee": duties[i], "shipping_allocation": None}  # one seller: its share is all theirs
+            if not line["imported"]:  # pay-first (if any) still applies: the checkout is paid together
+                part.update(import_shipping_method=None, customs_status="", customs_charges={})
+            orders.append(shop.create_shop_order(
+                items=[{"variant": line["item"].variant, "quantity": line["item"].quantity,
+                        "sourced_abroad": line["imported"]}],
+                checkout_reference=reference, **part, **common))
+    if sum((o.total_amount for o in orders), Decimal("0")) != quote.total:  # must charge what was quoted
+        raise WorkflowError("The order total couldn't be confirmed. Please try again.", conflict=True)
+    return orders[0]
+
+
 def payment_deadline():
     """When an order with imported items must be fully paid (Shipping Engine settings)."""
     hours = EngineSettings.load().import_payment_window_hours
@@ -265,14 +316,12 @@ def place_order(customer, *, address: Address, shipping_method_id: int, payment_
             quote = _quote(carts.summarize(cart), address.city, shipping_method_id, import_method_id)
             _check_quote(quote, payment_method, expected_total)
             lines = quote.summary["lines"]
-            order = shop.create_shop_order(
-                customer=customer, user=None, request=request, channel=channel, items=_order_lines(quote),
+            order = _create_orders(
+                quote, customer=customer, user=None, request=request, channel=channel,
                 shipping_address=_address_text(address), city=address.city, area=address.area,
                 customer_email=customer.email, notes=notes.strip(), delivery_address=address,
-                payment_preference=payment_method, **_shipping_fields(quote),
+                payment_preference=payment_method,
             )
-            if order.total_amount != quote.total:  # defensive: the order service must charge what was quoted
-                raise WorkflowError("The order total couldn't be confirmed. Please try again.", conflict=True)
             CheckoutRequest.objects.create(customer=customer, key=idempotency_key, order=order)
             cart.items.filter(pk__in=[line["item"].pk for line in lines]).delete()
             return order, True
@@ -321,14 +370,12 @@ def place_guest_order(*, items: list[dict], full_name: str, phone: str, email: s
                                   import_method_id=import_method_id)
             _check_quote(quote, payment_method, expected_total)
             contact = f"Guest checkout: {full_name}, +{phone}"
-            order = shop.create_shop_order(
-                customer=customer, user=None, request=request, channel=ShopDetails.Channel.WEB,
-                items=_order_lines(quote), shipping_address=line1[:255], city=city, area=area,
+            order = _create_orders(
+                quote, customer=customer, user=None, request=request, channel=ShopDetails.Channel.WEB,
+                shipping_address=line1[:255], city=city, area=area,
                 customer_email=email or customer.email, notes="\n".join(p for p in (contact, notes.strip()) if p),
-                payment_preference=payment_method, **_shipping_fields(quote),
+                payment_preference=payment_method,
             )
-            if order.total_amount != quote.total:
-                raise WorkflowError("The order total couldn't be confirmed. Please try again.", conflict=True)
             CheckoutRequest.objects.create(customer=customer, key=idempotency_key, order=order)
             return order, True
     except IntegrityError:

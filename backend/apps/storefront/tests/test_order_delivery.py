@@ -43,6 +43,7 @@ def driver(make_user):
     return make_user(StaffLevel.DRIVER, full_name="Hassan Mohamed", phone="+255700111222")
 
 
+@pytest.mark.usefixtures("one_order_per_checkout")
 def test_staff_see_sku_bin_and_warehouse_of_each_line(order, shop, staff):
     StockItem.objects.filter(variant=shop.variant, warehouse=shop.warehouse).update(bin_code="A-01-3")
     shop.cable.bin_code = "SHELF-9"  # no bin on the stock row: the product's bin is used

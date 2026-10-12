@@ -96,6 +96,19 @@ def customer_can_cancel(order: Order, summary=None) -> bool:
     return order.order_type == OrderType.SHOP and order.status == ShopStatus.PENDING and summary.paid <= 0
 
 
+def _checkout(order: Order) -> dict | None:
+    """The other orders placed in the same checkout (one order per product), so the customer sees them together."""
+    from apps.orders.shop import checkout_orders
+
+    if not order.shop.checkout_reference:
+        return None
+    orders = checkout_orders(order)
+    return {"reference": order.shop.checkout_reference,
+            "orders": [{"reference": o.reference, "item_details": o.item_details, "total": str(o.total_amount),
+                        "status_display": status_label(o.order_type, o.status)} for o in orders],
+            "total": str(sum((o.total_amount for o in orders), 0))}
+
+
 def order_detail_payload(order: Order, request) -> dict:
     card = OrderCardSerializer(order, context={"request": request}).data
     summary = payment_summary(order)
@@ -126,6 +139,7 @@ def order_detail_payload(order: Order, request) -> dict:
             "import_method": details.import_shipping_method.name if details.import_shipping_method_id else None,
             "import_fee": str(details.import_fee),
         }
+        body["checkout"] = _checkout(order)
         body["prepayment_required"] = details.prepayment_required
         body["payment_due_at"] = details.payment_due_at if details.prepayment_required else None
         body["customs"] = details.customs_charges or None

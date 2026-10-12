@@ -310,6 +310,9 @@ class ShopDetails(models.Model):
                                  related_name="shop_orders")
     supplier_order_number = models.CharField(max_length=80, blank=True)
     supplier_tracking_number = models.CharField(max_length=80, blank=True)
+    # One checkout with several products becomes one order per product (handled separately), sharing this
+    # reference: paid together at checkout, the payment is recorded on each of them.
+    checkout_reference = models.CharField(max_length=20, blank=True, db_index=True)
     supplier_shipped_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self) -> str:

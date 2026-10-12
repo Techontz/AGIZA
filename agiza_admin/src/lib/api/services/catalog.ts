@@ -189,6 +189,8 @@ export interface StoreSettings {
   regional_max_days: number;
   guest_checkout: boolean;
   product_reviews: boolean;
+  /** A cart with several products becomes one order per product (handled separately). */
+  split_checkout: boolean;
   updated_at: string;
 }
 export type StoreSettingsInput = Partial<Omit<StoreSettings, "location_name" | "updated_at">>;

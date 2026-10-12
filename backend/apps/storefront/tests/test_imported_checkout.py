@@ -65,6 +65,7 @@ def test_delivery_calculator_prices_both_legs_from_the_shipping_engine(api, impo
     assert api.get(f"{APP}/delivery-estimate/", {"variant": imported.drone_variant.pk}).status_code == 400
 
 
+@pytest.mark.usefixtures("one_order_per_checkout")
 def test_checkout_adds_the_import_leg_and_requires_payment(app, imported, home, selcom):
     assert add(app, imported.drone_variant, 1).status_code in (200, 201)
     add(app, imported.variant, 1)  # a local phone in the same cart

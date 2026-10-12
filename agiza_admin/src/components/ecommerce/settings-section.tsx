@@ -69,7 +69,7 @@ export function SettingsSection() {
 
 const SETTINGS_FIELDS = [
   "store_name", "description", "location", "currency", "same_city_min_days", "same_city_max_days",
-  "regional_min_days", "regional_max_days", "guest_checkout", "product_reviews",
+  "regional_min_days", "regional_max_days", "guest_checkout", "product_reviews", "split_checkout",
 ] as const;
 
 function SettingsForm({ data, canManage }: { data: StoreSettings; canManage: boolean }) {
@@ -84,6 +84,7 @@ function SettingsForm({ data, canManage }: { data: StoreSettings; canManage: boo
     regional_max_days: data.regional_max_days,
     guest_checkout: data.guest_checkout,
     product_reviews: data.product_reviews,
+    split_checkout: data.split_checkout ?? true,
   });
   const [errors, setErrors] = useState<Errors>({});
   const cities = useCities();
@@ -192,6 +193,16 @@ function SettingsForm({ data, canManage }: { data: StoreSettings; canManage: boo
           <p className="text-sm text-gray-600">Let customers leave reviews on products</p>
         </div>
         <IconSwitch size="lg" checked={form.product_reviews} onChange={(v) => set("product_reviews", v)} disabled={ro} label="Enable Product Reviews" />
+      </div>
+      <div className="flex items-center justify-between gap-4 py-3 border-b border-gray-200">
+        <div>
+          <p className="font-semibold text-gray-900">One order per product</p>
+          <p className="text-sm text-gray-600">
+            When a customer buys several products, each becomes its own order so it can be handled separately. They pay
+            once; the delivery fee is shared between the orders.
+          </p>
+        </div>
+        <IconSwitch size="lg" checked={form.split_checkout} onChange={(v) => set("split_checkout", v)} disabled={ro} label="One order per product" />
       </div>
       {canManage && (
         <Button type="submit" size="lg" loading={save.isPending}>

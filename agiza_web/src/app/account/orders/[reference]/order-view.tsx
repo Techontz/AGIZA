@@ -95,6 +95,29 @@ export function OrderView({ reference, token }: { reference: string; token?: str
           with the same phone number to see all your orders in one place.
         </Notice>
       ) : null}
+      {o.checkout && o.checkout.orders.length > 1 ? (
+        <Notice tone="info">
+          <p className="font-medium">
+            You bought {o.checkout.orders.length} products together ({money(o.checkout.total)}). Each one is its own order, so
+            it can be sent as soon as it&apos;s ready:
+          </p>
+          <ul className="mt-2 space-y-1">
+            {o.checkout.orders.map((c) => (
+              <li key={c.reference} className="flex flex-wrap items-center gap-2">
+                {c.reference === o.reference || guest ? (
+                  <span className="font-semibold">{c.reference}</span>
+                ) : (
+                  <Link href={`/account/orders/${c.reference}`} className="font-semibold text-primary hover:underline">
+                    {c.reference}
+                  </Link>
+                )}
+                <span>{c.item_details}</span>
+                <span className="text-muted">· {c.status_display}</span>
+              </li>
+            ))}
+          </ul>
+        </Notice>
+      ) : null}
       {params.get("payment") === "failed" ? <Notice tone="warning">The payment couldn&apos;t be started. You can try again below or pay later.</Notice> : null}
 
       <div className="flex flex-wrap items-start justify-between gap-3">

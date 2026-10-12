@@ -507,7 +507,7 @@ class ShopOrderViewSet(BaseOrderViewSet):
     update_serializer = ShopNotesSerializer
     filterset_class = ShopFilter
     search_fields = [*BaseOrderViewSet.search_fields, "shop__customer_email", "items__sku", "items__product_name",
-                     "shop__supplier_tracking_number"]
+                     "shop__supplier_tracking_number", "shop__checkout_reference"]
     required_access = {**BaseOrderViewSet.required_access, "cancel": "manage", "delivery_fee": "edit",
                        "step_back": "edit",
                        "supplier_cancelled": "edit"}

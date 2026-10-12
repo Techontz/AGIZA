@@ -77,6 +77,8 @@ export interface ShopOrder extends Omit<OrderBase, "status"> {
     delivery_issue?: string;
     /** Has items coming from abroad (the import stages apply). */
     imported?: boolean;
+    /** Set when the customer's cart was split into one order per product (they share this reference). */
+    checkout_reference?: string;
     /** Imported items bought from a supplier (as in Procurement): who, their order number and tracking number. */
     supplier?: { id: number; name: string; reference: string } | null;
     supplier_order_number?: string;

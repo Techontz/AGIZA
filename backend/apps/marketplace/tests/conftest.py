@@ -96,3 +96,13 @@ def vendor_b(make_seller):
 def anon():
     return APIClient()
 
+
+
+@pytest.fixture(autouse=True)
+def _one_order_per_checkout(db):
+    """These tests cover one order shared by several sellers (Store Settings: split checkout off)."""
+    from apps.catalog.models import StoreSettings
+
+    settings_ = StoreSettings.load()
+    settings_.split_checkout = False
+    settings_.save(update_fields=["split_checkout"])

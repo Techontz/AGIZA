@@ -157,10 +157,20 @@ def selcom(monkeypatch):
     monkeypatch.setattr("apps.payments.services.available", lambda: True)
     started = []
 
-    def start(order, phone):
+    def start(order, phone, together=False):
         started.append(order.reference)
         return {"status": "pending", "message": "", "checkout_url": "https://pay.example/checkout", "reference": "S1"}
 
     monkeypatch.setattr("apps.storefront.views.shopping.start_payment", start)
     monkeypatch.setattr("apps.storefront.views.guest.start_payment", start)
     return started
+
+
+@pytest.fixture
+def one_order_per_checkout(db):
+    """The store setting off: a checkout stays one order holding all its products."""
+    from apps.catalog.models import StoreSettings
+
+    settings_ = StoreSettings.load()
+    settings_.split_checkout = False
+    settings_.save(update_fields=["split_checkout"])

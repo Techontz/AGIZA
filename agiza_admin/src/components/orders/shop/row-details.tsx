@@ -77,6 +77,20 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
 
   return (
     <div className="space-y-6">
+      {o.details.checkout_reference && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <span>
+            Part of checkout <span className="font-mono font-semibold">{o.details.checkout_reference}</span>: the customer bought
+            several products at once, and each is its own order.
+          </span>
+          <Link
+            href={`/orders/ecommerce?search=${encodeURIComponent(o.details.checkout_reference)}`}
+            className="font-medium text-blue-700 hover:text-blue-900 underline"
+          >
+            Show all orders of this checkout
+          </Link>
+        </div>
+      )}
       {feePending && (
         <div className="flex flex-wrap items-start gap-3 rounded-lg border border-orange-300 bg-orange-50 p-4" role="alert">
           <AlertTriangle className="size-5 flex-shrink-0 text-orange-600 mt-0.5" />

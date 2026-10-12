@@ -68,6 +68,8 @@ export type ProductCard = {
   ships_from: string | null;
   /** Out of stock and AGIZA takes requests for it ("Pata Bei"): show "Request this product". */
   can_request?: boolean;
+  /** The variant the card's Add to cart / Buy now buy; null when options must be chosen on the product page. */
+  variant?: number | null;
 };
 
 export type Variant = {
@@ -263,6 +265,12 @@ export type OrderSeller = {
 
 export type OrderDetail = OrderCard & {
   notes: string;
+  /** Several products bought at once become one order each; they share this checkout (paid together). */
+  checkout?: {
+    reference: string;
+    orders: { reference: string; item_details: string; total: string; status_display: string }[];
+    total: string;
+  } | null;
   items: {
     name: string;
     variant_name: string;

@@ -548,6 +548,8 @@ class StoreSettings(TimeStampedModel):
     regional_max_days = models.PositiveSmallIntegerField(default=5)
     guest_checkout = models.BooleanField(default=True)
     product_reviews = models.BooleanField(default=True)
+    split_checkout = models.BooleanField(
+        default=True, help_text="A cart with several products becomes one order per product (handled separately)")
     updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                    related_name="+")
 

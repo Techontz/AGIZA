@@ -94,7 +94,7 @@ def gateway(monkeypatch):
     monkeypatch.setattr("apps.payments.services.available", lambda: True)
     started = []
 
-    def start_checkout(order, *, phone):
+    def start_checkout(order, *, phone, together=False):
         started.append(order.reference)
         return SimpleNamespace(status="pending", gateway_url="https://pay.example/checkout", provider_order_id="S1")
 
@@ -108,6 +108,7 @@ def place(client, address, method, key="manual-key-0001", **extra):
     return client.post(f"{APP}/checkout/place-order/", payload, format="json")
 
 
+@pytest.mark.usefixtures("one_order_per_checkout")
 def test_manual_quote_order_waits_for_the_delivery_cost_then_is_paid(app, shop, mwanza, gateway, client_for):
     app.post(f"{APP}/cart/items/", {"variant": shop.variant.pk, "quantity": 1}, format="json")
     res = place(app, mwanza, shop.bus, expected_total="850000.00")
@@ -192,6 +193,7 @@ def test_blocked_destinations_still_cannot_check_out(app, shop, account):
     assert res.status_code == 409 and not Order.objects.exists()
 
 
+@pytest.mark.usefixtures("one_order_per_checkout")
 def test_guest_order_with_the_delivery_cost_to_be_confirmed(shop, gateway, client_for, monkeypatch):
     texts = []
     monkeypatch.setattr("apps.orders.expiry._sms", lambda phone, body: texts.append((phone, body)))

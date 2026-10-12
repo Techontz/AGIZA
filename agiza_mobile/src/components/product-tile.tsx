@@ -1,16 +1,20 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { ClipboardList, Package } from 'lucide-react-native';
+import { Check, ClipboardList, Package, ShoppingBag, Zap } from 'lucide-react-native';
+import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { RatingInline } from '@/components/rating';
 import { VerifiedMark } from '@/components/store';
 import { WishlistButton } from '@/components/wishlist-button';
+import { errorMessage } from '@/components/ui/states';
 import { Text } from '@/components/ui/text';
+import { useCart } from '@/hooks/use-cart';
 import { useRequestProduct } from '@/hooks/use-request-product';
 import type { ProductCard } from '@/lib/api/types';
 import { money } from '@/lib/format';
+import { useAuth } from '@/lib/auth/session';
 import { prefetchProduct } from '@/lib/products';
 import { colors, fonts, radius, shadow, space, themed } from '@/theme/tokens';
 
@@ -81,6 +85,80 @@ function StockRow({ product }: { product: ProductCard }) {
   );
 }
 
+/** Add to cart / Buy now right on the tile (in stock). Products with options open the product page. */
+function QuickBuy({ product }: { product: ProductCard }) {
+  const { status } = useAuth();
+  const cart = useCart();
+  const [added, setAdded] = useState(false);
+  const [error, setError] = useState('');
+  if (!(product.in_stock || product.ships_from)) return null;
+  const open = () => router.push({ pathname: '/product/[id]', params: { id: product.id } });
+  const buy = (thenCheckout: boolean) => {
+    if (status !== 'signedIn') return router.push('/login');
+    if (!product.variant) return open();
+    setError('');
+    cart.add.mutate(
+      { variant: product.variant, quantity: 1 },
+      {
+        onSuccess: () => {
+          if (thenCheckout) router.push('/checkout');
+          else {
+            setAdded(true);
+            setTimeout(() => setAdded(false), 2500);
+          }
+        },
+        onError: (e) => setError(errorMessage(e)),
+      },
+    );
+  };
+  if (!product.variant) {
+    return (
+      <Pressable accessibilityRole="button" onPress={open} style={({ pressed }) => [styles.quick, styles.quickDark, pressed && { opacity: 0.85 }]}>
+        <Text style={styles.quickText} color={colors.onHero}>
+          Choose options
+        </Text>
+      </Pressable>
+    );
+  }
+  return (
+    <View style={styles.quickRow}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Add ${product.name} to cart`}
+        disabled={cart.add.isPending}
+        onPress={() => buy(false)}
+        style={({ pressed }) => [styles.quick, styles.quickDark, (pressed || cart.add.isPending) && { opacity: 0.85 }]}>
+        {cart.add.isPending ? (
+          <ActivityIndicator size="small" color={colors.onHero} />
+        ) : (
+          <>
+            {added ? <Check size={13} color={colors.onHero} /> : <ShoppingBag size={13} color={colors.onHero} />}
+            <Text style={styles.quickText} color={colors.onHero} numberOfLines={1}>
+              {added ? 'Added' : 'Add'}
+            </Text>
+          </>
+        )}
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Buy ${product.name} now`}
+        disabled={cart.add.isPending}
+        onPress={() => buy(true)}
+        style={({ pressed }) => [styles.quick, styles.quickBrand, pressed && { opacity: 0.85 }]}>
+        <Zap size={13} color={colors.onPrimary} />
+        <Text style={styles.quickText} color={colors.onPrimary} numberOfLines={1}>
+          Buy now
+        </Text>
+      </Pressable>
+      {error ? (
+        <Text variant="caption" color={colors.danger} numberOfLines={2} style={styles.quickError}>
+          {error}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 export function ProductTile({ product, width }: { product: ProductCard; width: number }) {
   const hasRange = product.price !== product.price_max;
   const discount =
@@ -144,6 +222,7 @@ export function ProductTile({ product, width }: { product: ProductCard; width: n
           )}
         </View>
         <StockRow product={product} />
+        <QuickBuy product={product} />
       </View>
     </Pressable>
   );
@@ -191,4 +270,21 @@ const styles = themed(() => ({
     backgroundColor: colors.hero,
   },
   requestText: { fontFamily: fonts.semibold, fontSize: 12 },
+  quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 },
+  quick: {
+    flexGrow: 1,
+    flexBasis: '45%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    height: 30,
+    paddingHorizontal: 6,
+    borderRadius: radius.pill,
+    marginTop: 4,
+  },
+  quickDark: { backgroundColor: colors.hero },
+  quickBrand: { backgroundColor: colors.brand },
+  quickText: { fontFamily: fonts.semibold, fontSize: 12 },
+  quickError: { width: '100%' },
 }));

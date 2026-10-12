@@ -184,11 +184,13 @@ def test_deadline_comes_from_the_shipping_engine_settings(app, imported, home, m
 def test_unpaid_order_expires_after_the_deadline(app, imported, home, mobile_money):
     add(app, imported.drone_variant)
     add(app, imported.variant)  # a local phone: its stock is reserved
-    order = place(app, home)
+    order = place(app, home)  # one order per product, paid together: both expire
+    phone_order = Order.objects.exclude(pk=order.pk).get(shop__checkout_reference=order.shop.checkout_reference)
+    assert phone_order.shop.prepayment_required and phone_order.shop.payment_due_at == order.shop.payment_due_at
     assert StockItem.objects.get(variant=imported.variant).reserved == 1
     assert expiry.expire_due() == []  # not due yet
     later = order.shop.payment_due_at + timedelta(minutes=1)
-    assert expiry.expire_due(now=later) == [order.reference]
+    assert sorted(expiry.expire_due(now=later)) == sorted([order.reference, phone_order.reference])
     order.refresh_from_db()
     assert order.status == "cancelled"
     assert StockItem.objects.get(variant=imported.variant).reserved == 0  # released
@@ -196,8 +198,9 @@ def test_unpaid_order_expires_after_the_deadline(app, imported, home, mobile_mon
     history = order.status_history.order_by("-id").first()
     assert history.to_status == "cancelled" and history.note.startswith("Payment deadline passed")
     assert AuditLog.objects.filter(object_id=str(order.pk), action="status_change").exists()
-    inbox = list(CustomerNotification.objects.filter(customer=order.customer).values_list("title", "body"))
-    assert [t for t, _ in inbox] == [f"Order {order.reference} cancelled"]  # one, specific message
+    inbox = list(CustomerNotification.objects.filter(customer=order.customer, title__contains=order.reference)
+                 .values_list("title", "body"))
+    assert [t for t, _ in inbox] == [f"Order {order.reference} cancelled"]  # one, specific message per order
     assert "imported items were not bought" in inbox[0][1]
     assert expiry.expire_due(now=later) == []  # idempotent
     detail = app.get(f"{APP}/orders/{order.reference}/").json()

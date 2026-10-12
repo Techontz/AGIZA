@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Check, ClipboardList, Plane, ShieldCheck, ShoppingBag, Truck } from 'lucide-react-native';
+import { ArrowLeft, Check, ClipboardList, Plane, ShieldCheck, ShoppingBag, Truck, Zap } from 'lucide-react-native';
 import { useRef, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -122,7 +122,7 @@ export default function ProductScreen() {
       options: variant?.options.length ? variant.options.map((o) => o.value).join(' / ') : undefined,
     });
 
-  const addToCart = () => {
+  const addToCart = (thenCheckout = false) => {
     if (status !== 'signedIn') return router.push('/login');
     if (!variant) return;
     setAdded(false);
@@ -130,8 +130,9 @@ export default function ProductScreen() {
       { variant: variant.id, quantity },
       {
         onSuccess: () => {
-          setAdded(true);
           setQuantity(1);
+          if (thenCheckout) router.push('/checkout');
+          else setAdded(true);
         },
       },
     );
@@ -360,13 +361,23 @@ export default function ProductScreen() {
             <>
               {maxAdd > 0 ? <QuantityStepper value={quantity} max={maxAdd} onChange={setQuantity} /> : null}
               <Button
-                title={loadingFull ? 'Loading…' : maxAdd === 0 ? 'All stock in cart' : 'Add to cart'}
-                icon={<ShoppingBag size={18} color={maxAdd === 0 || loadingFull ? colors.textSubtle : colors.onPrimary} />}
-                onPress={addToCart}
+                title={loadingFull ? 'Loading…' : maxAdd === 0 ? 'All in cart' : 'Add to cart'}
+                variant="dark"
+                icon={<ShoppingBag size={18} color={maxAdd === 0 || loadingFull ? colors.textSubtle : colors.onHero} />}
+                onPress={() => addToCart()}
                 loading={cart.add.isPending}
                 disabled={maxAdd === 0 || loadingFull}
                 style={styles.addButton}
               />
+              {maxAdd > 0 && !loadingFull ? (
+                <Button
+                  title="Buy now"
+                  icon={<Zap size={18} color={colors.onPrimary} />}
+                  onPress={() => addToCart(true)}
+                  disabled={cart.add.isPending}
+                  style={styles.addButton}
+                />
+              ) : null}
             </>
           )}
         </View>

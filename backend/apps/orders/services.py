@@ -122,7 +122,7 @@ def is_imported(order: Order) -> bool:
     details = getattr(order, "shop", None)
     if details is None:
         return False
-    if details.import_shipping_method_id or details.import_fee or details.prepayment_required:
+    if details.import_shipping_method_id or details.import_fee:
         return True
     return any(item.sourced_abroad or (item.warehouse_id and item.warehouse.country.iso2 != "TZ")
                for item in order.items.all())

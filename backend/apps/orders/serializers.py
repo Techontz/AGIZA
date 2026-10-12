@@ -433,6 +433,7 @@ class ShopOrderSerializer(OrderSerializer):
             "delivery_fee_pending": d.delivery_fee_pending,
             "delivery_issue": d.delivery_issue,
             "imported": services.is_imported(obj),
+            "checkout_reference": d.checkout_reference,
             "supplier": {"id": d.supplier_id, "name": d.supplier.name, "reference": d.supplier.reference}
                         if d.supplier_id else None,
             "supplier_order_number": d.supplier_order_number,
