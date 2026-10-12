@@ -1,17 +1,19 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, ListOrdered, Pin } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowDown, ArrowUp, ArrowUpToLine, ListOrdered, Pin } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/form";
 import { ErrorState, Skeleton } from "@/components/ui/states";
+import { fileSrc } from "@/lib/api/files";
 import { catalogApi, catalogKeys, type Category } from "@/lib/api/services/catalog";
+import { productKeys, productsApi } from "@/lib/api/services/products";
+import { formatTSh } from "@/lib/format";
 
 import { useCatalogAccess, useCatalogMutation } from "./shared";
-import { OrderedProductPicker, type PickedProduct } from "./website-homepage-section";
 
 const MAX = 100;
 
@@ -25,76 +27,151 @@ export function ShopOrderSection() {
   );
 }
 
+type Card = { id: number; name: string; sku: string; price: string; image: string | null; pinned: boolean };
+
+/**
+ * The website shop's product order, as cards: pinned products first (in staff order), then the rest newest
+ * first, exactly as customers see it. Moving a card (Top, arrows or drag) pins it and every card above it in
+ * their current places, and saves straight away; "Unpin" sends a product back to the newest-first order.
+ */
 function PinnedProducts() {
   const { canEdit } = useCatalogAccess();
-  const list = useQuery({ queryKey: catalogKeys.shopOrder, queryFn: ({ signal }) => catalogApi.shopOrder.list(signal) });
-  const [picks, setPicks] = useState<PickedProduct[] | null>(null);
-
-  // Start from the saved list; edits stay local until "Save order".
-  useEffect(() => {
-    if (list.data && picks === null) setPicks(list.data.map(({ id, name, sku, status }) => ({ id, name, sku, status })));
-  }, [list.data, picks]);
-
-  const dirty = picks !== null && (list.data ?? []).map((p) => p.id).join(",") !== picks.map((p) => p.id).join(",");
+  const pinnedQuery = useQuery({ queryKey: catalogKeys.shopOrder, queryFn: ({ signal }) => catalogApi.shopOrder.list(signal) });
+  const [shown, setShown] = useState(48);
+  const restQuery = { status: "active", ordering: "-created_at", page: 1, page_size: shown };
+  const rest = useQuery({
+    queryKey: productKeys.list(restQuery),
+    queryFn: ({ signal }) => productsApi.list(restQuery, signal),
+    placeholderData: keepPreviousData,
+  });
+  const qc = useQueryClient();
+  const [pending, setPending] = useState<number[] | null>(null); // pinned ids while a save is on its way
+  const [dragged, setDragged] = useState<number | null>(null);
   const save = useCatalogMutation((ids: number[]) => catalogApi.shopOrder.save(ids), {
-    success: "Website product order saved",
-    onSuccess: (rows) => setPicks(rows.map(({ id, name, sku, status }) => ({ id, name, sku, status }))),
+    success: "Saved — the website shows this order now",
+    onSuccess: (rows) => {
+      qc.setQueryData(catalogKeys.shopOrder, rows);
+      setPending(null);
+    },
   });
 
-  if (list.isError && !list.data) return <ErrorState message={(list.error as Error).message} onRetry={() => list.refetch()} />;
+  const cards = useMemo<Card[]>(() => {
+    const saved = pinnedQuery.data ?? [];
+    const byId = new Map<number, Card>();
+    for (const p of saved) byId.set(p.id, { id: p.id, name: p.name, sku: p.sku, price: p.price, image: p.image, pinned: true });
+    for (const p of rest.data?.results ?? [])
+      if (!byId.has(p.id)) byId.set(p.id, { id: p.id, name: p.name, sku: p.sku, price: p.price, image: p.image ? fileSrc(p.image) : null, pinned: false });
+    // While saving, show the new order; if the save failed, the saved one.
+    const pinnedIds = (save.isError ? null : pending) ?? saved.map((p) => p.id);
+    const pinned = pinnedIds.map((id) => byId.get(id)).filter((c): c is Card => Boolean(c)).map((c) => ({ ...c, pinned: true }));
+    const others = [...byId.values()].filter((c) => !pinnedIds.includes(c.id)).map((c) => ({ ...c, pinned: false }));
+    return [...pinned, ...others];
+  }, [pinnedQuery.data, rest.data, pending, save.isError]);
+
+  const pinnedCount = cards.filter((c) => c.pinned).length;
+  const commit = (ids: number[]) => {
+    const next = ids.slice(0, MAX);
+    setPending(next);
+    save.mutate(next);
+  };
+  /** Put card `from` at place `to`: it and everything above it keep these places on the website. */
+  const place = (from: number, to: number) => {
+    if (to < 0 || to >= cards.length || from === to) return;
+    const order = cards.map((c) => c.id);
+    const [id] = order.splice(from, 1);
+    order.splice(to, 0, id);
+    // A card entering the pinned group adds one; one leaving it removes one; everything above the moved card stays put.
+    const entering = from >= pinnedCount && to < pinnedCount ? 1 : 0;
+    const leaving = from < pinnedCount && to >= pinnedCount ? 1 : 0;
+    commit(order.slice(0, Math.max(pinnedCount + entering - leaving, to + 1)));
+  };
+  const unpin = (id: number) => commit(cards.filter((c) => c.pinned && c.id !== id).map((c) => c.id));
+
+  if ((pinnedQuery.isError && !pinnedQuery.data) || (rest.isError && !rest.data)) {
+    return <ErrorState message={((pinnedQuery.error ?? rest.error) as Error).message} onRetry={() => (pinnedQuery.refetch(), rest.refetch())} />;
+  }
 
   return (
     <Card className="p-6 shadow-none space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <span className="flex size-10 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
-            <Pin className="size-5" />
-          </span>
-          <div>
-            <h2 className="text-base font-bold text-gray-900">Products shown first</h2>
-            <p className="text-sm text-gray-600 max-w-2xl">
-              These products appear at the top of the website shop and of their category pages, in this order (number 1
-              first). Use it for products you want to sell quickly. All other products follow, newest first.
-            </p>
-          </div>
+      <div className="flex items-start gap-3">
+        <span className="flex size-10 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
+          <Pin className="size-5" />
+        </span>
+        <div>
+          <h2 className="text-base font-bold text-gray-900">Product order on the website</h2>
+          <p className="text-sm text-gray-600 max-w-3xl">
+            This is the order customers see in the website shop. Click <span className="font-medium">Move to top</span> on a
+            product you want to sell quickly, or use the arrows (you can also drag a card). Changes save by themselves.
+          </p>
         </div>
-        {canEdit && (
-          <div className="flex items-center gap-2">
-            {dirty && (
-              <Button variant="outline" onClick={() => setPicks(null)} disabled={save.isPending}>
-                Discard changes
-              </Button>
-            )}
-            <Button onClick={() => picks && save.mutate(picks.map((p) => p.id))} disabled={!dirty || save.isPending}>
-              {save.isPending ? "Saving…" : "Save order"}
-            </Button>
-          </div>
-        )}
       </div>
 
-      {picks === null ? (
-        <div className="space-y-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-12" />
+      {!pinnedQuery.data || !rest.data ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <Skeleton key={i} className="h-56" />
           ))}
         </div>
-      ) : canEdit ? (
-        <OrderedProductPicker value={picks} onChange={setPicks} max={MAX} />
-      ) : picks.length ? (
-        <ol className="border border-gray-200 rounded-lg divide-y divide-gray-100">
-          {picks.map((p, i) => (
-            <li key={p.id} className="flex items-center gap-3 px-3 py-2 text-sm">
-              <span className="w-5 text-right text-xs font-semibold text-gray-400">{i + 1}</span>
-              <span className="font-medium text-gray-800">{p.name}</span>
-              <span className="font-mono text-xs text-gray-400">{p.sku}</span>
+      ) : cards.length === 0 ? (
+        <p className="text-sm text-gray-500">No active products yet.</p>
+      ) : (
+        <ol className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+          {cards.map((c, i) => (
+            <li
+              key={c.id}
+              draggable={canEdit && !save.isPending}
+              onDragStart={() => setDragged(i)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => {
+                if (dragged !== null) place(dragged, i);
+                setDragged(null);
+              }}
+              onDragEnd={() => setDragged(null)}
+              className={`relative flex flex-col rounded-lg border bg-white p-2 ${c.pinned ? "border-emerald-300" : "border-gray-200"} ${
+                dragged === i ? "opacity-40" : ""
+              } ${canEdit ? "cursor-grab" : ""}`}
+            >
+              <span className={`absolute left-2 top-2 z-10 rounded-full px-2 py-0.5 text-xs font-bold ${c.pinned ? "bg-emerald-600 text-white" : "bg-gray-900/70 text-white"}`}>
+                {i + 1}
+              </span>
+              {c.image ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={c.image} alt="" className="aspect-square w-full rounded object-cover bg-gray-50" draggable={false} />
+              ) : (
+                <span className="aspect-square w-full rounded bg-gray-50 border border-dashed border-gray-200" />
+              )}
+              <p className="mt-2 text-sm font-medium text-gray-900 line-clamp-2" title={c.name}>{c.name}</p>
+              <p className="text-xs text-gray-500">{formatTSh(c.price)}</p>
+              {canEdit && (
+                <div className="mt-2 flex items-center gap-1">
+                  <Button size="sm" variant={i === 0 ? "outline" : "primary"} className="flex-1 px-2" disabled={i === 0 || save.isPending} onClick={() => place(i, 0)}>
+                    <ArrowUpToLine className="size-3.5" /> {i === 0 ? "First" : "Move to top"}
+                  </Button>
+                  <Button size="sm" variant="outline" className="px-2" aria-label={`Move ${c.name} up`} disabled={i === 0 || save.isPending} onClick={() => place(i, i - 1)}>
+                    <ArrowUp className="size-3.5" />
+                  </Button>
+                  <Button size="sm" variant="outline" className="px-2" aria-label={`Move ${c.name} down`} disabled={i === cards.length - 1 || save.isPending} onClick={() => place(i, i + 1)}>
+                    <ArrowDown className="size-3.5" />
+                  </Button>
+                </div>
+              )}
+              {canEdit && c.pinned && (
+                <button type="button" onClick={() => unpin(c.id)} disabled={save.isPending} className="mt-1 text-xs text-gray-500 hover:text-red-600 text-left">
+                  Unpin (back to normal order)
+                </button>
+              )}
             </li>
           ))}
         </ol>
-      ) : (
-        <p className="text-sm text-gray-500">No products pinned yet: the shop shows the newest products first.</p>
       )}
 
-      {dirty && <p className="text-xs text-amber-700">You have unsaved changes. Click &quot;Save order&quot; to publish them.</p>}
+      {rest.data && rest.data.count > shown && (
+        <div className="text-center">
+          <Button variant="outline" disabled={rest.isFetching} onClick={() => setShown(shown + 48)}>
+            {rest.isFetching ? "Loading…" : `Show more products (${rest.data.count - shown} more)`}
+          </Button>
+        </div>
+      )}
     </Card>
   );
 }
