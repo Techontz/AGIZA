@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Ban, CreditCard, ExternalLink, Globe, MapPin, PackageCheck, Package2, Pencil, PlayCircle, Receipt, Truck } from "lucide-react";
+import { AlertTriangle, Ban, CreditCard, ExternalLink, Globe, MapPin, PackageCheck, Undo2, XCircle, Package2, Pencil, PlayCircle, Receipt, Truck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -14,17 +14,17 @@ import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Modal } from "@/components/ui/modal";
 import { useApiMutation } from "@/hooks/use-api-mutation";
 import { errorText } from "@/lib/api/errors";
+import { procurementKeys, suppliersApi } from "@/lib/api/services/procurement";
 import { shopOrderKeys, shopOrdersApi, type ShopOrder, type ShopStatus } from "@/lib/api/services/shop-orders";
 import { formatDateTime, formatTSh } from "@/lib/format";
 
 import { OrderSellers } from "./sellers-block";
 import { SHOP_INVALIDATE } from "./shared";
 
-type Action = "process" | "ship" | "cancel" | "pay" | "fee" | "supplier" | null;
+type Action = "process" | "ship" | "cancel" | "pay" | "fee" | "supplier" | "order-supplier" | "supplier-cancel" | "back" | null;
 
 /** Plain status moves through the import stages: the label for each target status. */
 const IMPORT_VERB: Partial<Record<ShopStatus, string>> = {
-  ordered_from_supplier: "Ordered from Supplier",
   at_origin_warehouse: "At Warehouse Abroad",
   shipping_to_destination: "Shipping to Tanzania",
   clearance: "Customs Clearance",
@@ -67,6 +67,10 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
   const importMoves = canEdit ? o.allowed_transitions.filter((t) => t.value in IMPORT_VERB) : [];
   // After "Ordered from Supplier": the supplier ships it, with a tracking number (its own action).
   const canSupplierShip = canEdit && o.status === "ordered_from_supplier";
+  // As in Procurement: choose the supplier, and "Supplier Cancelled" sends the order back to order again.
+  const canOrderSupplier = canEdit && o.status === "processing" && Boolean(o.details.imported);
+  const canSupplierCancel = canEdit && (o.status === "ordered_from_supplier" || o.status === "supplier_shipped");
+  const canGoBack = canEdit && (o.back_to?.length ?? 0) > 0;
   const due = o.payment.due !== null ? Number(o.payment.due) : null;
   const canRecord = canPay && o.status !== "cancelled" && (due === null || due > 0);
   const email = o.details.customer_email || o.customer.email;
@@ -155,6 +159,12 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
                     {o.details.estimated_delivery && ` · ${o.details.estimated_delivery}`}
                   </p>
                 )}
+                {o.details.supplier && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    Supplier: <span className="font-medium text-gray-900">{o.details.supplier.name}</span>
+                    {o.details.supplier_order_number && <> · Order <span className="font-mono">{o.details.supplier_order_number}</span></>}
+                  </p>
+                )}
                 {o.details.supplier_tracking_number && (
                   <p className="text-sm text-gray-600 mt-1">
                     Supplier tracking: <span className="font-mono font-medium text-gray-900">{o.details.supplier_tracking_number}</span>
@@ -208,11 +218,16 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
       <OrderSellers orderId={o.id} />
       <OrderPickups orderId={o.id} />
 
-      {(canProcess || canShip || canCancel || canRecord || canSupplierShip || importMoves.length > 0 || o.delivery) && (
+      {(canProcess || canShip || canCancel || canRecord || canSupplierShip || canOrderSupplier || canSupplierCancel || canGoBack || importMoves.length > 0 || o.delivery) && (
         <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-gray-200">
           {canProcess && (
             <Button size="sm" onClick={() => setAction("process")}>
               <PlayCircle className="size-4" /> Mark Processing
+            </Button>
+          )}
+          {canOrderSupplier && (
+            <Button size="sm" onClick={() => setAction("order-supplier")}>
+              <Truck className="size-4" /> Ordered from Supplier
             </Button>
           )}
           {canSupplierShip && (
@@ -225,6 +240,16 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
               <Globe className="size-4" /> {t.label}
             </Button>
           ))}
+          {canSupplierCancel && (
+            <Button size="sm" variant="danger" onClick={() => setAction("supplier-cancel")}>
+              <XCircle className="size-4" /> Supplier Cancelled
+            </Button>
+          )}
+          {canGoBack && (
+            <Button size="sm" variant="outline" onClick={() => setAction("back")}>
+              <Undo2 className="size-4" /> Go Back
+            </Button>
+          )}
           {canShip && (
             <Button size="sm" variant="success" onClick={() => setAction("ship")}>
               <Truck className="size-4" /> Ship Order
@@ -306,6 +331,9 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
       <ProcessDialog order={o} open={action === "process"} onClose={close} />
       <StageDialog order={o} target={stage} onClose={() => setStage(null)} />
       <SupplierShippedDialog order={o} open={action === "supplier"} onClose={close} />
+      <OrderFromSupplierDialog order={o} open={action === "order-supplier"} onClose={close} />
+      <ReasonDialog order={o} mode="supplier-cancel" open={action === "supplier-cancel"} onClose={close} />
+      <ReasonDialog order={o} mode="back" open={action === "back"} onClose={close} />
       <ShipDialog order={o} open={action === "ship"} onClose={close} />
       <CancelDialog order={o} open={action === "cancel"} onClose={close} />
       <DeliveryFeeDialog order={o} open={action === "fee"} onClose={close} />
@@ -415,6 +443,120 @@ function ProcessDialog({ order: o, open, onClose }: { order: ShopOrder; open: bo
       <div className="mt-4 space-y-3">
         <Field label="Note (optional)" htmlFor={`proc-note-${o.id}`}>
           <Textarea id={`proc-note-${o.id}`} rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add context for the history..." />
+        </Field>
+        <FormAlert error={error} />
+      </div>
+    </ConfirmDialog>
+  );
+}
+
+function OrderFromSupplierDialog({ order: o, open, onClose }: { order: ShopOrder; open: boolean; onClose: () => void }) {
+  const suppliers = useQuery({
+    queryKey: procurementKeys.suppliers({ is_active: true, page_size: 200 }),
+    queryFn: ({ signal }) => suppliersApi.list({ is_active: true, page_size: 200 }, signal),
+    enabled: open,
+  });
+  const [supplier, setSupplier] = useState("");
+  const [number, setNumber] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<unknown>(null);
+  useEffect(() => {
+    if (open) {
+      setSupplier("");
+      setNumber("");
+      setNote("");
+      setError(null);
+    }
+  }, [open]);
+  const save = useApiMutation(
+    () => shopOrdersApi.orderFromSupplier(o.id, { supplier: Number(supplier), supplier_order_number: number.trim(), note: note.trim() }),
+    { invalidate: SHOP_INVALIDATE, success: (r) => `${r.reference}: Ordered from Supplier`, onSuccess: onClose, onError: setError },
+  );
+  return (
+    <ConfirmDialog
+      open={open}
+      title={`Ordered from Supplier — ${o.reference}`}
+      message="Choose the supplier the imported items are bought from."
+      confirmLabel="Save"
+      pending={save.isPending}
+      onConfirm={() => (supplier ? save.mutate(undefined) : setError(new Error("Choose the supplier.")))}
+      onClose={onClose}
+    >
+      <div className="mt-4 space-y-3">
+        <Field label="Supplier *" htmlFor={`sup-${o.id}`}>
+          <Select id={`sup-${o.id}`} value={supplier} onChange={(e) => setSupplier(e.target.value)}>
+            <option value="">{suppliers.isPending ? "Loading suppliers…" : "Select a supplier"}</option>
+            {suppliers.data?.results.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} ({s.country_detail.name})
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {suppliers.data && suppliers.data.results.length === 0 && (
+          <p className="text-sm text-amber-700">No suppliers yet. Add them in Procurement → Suppliers.</p>
+        )}
+        <Field label="Supplier order / invoice # (optional)" htmlFor={`sup-no-${o.id}`}>
+          <Input id={`sup-no-${o.id}`} value={number} onChange={(e) => setNumber(e.target.value)} />
+        </Field>
+        <Field label="Note (optional)" htmlFor={`sup-n-${o.id}`}>
+          <Textarea id={`sup-n-${o.id}`} rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+        </Field>
+        <FormAlert error={error} />
+      </div>
+    </ConfirmDialog>
+  );
+}
+
+/** "Supplier Cancelled" (back to Processing to order again) or "Go Back" one shipping stage, with a reason. */
+function ReasonDialog({ order: o, mode, open, onClose }: { order: ShopOrder; mode: "supplier-cancel" | "back"; open: boolean; onClose: () => void }) {
+  const targets = o.back_to ?? [];
+  const [target, setTarget] = useState("");
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<unknown>(null);
+  useEffect(() => {
+    if (open) {
+      setTarget(targets[0]?.value ?? "");
+      setReason("");
+      setError(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  const save = useApiMutation(
+    () => (mode === "back" ? shopOrdersApi.stepBack(o.id, target, reason.trim()) : shopOrdersApi.supplierCancelled(o.id, reason.trim())),
+    {
+      invalidate: SHOP_INVALIDATE,
+      success: (r) => (mode === "back" ? `${r.reference} went back to ${r.status_display}` : `${r.reference}: supplier cancelled — order it again`),
+      onSuccess: onClose,
+      onError: setError,
+    },
+  );
+  return (
+    <ConfirmDialog
+      open={open}
+      title={`${mode === "back" ? "Go Back" : "Supplier Cancelled"} — ${o.reference}`}
+      message={
+        mode === "back"
+          ? "Return the order to an earlier shipping stage."
+          : "The supplier couldn't supply, or the parcel was lost before reaching our warehouse abroad. The order goes back to Processing so you can order it from a supplier again. The supplier and tracking number stay in the history."
+      }
+      confirmLabel={mode === "back" ? "Go Back" : "Mark Supplier Cancelled"}
+      pending={save.isPending}
+      onConfirm={() => (reason.trim() ? save.mutate(undefined) : setError(new Error("Give the reason.")))}
+      onClose={onClose}
+    >
+      <div className="mt-4 space-y-3">
+        {mode === "back" && (
+          <Field label="Back to" htmlFor={`back-${o.id}`}>
+            <Select id={`back-${o.id}`} value={target} onChange={(e) => setTarget(e.target.value)}>
+              {targets.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        <Field label="Reason *" htmlFor={`reason-${mode}-${o.id}`}>
+          <Textarea id={`reason-${mode}-${o.id}`} rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Parcel lost by the courier" />
         </Field>
         <FormAlert error={error} />
       </div>

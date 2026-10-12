@@ -10,8 +10,10 @@ from rest_framework.test import APIClient
 
 from apps.core.workflow import WorkflowError
 from apps.inventory.models import StockItem
+from apps.locations.models import Country
 from apps.orders import services as order_services
 from apps.orders.models import Order
+from apps.procurement.models import Supplier
 from apps.shipping_engine.models import ShippingRule
 
 from .conftest import APP
@@ -157,8 +159,13 @@ def test_imported_orders_go_through_the_import_stages(app, imported, home, selco
     staff.post(f"{url}/payments/", {"amount": quote["total"], "method": "cash", "kind": "balance"}, format="json")
     assert staff.post(f"{url}/transition/", {"status": "processing"}, format="json").status_code == 200
     offered = [t["value"] for t in staff.get(f"{url}/").json()["allowed_transitions"]]
-    assert offered == ["ordered_from_supplier", "at_origin_warehouse", "shipping_to_destination"]
-    assert staff.post(f"{url}/transition/", {"status": "ordered_from_supplier"}, format="json").status_code == 200
+    assert offered == ["at_origin_warehouse", "shipping_to_destination"]  # Ordered from Supplier is its own action
+    assert staff.post(f"{url}/transition/", {"status": "ordered_from_supplier"}, format="json").status_code == 400
+    supplier = Supplier.objects.create(name="Shenzhen Drones", country=Country.objects.get(iso2="CN"))
+    res = staff.post(f"{url}/order-from-supplier/", {"supplier": supplier.pk, "supplier_order_number": "PO-77"},
+                     format="json")
+    assert res.status_code == 200, res.json()
+    assert res.json()["details"]["supplier"]["name"] == "Shenzhen Drones"
     offered = [t["value"] for t in staff.get(f"{url}/").json()["allowed_transitions"]]
     assert offered == []  # Supplier Shipped needs the tracking number (its own action)
     assert staff.post(f"{url}/transition/", {"status": "supplier_shipped"}, format="json").status_code == 400
@@ -193,3 +200,42 @@ def test_local_orders_skip_the_import_stages(app, imported, home, client_for):
     assert staff.post(f"{url}/transition/", {"status": "at_origin_warehouse"}, format="json").status_code == 409
     keys = [s["key"] for s in app.get(f"{APP}/orders/{order.reference}/").json()["timeline"]["steps"]]
     assert "in_transit" not in keys
+
+
+def test_a_lost_supplier_parcel_goes_back_and_its_tracking_is_searchable(app, imported, home, selcom, client_for):
+    add(app, imported.drone_variant, 1)
+    quote = preview(app, home)
+    order = Order.objects.get(reference=place(app, home, quote).json()["order"]["reference"])
+    staff = client_for("admin_l2")
+    url = f"/api/orders/shop/{order.pk}"
+    china = Country.objects.get(iso2="CN")
+    first, second = (Supplier.objects.create(name=n, country=china) for n in ("Yiwu A", "Yiwu B"))
+    staff.post(f"{url}/payments/", {"amount": quote["total"], "method": "cash", "kind": "balance"}, format="json")
+    staff.post(f"{url}/transition/", {"status": "processing"}, format="json")
+    staff.post(f"{url}/order-from-supplier/", {"supplier": first.pk}, format="json")
+    body = staff.post(f"{url}/supplier-shipped/", {"tracking_number": "SF1235436"}, format="json").json()
+    assert body["back_to"] == []  # before the warehouse abroad, it's "Supplier Cancelled"
+    assert [o["reference"] for o in staff.get("/api/orders/shop/", {"search": "SF1235436"}).json()["results"]] == [
+        order.reference]
+    assert staff.post(f"{url}/supplier-cancelled/", {"reason": " "}, format="json").status_code == 400
+    res = staff.post(f"{url}/supplier-cancelled/", {"reason": "Parcel lost by courier"}, format="json")
+    assert res.status_code == 200, res.json()
+    details = res.json()["details"]
+    assert res.json()["status"] == "processing" and details["supplier"] is None
+    assert details["supplier_tracking_number"] == ""
+    note = staff.get(f"{url}/history/").json()[-1]["note"]
+    assert "Parcel lost by courier" in note and "Yiwu A" in note and "SF1235436" in note
+    steps = {s["key"]: s["state"] for s in app.get(f"{APP}/orders/{order.reference}/").json()["timeline"]["steps"]}
+    assert steps["supplier_shipped"] == "current"  # to be done again
+    assert staff.post(f"{url}/supplier-cancelled/", {"reason": "x"}, format="json").status_code == 409
+
+    # Ordered again from another supplier: ships with a new tracking number.
+    staff.post(f"{url}/order-from-supplier/", {"supplier": second.pk}, format="json")
+    staff.post(f"{url}/supplier-shipped/", {"tracking_number": "YT999"}, format="json")
+    assert staff.get("/api/orders/shop/", {"search": "YT999"}).json()["count"] == 1
+    body = staff.post(f"{url}/transition/", {"status": "at_origin_warehouse"}, format="json").json()
+    assert [b["value"] for b in body["back_to"]] == ["supplier_shipped"]
+    assert staff.post(f"{url}/step-back/", {"status": "processing", "reason": "x"}, format="json").status_code == 400
+    res = staff.post(f"{url}/step-back/", {"status": "supplier_shipped", "reason": "Set by mistake"}, format="json")
+    assert res.status_code == 200 and res.json()["status"] == "supplier_shipped"
+    assert client_for("driver").post(f"{url}/supplier-cancelled/", {"reason": "x"}, format="json").status_code == 403

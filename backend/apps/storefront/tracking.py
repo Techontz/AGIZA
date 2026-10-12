@@ -104,8 +104,13 @@ def _payment_date(order):
 
 
 def timeline(order) -> dict:
+    step_of = {status: i for i, (_, _, statuses) in enumerate(_steps(order)) for status in statuses}
     reached: dict[str, object] = {}
-    for row in order.status_history.all():
+    for row in sorted(order.status_history.all(), key=lambda r: (r.created_at, r.pk)):
+        back_to = step_of.get(row.to_status)
+        if back_to is not None and row.from_status in step_of and back_to < step_of[row.from_status]:
+            # Went back (supplier problem, lost parcel): the later steps are to be done again.
+            reached = {s: at for s, at in reached.items() if step_of.get(s, -1) <= back_to}
         reached.setdefault(row.to_status, row.created_at)
     for delivery in order.deliveries.all():
         for event in delivery.events.all():

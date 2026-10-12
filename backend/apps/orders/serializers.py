@@ -6,6 +6,7 @@ from apps.accounts.models import User
 from apps.catalog.models import ProductVariant
 from apps.locations.models import City, Country
 from apps.parties.models import Customer
+from apps.procurement.models import Supplier
 from apps.shipping_engine.models import ShippingMethod
 
 from . import services
@@ -24,7 +25,7 @@ from .models import (
     ShopDetails,
 )
 from .services import payment_summary
-from .workflows import EXPRESS_STAGE, SHOP_IMPORT_STAGES, WORKFLOWS, ExpressStatus, OrderType, status_label
+from .workflows import EXPRESS_STAGE, SHOP_BACK, SHOP_IMPORT_STAGES, WORKFLOWS, ExpressStatus, OrderType, status_label
 
 
 def _dec(value, places: int = 2) -> str | None:
@@ -396,9 +397,14 @@ class ShopOrderSerializer(OrderSerializer):
     details = serializers.SerializerMethodField()
     payment_status = serializers.SerializerMethodField()
     delivery = serializers.SerializerMethodField()
+    back_to = serializers.SerializerMethodField()
 
     class Meta(OrderSerializer.Meta):
-        fields = [*OrderSerializer.Meta.fields, "items", "details", "payment_status", "delivery"]
+        fields = [*OrderSerializer.Meta.fields, "items", "details", "payment_status", "delivery", "back_to"]
+
+    def get_back_to(self, obj) -> list[dict]:
+        """Earlier stages an imported order can return to (supplier problem, lost parcel)."""
+        return [{"value": s, "label": status_label(obj.order_type, s)} for s in SHOP_BACK.get(obj.status, [])]
 
     def get_details(self, obj) -> dict:
         d: ShopDetails = obj.shop
@@ -426,6 +432,10 @@ class ShopOrderSerializer(OrderSerializer):
             "payment_due_at": d.payment_due_at,
             "delivery_fee_pending": d.delivery_fee_pending,
             "delivery_issue": d.delivery_issue,
+            "imported": services.is_imported(obj),
+            "supplier": {"id": d.supplier_id, "name": d.supplier.name, "reference": d.supplier.reference}
+                        if d.supplier_id else None,
+            "supplier_order_number": d.supplier_order_number,
             "supplier_tracking_number": d.supplier_tracking_number,
             "supplier_shipped_at": d.supplier_shipped_at,
             "customs_fee": _dec(d.customs_fee),
@@ -470,6 +480,21 @@ class ShipSerializer(serializers.Serializer):
     driver = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), required=False, allow_null=True)
     scheduled_at = serializers.DateTimeField(required=False, allow_null=True)
     note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class OrderFromSupplierSerializer(serializers.Serializer):
+    supplier = serializers.PrimaryKeyRelatedField(queryset=Supplier.objects.all())
+    supplier_order_number = serializers.CharField(max_length=80, required=False, allow_blank=True, default="")
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class SupplierCancelledSerializer(serializers.Serializer):
+    reason = serializers.CharField()
+
+
+class StepBackSerializer(serializers.Serializer):
+    status = serializers.CharField()
+    reason = serializers.CharField()
 
 
 class SupplierShippedSerializer(serializers.Serializer):

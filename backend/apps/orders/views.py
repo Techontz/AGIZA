@@ -41,6 +41,7 @@ from .serializers import (
     InternationalCreateSerializer,
     InternationalOrderSerializer,
     InternationalUpdateSerializer,
+    OrderFromSupplierSerializer,
     PackageSizeSerializer,
     PaymentSerializer,
     QuoteStatusSerializer,
@@ -49,7 +50,9 @@ from .serializers import (
     ShopCreateSerializer,
     ShopNotesSerializer,
     ShopOrderSerializer,
+    StepBackSerializer,
     SuggestPriceSerializer,
+    SupplierCancelledSerializer,
     SupplierShippedSerializer,
     TransitionSerializer,
 )
@@ -497,14 +500,17 @@ class ShopOrderViewSet(BaseOrderViewSet):
 
     order_type = OrderType.SHOP
     detail_relation = "shop"
-    detail_select = ("shop__city", "shop__fulfillment_warehouse", "shop__shipping_method", "shop__import_shipping_method",
+    detail_select = ("shop__city", "shop__supplier", "shop__fulfillment_warehouse", "shop__shipping_method", "shop__import_shipping_method",
                      "shop__delivery_address")
     serializer_class = ShopOrderSerializer
     create_serializer = ShopCreateSerializer
     update_serializer = ShopNotesSerializer
     filterset_class = ShopFilter
-    search_fields = [*BaseOrderViewSet.search_fields, "shop__customer_email", "items__sku", "items__product_name"]
-    required_access = {**BaseOrderViewSet.required_access, "cancel": "manage", "delivery_fee": "edit"}
+    search_fields = [*BaseOrderViewSet.search_fields, "shop__customer_email", "items__sku", "items__product_name",
+                     "shop__supplier_tracking_number"]
+    required_access = {**BaseOrderViewSet.required_access, "cancel": "manage", "delivery_fee": "edit",
+                       "step_back": "edit",
+                       "supplier_cancelled": "edit"}
 
     def get_queryset(self):
         return super().get_queryset().prefetch_related(
@@ -550,6 +556,32 @@ class ShopOrderViewSet(BaseOrderViewSet):
         s = ShipSerializer(data=request.data)
         s.is_valid(raise_exception=True)
         order = run(shop.ship, self.get_object(), user=request.user, request=request, **s.validated_data)
+        return self._respond(order)
+
+    @extend_schema(request=OrderFromSupplierSerializer)
+    @action(detail=True, methods=["post"], url_path="order-from-supplier")
+    def order_from_supplier(self, request, pk=None):
+        s = OrderFromSupplierSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        order = run(shop.order_from_supplier, self.get_object(), user=request.user, request=request,
+                    **s.validated_data)
+        return self._respond(order)
+
+    @extend_schema(request=SupplierCancelledSerializer)
+    @action(detail=True, methods=["post"], url_path="supplier-cancelled")
+    def supplier_cancelled(self, request, pk=None):
+        s = SupplierCancelledSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        order = run(shop.supplier_cancelled, self.get_object(), user=request.user, request=request,
+                    reason=s.validated_data["reason"])
+        return self._respond(order)
+
+    @extend_schema(request=StepBackSerializer)
+    @action(detail=True, methods=["post"], url_path="step-back")
+    def step_back(self, request, pk=None):
+        s = StepBackSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        order = run(shop.step_back, self.get_object(), user=request.user, request=request, **s.validated_data)
         return self._respond(order)
 
     @extend_schema(request=SupplierShippedSerializer)

@@ -17,7 +17,7 @@ from apps.inventory import services as inventory
 
 from . import services
 from .models import Order, OrderItem, ShopDetails
-from .workflows import OrderType, ShopStatus
+from .workflows import SHOP_BACK, SHOP_SUPPLIER_CANCELLABLE, OrderType, ShopStatus
 
 
 @transaction.atomic
@@ -254,6 +254,63 @@ def supplier_shipped(order: Order, *, user, tracking_number: str, note: str = ""
     record_audit(action="update", request=request, actor=user, instance=order,
                  changes={"supplier_tracking_number": [before or None, details.supplier_tracking_number]})
     return order
+
+
+@transaction.atomic
+def order_from_supplier(order: Order, *, user, supplier, supplier_order_number: str = "", note: str = "",
+                        request=None) -> Order:
+    """Imported items are bought from this supplier (Procurement's "Select Supplier")."""
+    order = services._lock(order)
+    services._require_type(order, OrderType.SHOP)
+    if supplier is None or not supplier.is_active:
+        raise WorkflowError("Choose an active supplier.", field="supplier")
+    services._check_transition(order, ShopStatus.ORDERED_FROM_SUPPLIER, via_action="order-from-supplier")
+    details = order.shop
+    details.supplier = supplier
+    details.supplier_order_number = (supplier_order_number or "").strip()[:80]
+    details.save(update_fields=["supplier", "supplier_order_number"])
+    message = f"Supplier: {supplier.name}" + (f" · order {details.supplier_order_number}"
+                                              if details.supplier_order_number else "")
+    return services._set_status(order, ShopStatus.ORDERED_FROM_SUPPLIER, user,
+                                message + (f" — {note.strip()}" if note.strip() else ""), request)
+
+
+@transaction.atomic
+def supplier_cancelled(order: Order, *, user, reason: str, request=None) -> Order:
+    """The supplier couldn't supply or the parcel was lost before reaching the warehouse abroad: back to
+    Processing to order again. The supplier and tracking number are cleared (they stay in the history)."""
+    order = services._lock(order)
+    services._require_type(order, OrderType.SHOP)
+    if not (reason or "").strip():
+        raise WorkflowError("Give the reason.", field="reason")
+    if order.status not in SHOP_SUPPLIER_CANCELLABLE:
+        raise WorkflowError("Only an order with a supplier that hasn't reached our warehouse abroad can be "
+                            "marked Supplier Cancelled.", conflict=True)
+    services._check_transition(order, ShopStatus.PROCESSING, via_action="supplier-cancel")
+    details = order.shop
+    was = [details.supplier.name if details.supplier_id else "",
+           f"tracking {details.supplier_tracking_number}" if details.supplier_tracking_number else ""]
+    details.supplier = None
+    details.supplier_order_number = details.supplier_tracking_number = ""
+    details.supplier_shipped_at = None
+    details.save(update_fields=["supplier", "supplier_order_number", "supplier_tracking_number",
+                                "supplier_shipped_at"])
+    previous = ", ".join(w for w in was if w)
+    note = f"Supplier cancelled: {reason.strip()}" + (f" (was {previous})" if previous else "")
+    return services._set_status(order, ShopStatus.PROCESSING, user, note, request)
+
+
+@transaction.atomic
+def step_back(order: Order, *, user, status: str, reason: str, request=None) -> Order:
+    """Return an imported order to the previous shipping stage (set by mistake, returned shipment)."""
+    order = services._lock(order)
+    services._require_type(order, OrderType.SHOP)
+    if not (reason or "").strip():
+        raise WorkflowError("Give the reason for going back.", field="reason")
+    if status not in SHOP_BACK.get(order.status, []):
+        raise WorkflowError(f"{order.reference} can't go back to that stage.", field="status")
+    services._check_transition(order, status, via_action="step-back")
+    return services._set_status(order, status, user, f"Back: {reason.strip()}", request)
 
 
 @transaction.atomic

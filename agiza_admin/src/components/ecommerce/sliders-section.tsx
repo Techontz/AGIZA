@@ -27,7 +27,7 @@ export function SlidersSection({ canEdit }: { canEdit: boolean }) {
   const list = useQuery({ queryKey: catalogKeys.sliders, queryFn: ({ signal }) => catalogApi.sliders.list(signal) });
   const [title, setTitle] = useState("");
   const [link, setLink] = useState("");
-  const [placement, setPlacement] = useState<SliderPlacement>("app");
+  const [placement, setPlacement] = useState<SliderPlacement>("both");
   const [file, setFile] = useState<File | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [busy, setBusy] = useState(false);
@@ -57,7 +57,7 @@ export function SlidersSection({ canEdit }: { canEdit: boolean }) {
       setTitle("");
       setLink("");
       setFile(null);
-      setPlacement("app");
+      setPlacement("both");
       toast.success("Banner added");
       refresh();
     } catch (err) {

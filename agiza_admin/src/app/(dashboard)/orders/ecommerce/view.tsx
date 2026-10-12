@@ -121,7 +121,7 @@ export function EcommerceOrdersView() {
 
       <Card className="p-6 mb-6">
         <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-          <SearchInput placeholder="Search by Order ID, Customer, or Email..." value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search shop orders" />
+          <SearchInput placeholder="Search by Order ID, Customer, Email or Tracking #..." value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search shop orders" />
           <div className="flex gap-3 flex-wrap">
             <Select className="w-auto bg-white" aria-label="Filter by status" value={f.status} onChange={(e) => setF({ status: e.target.value, open: "" })}>
               <option value="all">All Statuses</option>

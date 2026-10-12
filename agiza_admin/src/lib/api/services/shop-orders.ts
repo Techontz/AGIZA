@@ -75,11 +75,17 @@ export interface ShopOrder extends Omit<OrderBase, "status"> {
     delivery_fee_pending: boolean;
     /** Why the cost must be set by hand: what the Shipping Engine is missing for this address. */
     delivery_issue?: string;
-    /** Imported items bought from a supplier: its tracking number to the warehouse abroad. */
+    /** Has items coming from abroad (the import stages apply). */
+    imported?: boolean;
+    /** Imported items bought from a supplier (as in Procurement): who, their order number and tracking number. */
+    supplier?: { id: number; name: string; reference: string } | null;
+    supplier_order_number?: string;
     supplier_tracking_number?: string;
     supplier_shipped_at?: string | null;
   };
   payment_status: "paid" | "pending";
+  /** Earlier shipping stages the order can go back to (with a reason). */
+  back_to?: { value: ShopStatus; label: string }[];
   delivery: { id: number; reference: string; status: string; status_display: string } | null;
 }
 
@@ -126,6 +132,10 @@ export const shopOrdersApi = {
   transition: (id: number, status: string, note = "") => api.post<ShopOrder>(`${base}/${id}/transition`, { status, note }),
   ship: (id: number, data: { driver?: number | null; scheduled_at?: string | null; note?: string }) =>
     api.post<ShopOrder>(`${base}/${id}/ship`, data),
+  orderFromSupplier: (id: number, data: { supplier: number; supplier_order_number?: string; note?: string }) =>
+    api.post<ShopOrder>(`${base}/${id}/order-from-supplier`, data),
+  supplierCancelled: (id: number, reason: string) => api.post<ShopOrder>(`${base}/${id}/supplier-cancelled`, { reason }),
+  stepBack: (id: number, status: string, reason: string) => api.post<ShopOrder>(`${base}/${id}/step-back`, { status, reason }),
   supplierShipped: (id: number, tracking_number: string, note = "") =>
     api.post<ShopOrder>(`${base}/${id}/supplier-shipped`, { tracking_number, note }),
   cancel: (id: number, reason: string) => api.post<ShopOrder>(`${base}/${id}/cancel`, { reason }),

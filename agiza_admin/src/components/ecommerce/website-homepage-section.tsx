@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/form";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
@@ -21,6 +22,7 @@ import {
 } from "@/lib/api/services/catalog";
 import { productKeys, productsApi } from "@/lib/api/services/products";
 
+import { SlidersSection } from "./sliders-section";
 import { DeleteDialog, FormErrors, IconSwitch, useCatalogAccess, useCatalogMutation, type Errors } from "./shared";
 
 /* ------------------------------------------------------------------ options */
@@ -132,6 +134,16 @@ export function WebsiteHomepageSection() {
         )}
       </div>
 
+      <Card className="p-6 shadow-none">
+        <h3 className="text-base font-bold text-gray-900">Banners</h3>
+        <p className="text-sm text-gray-600 mb-4">
+          The banner slider at the top of the home page. Set <span className="font-medium">Show on</span> to &quot;Website&quot; or
+          &quot;App and website&quot; for a banner to appear on the website.
+        </p>
+        <SlidersSection canEdit={canEdit} />
+      </Card>
+
+      <h3 className="text-base font-bold text-gray-900 pt-2">Page sections</h3>
       {list.isError && !list.data ? (
         <ErrorState message={(list.error as Error).message} onRetry={() => list.refetch()} />
       ) : list.isPending ? (
@@ -490,11 +502,8 @@ function SectionDialog({ section, nextSortOrder, onClose }: { section: HomeSecti
 
         {k === "banners" && (
           <p className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
-            The banners themselves are managed in{" "}
-            <Link href="/settings" className="text-blue-600 hover:text-blue-800 font-medium">
-              Settings → Home Banners
-            </Link>
-            : set a banner to &quot;Website&quot; or &quot;App and website&quot; to show it here.
+            The banners themselves are managed in the Banners box at the top of this page (or Settings → Home Banners):
+            set a banner to &quot;Website&quot; or &quot;App and website&quot; to show it here.
           </p>
         )}
       </form>

@@ -209,12 +209,28 @@ SHOP_TRANSITIONS = {
 SHOP_IMPORT_STAGES = frozenset({P.ORDERED_FROM_SUPPLIER, P.SUPPLIER_SHIPPED, P.AT_ORIGIN_WAREHOUSE, P.SHIPPING_TO_DESTINATION,
                                 P.CLEARANCE, P.ARRIVED})
 # Shipping deducts stock and opens the delivery; Delivered comes from the delivery's proof.
-SHOP_ACTION_ONLY = {P.SUPPLIER_SHIPPED: "supplier-shipped", P.SHIPPED: "ship", P.DELIVERED: "deliver",
-                    P.CANCELLED: "cancel"}
+SHOP_ACTION_ONLY = {P.ORDERED_FROM_SUPPLIER: "order-from-supplier", P.SUPPLIER_SHIPPED: "supplier-shipped",
+                    P.SHIPPED: "ship", P.DELIVERED: "deliver", P.CANCELLED: "cancel"}
 
+
+# Going back on an imported order when the supplier fails or the parcel is lost (needs a reason, never offered
+# as a plain status change): {from: the earlier stages it may return to}.
+# Before the goods reach the warehouse abroad a supplier problem is "Supplier Cancelled" (as in Procurement):
+# the order goes back to Processing to be ordered from a supplier again.
+SHOP_SUPPLIER_CANCELLABLE = (P.ORDERED_FROM_SUPPLIER, P.SUPPLIER_SHIPPED)
+SHOP_BACK = {
+    P.AT_ORIGIN_WAREHOUSE: [P.SUPPLIER_SHIPPED],
+    P.SHIPPING_TO_DESTINATION: [P.AT_ORIGIN_WAREHOUSE],
+    P.CLEARANCE: [P.SHIPPING_TO_DESTINATION],
+    P.ARRIVED: [P.CLEARANCE],
+}
+SHOP_ACTION_EDGES = {
+    **{(frm, to): "step-back" for frm, targets in SHOP_BACK.items() for to in targets},
+    **{(frm, P.PROCESSING): "supplier-cancel" for frm in SHOP_SUPPLIER_CANCELLABLE},
+}
 
 # Transitions reachable only through one action, per order type: {(from, to): action}.
-ACTION_EDGES = {OrderType.INTERNATIONAL: INTERNATIONAL_ACTION_EDGES}
+ACTION_EDGES = {OrderType.INTERNATIONAL: INTERNATIONAL_ACTION_EDGES, OrderType.SHOP: SHOP_ACTION_EDGES}
 
 WORKFLOWS = {
     OrderType.EXPRESS: (ExpressStatus, EXPRESS_TRANSITIONS, EXPRESS_ACTION_ONLY),
