@@ -44,7 +44,7 @@ def _section_products(section: HomeSection) -> list:
                 variants__order_items__order__status="cancelled"))).order_by(*ORDERING["popular"])
         elif section.source == S.CATEGORY and section.category_id:
             qs = qs.filter(Q(category_id=section.category_id) | Q(subcategory_id=section.category_id)) \
-                .order_by(*ORDERING["newest"])
+                .order_by(*ORDERING["recommended"])
         else:
             qs = qs.order_by(*ORDERING["newest"])
         items = list(qs[:limit])
@@ -63,7 +63,7 @@ def _top_categories(limit: int, chosen=None) -> list:
 
 def _category_products(category, limit: int) -> list:
     return list(visible_products().filter(Q(category_id=category.pk) | Q(subcategory_id=category.pk))
-                .order_by(*ORDERING["newest"])[:limit])
+                .order_by(*ORDERING["recommended"])[:limit])
 
 
 def _payload(request, section: HomeSection) -> dict:

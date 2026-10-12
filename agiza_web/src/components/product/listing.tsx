@@ -14,6 +14,8 @@ import { SortSelect } from "./sort-select";
 export type ListingParams = { q?: string; sort?: string; min?: string; max?: string; page?: string; deals?: string; featured?: string; stock?: string };
 
 export const SORTS = [
+  // Products staff pin in the admin (E-commerce → Website Product Order) first, then newest.
+  { value: "recommended", label: "Recommended" },
   { value: "newest", label: "Newest" },
   { value: "popular", label: "Most popular" },
   { value: "price", label: "Price: low to high" },
@@ -71,7 +73,7 @@ export async function Listing({
     (await publicGet<Paginated<ProductCard>>("products/", {
       ...scope,
       search: params.q,
-      ordering: SORTS.some((s) => s.value === params.sort) ? params.sort : "newest",
+      ordering: SORTS.some((s) => s.value === params.sort) ? params.sort : "recommended",
       min_price: params.min,
       max_price: params.max,
       deals: params.deals ? 1 : undefined,
@@ -105,7 +107,7 @@ export async function Listing({
               </summary>
               <div className="absolute right-0 z-20 mt-2 w-[min(320px,88vw)] space-y-6 border border-line bg-surface p-4 shadow-raised">{filters}</div>
             </details>
-            <SortSelect value={params.sort || "newest"} options={SORTS} />
+            <SortSelect value={params.sort || "recommended"} options={SORTS} />
           </div>
         </div>
         {data.results.length ? (

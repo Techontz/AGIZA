@@ -15,6 +15,7 @@ import { SectionHeader } from "@/components/ecommerce/shared";
 import { VendorEarningsSection } from "@/components/ecommerce/vendor-earnings-section";
 import { VendorsSection } from "@/components/ecommerce/vendors-section";
 import { HotSalesSection } from "@/components/ecommerce/hot-sales-section";
+import { ShopOrderSection } from "@/components/ecommerce/shop-order-section";
 import { WebsiteHomepageSection } from "@/components/ecommerce/website-homepage-section";
 import { PageContainer } from "@/components/ui/page";
 import { useUrlFilters } from "@/hooks/use-url-filters";
@@ -32,6 +33,7 @@ const SECTIONS: Record<Section, { title: string; description: string }> = {
   brands: { title: "Brands", description: "Manage product brands displayed on the store" },
   homepage: { title: "Website Homepage", description: "Blocks and product rows on the customer website's home page" },
   hotsales: { title: "Hot Sales", description: "The app's Hot Sales products and their order" },
+  shoporder: { title: "Website Product Order", description: "Products shown first in the website shop and the order of categories" },
 };
 
 const isSection = (v: string): v is Section => v in SECTIONS;
@@ -105,6 +107,7 @@ export function EcommerceView() {
           {section === "brands" && <BrandsSection />}
           {section === "homepage" && <WebsiteHomepageSection />}
           {section === "hotsales" && <HotSalesSection />}
+          {section === "shoporder" && <ShopOrderSection />}
         </>
       )}
     </PageContainer>

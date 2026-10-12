@@ -15,6 +15,7 @@ from .views import (
     OptionViewSet,
     OriginEstimateViewSet,
     ProductViewSet,
+    ShopOrderView,
     StoreSettingsView,
     VendorMediaFileView,
     VendorViewSet,
@@ -38,6 +39,7 @@ urlpatterns = [
     path("catalog/vendors/<int:pk>/<str:kind>/file/", VendorMediaFileView.as_view(), name="vendor-media-file"),
     path("catalog/settings/", StoreSettingsView.as_view(), name="store-settings"),
     path("catalog/hot-sales/", HotSalesView.as_view(), name="hot-sales"),
+    path("catalog/shop-order/", ShopOrderView.as_view(), name="shop-order"),
     path("catalog/delivery-estimate/", DeliveryEstimateView.as_view(), name="delivery-estimate"),
     *router.urls,
 ]

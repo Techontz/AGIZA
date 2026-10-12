@@ -395,6 +395,8 @@ class Product(TimeStampedModel):
     featured = models.BooleanField(default=False)
     # Order of featured products ("Hot Sales" in the app, the website's featured row): lowest first.
     featured_position = models.PositiveIntegerField(default=0)
+    # Pinned to the top of the website shop and category pages, at this position (1 first); empty: not pinned.
+    shop_position = models.PositiveIntegerField(null=True, blank=True, db_index=True)
     ofa_kali = models.BooleanField(default=False)
     allow_save = models.BooleanField(default=True)
     allow_chat = models.BooleanField(default=True)

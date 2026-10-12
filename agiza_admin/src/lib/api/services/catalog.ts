@@ -308,6 +308,7 @@ export const catalogKeys = {
   sliders: ["catalog", "sliders"] as const,
   homeSections: ["catalog", "home-sections"] as const,
   hotSales: ["catalog", "hot-sales"] as const,
+  shopOrder: ["catalog", "shop-order"] as const,
   options: ["catalog", "options"] as const,
   vendors: ["catalog", "vendors"] as const,
   vendorList: (query: object) => ["catalog", "vendors", query] as const,
@@ -329,6 +330,8 @@ export const catalogApi = {
     create: (body: CategoryInput) => api.post<Category>("catalog/categories", body),
     update: (id: number, body: Partial<CategoryInput>) => api.patch<Category>(`catalog/categories/${id}`, body),
     remove: (id: number) => api.delete(`catalog/categories/${id}`),
+    /** Categories of one level (same parent), first one first. */
+    reorder: (ids: number[]) => api.post<Category[]>("catalog/categories/reorder", { ids }),
   },
 
   brands: {
@@ -355,6 +358,11 @@ export const catalogApi = {
     },
   },
   /** Featured products in display order ("Hot Sales" in the app, the website's featured row). */
+  shopOrder: {
+    list: (signal?: AbortSignal) => api.get<HotSalesProduct[]>("catalog/shop-order", undefined, signal),
+    /** Saves the pinned products in this order; products left out are unpinned. */
+    save: (ids: number[]) => api.post<HotSalesProduct[]>("catalog/shop-order", { ids }),
+  },
   hotSales: {
     list: (signal?: AbortSignal) => api.get<HotSalesProduct[]>("catalog/hot-sales", undefined, signal),
     /** Saves the whole list in this order; products left out stop being featured. */

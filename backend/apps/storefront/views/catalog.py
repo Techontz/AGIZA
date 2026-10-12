@@ -1,6 +1,6 @@
 from decimal import Decimal, InvalidOperation
 
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Count, F, Prefetch, Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
@@ -30,7 +30,10 @@ from ..serializers import (
 from ..shipping import Line, delivery_options, import_options, is_imported, origin_country, store_hub
 from .base import PublicAPIView
 
-ORDERING = {"newest": ("-created_at", "-id"), "price": ("price", "id"), "-price": ("-price", "id"),
+ORDERING = {"newest": ("-created_at", "-id"),
+            # products staff pinned (E-commerce → Website Product Order) first, in their order, then newest
+            "recommended": (F("shop_position").asc(nulls_last=True), "-created_at", "-id"),
+            "price": ("price", "id"), "-price": ("-price", "id"),
             "name": ("name", "id"), "popular": ("-popularity", "-created_at", "-id"),
             # featured products in the order staff set (E-commerce → Hot Sales), newest first among equals
             "featured": ("featured_position", "-created_at", "-id")}
@@ -160,7 +163,7 @@ class ProductListView(PublicAPIView):
             qs = qs.filter(featured=True)
         if params.get("deals") in ("1", "true"):
             qs = qs.filter(ofa_kali=True)
-        ordering = params.get("ordering", "featured" if params.get("featured") in ("1", "true") else "newest")
+        ordering = params.get("ordering", "featured" if params.get("featured") in ("1", "true") else "recommended")
         if params.get("for_you") in ("1", "true"):
             picked = _for_you(request)
             if picked is None:

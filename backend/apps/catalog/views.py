@@ -80,6 +80,26 @@ class CategoryViewSet(CatalogViewSet):
                 .annotate(products_count=Count("products", distinct=True) + Count("subcategory_products", distinct=True))
                 .order_by("sort_order", "name"))
 
+    @extend_schema(request=OpenApiTypes.OBJECT)
+    @action(detail=False, methods=["post"])
+    @transaction.atomic
+    def reorder(self, request):
+        """POST {"ids": [...]}: these categories (siblings) are shown in this order, first one first."""
+        ids = request.data.get("ids") if isinstance(request.data, dict) else None
+        if not isinstance(ids, list) or not ids or not all(isinstance(i, int) for i in ids) or len(ids) != len(set(ids)):
+            raise ValidationError({"ids": ["A list of different category ids."]})
+        found = {c.pk: c for c in Category.objects.select_for_update().filter(pk__in=ids)}
+        if missing := [i for i in ids if i not in found]:
+            raise ValidationError({"ids": [f"Unknown categories: {missing}"]})
+        if len({found[i].parent_id for i in ids}) > 1:
+            raise ValidationError({"ids": ["Reorder categories of the same level (one parent) together."]})
+        for position, pk in enumerate(ids, start=1):
+            if found[pk].sort_order != position:
+                found[pk].sort_order = position
+                found[pk].save(update_fields=["sort_order", "updated_at"])
+        record_audit(action="update", request=request, object_repr="Category order", changes={"order": [None, ids]})
+        return Response(self.get_serializer(self.get_queryset().filter(pk__in=ids), many=True).data)
+
 
 @extend_schema(tags=["catalog"])
 class BrandViewSet(CatalogViewSet):
@@ -594,6 +614,68 @@ class DeliveryEstimateView(APIView):
 
 
 @extend_schema(tags=["catalog"], request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT)
+def _picker_rows(products) -> list[dict]:
+    rows = []
+    for p in products:
+        images = [i for i in p.images.all() if i.variant_id is None]
+        primary = next((i for i in images if i.is_primary), images[0] if images else None)
+        rows.append({"id": p.id, "name": p.name, "sku": p.sku, "price": str(p.price), "status": p.status,
+                     "image": image_url(primary) if primary else None})
+    return rows
+
+
+def _ordered_ids(request, limit: int):
+    """The product ids sent in display order, or an error Response."""
+    ids = request.data.get("ids") if isinstance(request.data, dict) else None
+    if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids) or len(ids) != len(set(ids)):
+        return None, Response({"error": {"code": "validation_error", "message": "Send the product ids in order.",
+                                         "details": {"ids": ["A list of different product ids."]}}}, status=400)
+    if len(ids) > limit:
+        return None, Response({"error": {"code": "validation_error", "message": f"Up to {limit} products.",
+                                         "details": {"ids": [f"Up to {limit} products."]}}}, status=400)
+    found = {p.pk: p for p in Product.objects.select_for_update().filter(pk__in=ids)}
+    if missing := [i for i in ids if i not in found]:
+        return None, Response({"error": {"code": "validation_error", "message": f"Unknown products: {missing}",
+                                         "details": {"ids": [f"Unknown products: {missing}"]}}}, status=400)
+    return (ids, found), None
+
+
+class ShopOrderView(APIView):
+    """
+    Products pinned to the top of the website shop and category pages, in their order. GET lists them;
+    POST {"ids": [...]} saves the whole list (products left out are unpinned and follow, newest first).
+    """
+
+    module = Module.ECOMMERCE
+    permission_classes = [HasModulePermission]
+    LIMIT = 100
+
+    @staticmethod
+    def _rows():
+        return _picker_rows(Product.objects.filter(shop_position__isnull=False).prefetch_related("images")
+                            .order_by("shop_position", "id"))
+
+    def get(self, request):
+        return Response(self._rows())
+
+    @transaction.atomic
+    def post(self, request):
+        result, error = _ordered_ids(request, self.LIMIT)
+        if error:
+            return error
+        ids, found = result
+        before = list(Product.objects.filter(shop_position__isnull=False).order_by("shop_position")
+                      .values_list("id", flat=True))
+        Product.objects.filter(shop_position__isnull=False).exclude(pk__in=ids).update(shop_position=None)
+        for position, pk in enumerate(ids, start=1):
+            if found[pk].shop_position != position:
+                found[pk].shop_position = position
+                found[pk].save(update_fields=["shop_position", "updated_at"])
+        record_audit(action="update", request=request, object_repr="Website product order",
+                     changes={"shop_order": [before, ids]})
+        return Response(self._rows())
+
+
 class HotSalesView(APIView):
     """
     Featured products in their display order: "Hot Sales" on the app's home and the featured row of

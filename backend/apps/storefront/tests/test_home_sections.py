@@ -94,3 +94,34 @@ def test_staff_set_the_hot_sales_order(api, shop, client_for):
     assert staff.post(url, {"ids": [shop.product.pk, shop.product.pk]}, format="json").status_code == 400
     assert staff.post(url, {"ids": [999999]}, format="json").status_code == 400
     assert client_for("sales").post(url, {"ids": []}, format="json").status_code == 403
+
+
+def test_staff_pin_products_to_the_top_of_the_shop_and_order_categories(api, shop, client_for):
+    staff = client_for("admin_l2")
+    url = "/api/catalog/shop-order/"
+    newest_first = [p["name"] for p in api.get(f"{APP}/products/", {"ordering": "newest"}).json()["results"]]
+    assert [p["name"] for p in api.get(f"{APP}/products/").json()["results"]] == newest_first  # nothing pinned
+    res = staff.post(url, {"ids": [shop.cable.pk, shop.product.pk]}, format="json")
+    assert res.status_code == 200, res.json()
+    assert [r["name"] for r in staff.get(url).json()] == ["USB-C Cable", "Galaxy A54"]
+    listed = [p["name"] for p in api.get(f"{APP}/products/").json()["results"]]
+    assert listed[:2] == ["USB-C Cable", "Galaxy A54"]
+    by_category = api.get(f"{APP}/products/", {"category": shop.product.category_id}).json()["results"]
+    assert [p["name"] for p in by_category][:2] == ["USB-C Cable", "Galaxy A54"]
+    staff.post(url, {"ids": [shop.product.pk]}, format="json")  # the cable is unpinned
+    assert [r["name"] for r in staff.get(url).json()] == ["Galaxy A54"]
+    assert api.get(f"{APP}/products/").json()["results"][0]["name"] == "Galaxy A54"
+    assert staff.post(url, {"ids": [999999]}, format="json").status_code == 400
+    assert client_for("sales").post(url, {"ids": []}, format="json").status_code == 403
+
+    from apps.catalog.models import Category
+
+    a = Category.objects.create(name="Zeta", slug="zeta")
+    b = Category.objects.create(name="Alpha", slug="alpha-x")
+    res = staff.post("/api/catalog/categories/reorder/", {"ids": [a.pk, b.pk]}, format="json")
+    assert res.status_code == 200, res.json()
+    names = [c["name"] for c in api.get(f"{APP}/categories/").json() if c["name"] in ("Zeta", "Alpha")]
+    assert names == ["Zeta", "Alpha"]
+    child = Category.objects.create(name="Kid", slug="kid", parent=a)
+    assert staff.post("/api/catalog/categories/reorder/", {"ids": [a.pk, child.pk]},
+                      format="json").status_code == 400  # one level at a time
