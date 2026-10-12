@@ -5,6 +5,7 @@ const STATUS: Record<ShopStatus, string> = {
   pending: "bg-yellow-100 text-yellow-800",
   processing: "bg-blue-100 text-blue-800",
   ordered_from_supplier: "bg-indigo-100 text-indigo-800",
+  supplier_shipped: "bg-sky-100 text-sky-800",
   at_origin_warehouse: "bg-amber-100 text-amber-800",
   shipping_to_destination: "bg-cyan-100 text-cyan-800",
   clearance: "bg-orange-100 text-orange-800",

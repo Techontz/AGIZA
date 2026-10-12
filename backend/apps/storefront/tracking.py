@@ -61,6 +61,7 @@ SHOP_IMPORT_STEPS = [
     ("placed", "Order placed", {P.PENDING}),
     ("payment", "Payment received", {PAYMENT}),
     ("processing", "Preparing your order", {P.PROCESSING, P.ORDERED_FROM_SUPPLIER}),
+    ("supplier_shipped", "On its way to our warehouse abroad", {P.SUPPLIER_SHIPPED}),
     ("shipped_from_origin", "At our warehouse abroad", {P.AT_ORIGIN_WAREHOUSE}),
     ("in_transit", "In transit to Tanzania", {P.SHIPPING_TO_DESTINATION}),
     ("customs_clearance", "Customs clearance", {P.CLEARANCE}),

@@ -64,7 +64,7 @@ export function InternationalView() {
         actions={
           canEdit && (
             <Button onClick={() => setCreating(true)}>
-              <Plus className="size-5" /> New Order
+              <Plus className="size-5" /> Quick Order (no quotation)
             </Button>
           )
         }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Ban, CreditCard, ExternalLink, Globe, MapPin, Package2, Pencil, PlayCircle, Receipt, Truck } from "lucide-react";
+import { AlertTriangle, Ban, CreditCard, ExternalLink, Globe, MapPin, PackageCheck, Package2, Pencil, PlayCircle, Receipt, Truck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -20,7 +20,7 @@ import { formatDateTime, formatTSh } from "@/lib/format";
 import { OrderSellers } from "./sellers-block";
 import { SHOP_INVALIDATE } from "./shared";
 
-type Action = "process" | "ship" | "cancel" | "pay" | "fee" | null;
+type Action = "process" | "ship" | "cancel" | "pay" | "fee" | "supplier" | null;
 
 /** Plain status moves through the import stages: the label for each target status. */
 const IMPORT_VERB: Partial<Record<ShopStatus, string>> = {
@@ -65,6 +65,8 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
   const canCancel = canManage && ["pending", "processing", "ordered_from_supplier", "at_origin_warehouse"].includes(o.status);
   // Imported items: the next stages of the trip from abroad (offered by the server only for such orders).
   const importMoves = canEdit ? o.allowed_transitions.filter((t) => t.value in IMPORT_VERB) : [];
+  // After "Ordered from Supplier": the supplier ships it, with a tracking number (its own action).
+  const canSupplierShip = canEdit && o.status === "ordered_from_supplier";
   const due = o.payment.due !== null ? Number(o.payment.due) : null;
   const canRecord = canPay && o.status !== "cancelled" && (due === null || due > 0);
   const email = o.details.customer_email || o.customer.email;
@@ -153,6 +155,12 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
                     {o.details.estimated_delivery && ` · ${o.details.estimated_delivery}`}
                   </p>
                 )}
+                {o.details.supplier_tracking_number && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    Supplier tracking: <span className="font-mono font-medium text-gray-900">{o.details.supplier_tracking_number}</span>
+                    {o.details.supplier_shipped_at && ` · shipped ${formatDateTime(o.details.supplier_shipped_at)}`}
+                  </p>
+                )}
                 {o.details.location && (
                   <a
                     className="inline-block text-sm text-blue-600 hover:underline mt-1"
@@ -200,11 +208,16 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
       <OrderSellers orderId={o.id} />
       <OrderPickups orderId={o.id} />
 
-      {(canProcess || canShip || canCancel || canRecord || importMoves.length > 0 || o.delivery) && (
+      {(canProcess || canShip || canCancel || canRecord || canSupplierShip || importMoves.length > 0 || o.delivery) && (
         <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-gray-200">
           {canProcess && (
             <Button size="sm" onClick={() => setAction("process")}>
               <PlayCircle className="size-4" /> Mark Processing
+            </Button>
+          )}
+          {canSupplierShip && (
+            <Button size="sm" variant="success" onClick={() => setAction("supplier")}>
+              <PackageCheck className="size-4" /> Supplier Shipped
             </Button>
           )}
           {importMoves.map((t) => (
@@ -292,6 +305,7 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
 
       <ProcessDialog order={o} open={action === "process"} onClose={close} />
       <StageDialog order={o} target={stage} onClose={() => setStage(null)} />
+      <SupplierShippedDialog order={o} open={action === "supplier"} onClose={close} />
       <ShipDialog order={o} open={action === "ship"} onClose={close} />
       <CancelDialog order={o} open={action === "cancel"} onClose={close} />
       <DeliveryFeeDialog order={o} open={action === "fee"} onClose={close} />
@@ -401,6 +415,46 @@ function ProcessDialog({ order: o, open, onClose }: { order: ShopOrder; open: bo
       <div className="mt-4 space-y-3">
         <Field label="Note (optional)" htmlFor={`proc-note-${o.id}`}>
           <Textarea id={`proc-note-${o.id}`} rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add context for the history..." />
+        </Field>
+        <FormAlert error={error} />
+      </div>
+    </ConfirmDialog>
+  );
+}
+
+function SupplierShippedDialog({ order: o, open, onClose }: { order: ShopOrder; open: boolean; onClose: () => void }) {
+  const [tracking, setTracking] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<unknown>(null);
+  useEffect(() => {
+    if (open) {
+      setTracking("");
+      setNote("");
+      setError(null);
+    }
+  }, [open]);
+  const save = useApiMutation(() => shopOrdersApi.supplierShipped(o.id, tracking.trim(), note.trim()), {
+    invalidate: SHOP_INVALIDATE,
+    success: (r) => `${r.reference}: Supplier Shipped`,
+    onSuccess: onClose,
+    onError: setError,
+  });
+  return (
+    <ConfirmDialog
+      open={open}
+      title={`Supplier Shipped — ${o.reference}`}
+      message="The supplier sent the items to our warehouse abroad. Enter their tracking number."
+      confirmLabel="Mark Supplier Shipped"
+      pending={save.isPending}
+      onConfirm={() => (tracking.trim() ? save.mutate(undefined) : setError(new Error("Enter the supplier's tracking number.")))}
+      onClose={onClose}
+    >
+      <div className="mt-4 space-y-3">
+        <Field label="Tracking number *" htmlFor={`sup-track-${o.id}`}>
+          <Input id={`sup-track-${o.id}`} value={tracking} onChange={(e) => setTracking(e.target.value)} placeholder="e.g. YT123456789CN" autoFocus />
+        </Field>
+        <Field label="Note (optional)" htmlFor={`sup-note-${o.id}`}>
+          <Textarea id={`sup-note-${o.id}`} rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Courier, expected arrival..." />
         </Field>
         <FormAlert error={error} />
       </div>

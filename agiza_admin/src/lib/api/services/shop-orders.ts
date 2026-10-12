@@ -7,6 +7,7 @@ export type ShopStatus =
   | "processing"
   // Imported items travel from abroad before the last-mile delivery.
   | "ordered_from_supplier"
+  | "supplier_shipped"
   | "at_origin_warehouse"
   | "shipping_to_destination"
   | "clearance"
@@ -20,6 +21,7 @@ export const SHOP_STATUS_OPTIONS: [ShopStatus, string][] = [
   ["pending", "Pending"],
   ["processing", "Processing"],
   ["ordered_from_supplier", "Ordered from Supplier"],
+  ["supplier_shipped", "Supplier Shipped"],
   ["at_origin_warehouse", "At Warehouse Abroad"],
   ["shipping_to_destination", "Shipping to Tanzania"],
   ["clearance", "Customs Clearance"],
@@ -28,7 +30,7 @@ export const SHOP_STATUS_OPTIONS: [ShopStatus, string][] = [
   ["delivered", "Delivered"],
   ["cancelled", "Cancelled"],
 ];
-export const SHOP_IMPORT_STAGES: ShopStatus[] = ["ordered_from_supplier", "at_origin_warehouse", "shipping_to_destination", "clearance", "arrived"];
+export const SHOP_IMPORT_STAGES: ShopStatus[] = ["ordered_from_supplier", "supplier_shipped", "at_origin_warehouse", "shipping_to_destination", "clearance", "arrived"];
 export type ShopChannel = "web" | "app" | "whatsapp" | "shop" | "manual";
 
 export interface ShopOrderItem {
@@ -73,6 +75,9 @@ export interface ShopOrder extends Omit<OrderBase, "status"> {
     delivery_fee_pending: boolean;
     /** Why the cost must be set by hand: what the Shipping Engine is missing for this address. */
     delivery_issue?: string;
+    /** Imported items bought from a supplier: its tracking number to the warehouse abroad. */
+    supplier_tracking_number?: string;
+    supplier_shipped_at?: string | null;
   };
   payment_status: "paid" | "pending";
   delivery: { id: number; reference: string; status: string; status_display: string } | null;
@@ -121,6 +126,8 @@ export const shopOrdersApi = {
   transition: (id: number, status: string, note = "") => api.post<ShopOrder>(`${base}/${id}/transition`, { status, note }),
   ship: (id: number, data: { driver?: number | null; scheduled_at?: string | null; note?: string }) =>
     api.post<ShopOrder>(`${base}/${id}/ship`, data),
+  supplierShipped: (id: number, tracking_number: string, note = "") =>
+    api.post<ShopOrder>(`${base}/${id}/supplier-shipped`, { tracking_number, note }),
   cancel: (id: number, reason: string) => api.post<ShopOrder>(`${base}/${id}/cancel`, { reason }),
   /** Set the delivery cost of an order placed while it needed a manual quote; the customer is told to pay. */
   setDeliveryFee: (id: number, data: DeliveryFeeInput) => api.post<ShopOrder>(`${base}/${id}/delivery-fee`, data),

@@ -426,6 +426,8 @@ class ShopOrderSerializer(OrderSerializer):
             "payment_due_at": d.payment_due_at,
             "delivery_fee_pending": d.delivery_fee_pending,
             "delivery_issue": d.delivery_issue,
+            "supplier_tracking_number": d.supplier_tracking_number,
+            "supplier_shipped_at": d.supplier_shipped_at,
             "customs_fee": _dec(d.customs_fee),
             "customs_status": d.customs_status,
             "customs_charges": d.customs_charges or None,
@@ -467,6 +469,11 @@ class ShopCreateSerializer(serializers.Serializer):
 class ShipSerializer(serializers.Serializer):
     driver = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), required=False, allow_null=True)
     scheduled_at = serializers.DateTimeField(required=False, allow_null=True)
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class SupplierShippedSerializer(serializers.Serializer):
+    tracking_number = serializers.CharField(max_length=80)
     note = serializers.CharField(required=False, allow_blank=True, default="")
 
 

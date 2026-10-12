@@ -180,6 +180,7 @@ class ShopStatus(models.TextChoices):
     PROCESSING = "processing", "Processing"
     # Imported items (from a warehouse or supplier abroad) travel to Tanzania before the last-mile delivery.
     ORDERED_FROM_SUPPLIER = "ordered_from_supplier", "Ordered from Supplier"
+    SUPPLIER_SHIPPED = "supplier_shipped", "Supplier Shipped"
     AT_ORIGIN_WAREHOUSE = "at_origin_warehouse", "At Warehouse Abroad"
     SHIPPING_TO_DESTINATION = "shipping_to_destination", "Shipping to Tanzania"
     CLEARANCE = "clearance", "Customs Clearance"
@@ -193,7 +194,9 @@ P = ShopStatus
 SHOP_TRANSITIONS = {
     P.PENDING: {P.PROCESSING, P.CANCELLED},
     P.PROCESSING: {P.SHIPPED, P.ORDERED_FROM_SUPPLIER, P.AT_ORIGIN_WAREHOUSE, P.SHIPPING_TO_DESTINATION, P.CANCELLED},
-    P.ORDERED_FROM_SUPPLIER: {P.AT_ORIGIN_WAREHOUSE, P.SHIPPING_TO_DESTINATION, P.CANCELLED},
+    # Bought from a supplier: it ships (with a tracking number) to the warehouse abroad.
+    P.ORDERED_FROM_SUPPLIER: {P.SUPPLIER_SHIPPED, P.CANCELLED},
+    P.SUPPLIER_SHIPPED: {P.AT_ORIGIN_WAREHOUSE},
     P.AT_ORIGIN_WAREHOUSE: {P.SHIPPING_TO_DESTINATION, P.CANCELLED},
     P.SHIPPING_TO_DESTINATION: {P.CLEARANCE, P.ARRIVED},
     P.CLEARANCE: {P.ARRIVED},
@@ -203,10 +206,11 @@ SHOP_TRANSITIONS = {
     P.CANCELLED: set(),
 }
 # The import stages, offered only for orders with imported items (orders.shop.is_imported).
-SHOP_IMPORT_STAGES = frozenset({P.ORDERED_FROM_SUPPLIER, P.AT_ORIGIN_WAREHOUSE, P.SHIPPING_TO_DESTINATION,
+SHOP_IMPORT_STAGES = frozenset({P.ORDERED_FROM_SUPPLIER, P.SUPPLIER_SHIPPED, P.AT_ORIGIN_WAREHOUSE, P.SHIPPING_TO_DESTINATION,
                                 P.CLEARANCE, P.ARRIVED})
 # Shipping deducts stock and opens the delivery; Delivered comes from the delivery's proof.
-SHOP_ACTION_ONLY = {P.SHIPPED: "ship", P.DELIVERED: "deliver", P.CANCELLED: "cancel"}
+SHOP_ACTION_ONLY = {P.SUPPLIER_SHIPPED: "supplier-shipped", P.SHIPPED: "ship", P.DELIVERED: "deliver",
+                    P.CANCELLED: "cancel"}
 
 
 # Transitions reachable only through one action, per order type: {(from, to): action}.

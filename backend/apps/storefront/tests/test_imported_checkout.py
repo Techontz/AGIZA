@@ -158,7 +158,16 @@ def test_imported_orders_go_through_the_import_stages(app, imported, home, selco
     assert staff.post(f"{url}/transition/", {"status": "processing"}, format="json").status_code == 200
     offered = [t["value"] for t in staff.get(f"{url}/").json()["allowed_transitions"]]
     assert offered == ["ordered_from_supplier", "at_origin_warehouse", "shipping_to_destination"]
-    for stage in ("ordered_from_supplier", "at_origin_warehouse", "shipping_to_destination", "clearance", "arrived"):
+    assert staff.post(f"{url}/transition/", {"status": "ordered_from_supplier"}, format="json").status_code == 200
+    offered = [t["value"] for t in staff.get(f"{url}/").json()["allowed_transitions"]]
+    assert offered == []  # Supplier Shipped needs the tracking number (its own action)
+    assert staff.post(f"{url}/transition/", {"status": "supplier_shipped"}, format="json").status_code == 400
+    assert staff.post(f"{url}/supplier-shipped/", {"tracking_number": " "}, format="json").status_code == 400
+    res = staff.post(f"{url}/supplier-shipped/", {"tracking_number": "YT123456789CN"}, format="json")
+    assert res.status_code == 200, res.json()
+    assert res.json()["status"] == "supplier_shipped" and res.json()["details"]["supplier_tracking_number"] == "YT123456789CN"
+    assert [t["value"] for t in res.json()["allowed_transitions"]] == ["at_origin_warehouse"]
+    for stage in ("at_origin_warehouse", "shipping_to_destination", "clearance", "arrived"):
         res = staff.post(f"{url}/transition/", {"status": stage, "note": "on its way"}, format="json")
         assert res.status_code == 200, res.json()
     body = res.json()
@@ -167,9 +176,10 @@ def test_imported_orders_go_through_the_import_stages(app, imported, home, selco
     assert staff.get("/api/orders/shop/stats/").json()["importing"] == 1
 
     steps = app.get(f"{APP}/orders/{order.reference}/").json()["timeline"]["steps"]
-    assert [s["key"] for s in steps] == ["placed", "payment", "processing", "shipped_from_origin", "in_transit",
-                                         "customs_clearance", "arrived", "shipped", "out_for_delivery", "delivered"]
-    assert [s["state"] for s in steps][:8] == ["completed"] * 7 + ["current"]
+    assert [s["key"] for s in steps] == ["placed", "payment", "processing", "supplier_shipped", "shipped_from_origin",
+                                         "in_transit", "customs_clearance", "arrived", "shipped", "out_for_delivery",
+                                         "delivered"]
+    assert [s["state"] for s in steps][:9] == ["completed"] * 8 + ["current"]
 
 
 def test_local_orders_skip_the_import_stages(app, imported, home, client_for):

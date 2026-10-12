@@ -1,10 +1,11 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Clock, FileText, MessageSquare, Phone, Plus, Send, ThumbsDown, ThumbsUp } from "lucide-react";
+import { CheckCircle2, Clock, FileText, MessageSquare, Phone, Plus, Send, ThumbsDown, ThumbsUp, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { DeliveryQuotesTab } from "@/components/orders/delivery-quotes-tab";
+import { QuickOrderDialog } from "@/components/orders/international/quick-order-dialog";
 import { ApproveDialog, NewQuoteDialog, RespondDialog, ServiceTypeBadge } from "@/components/orders/quote-dialogs";
 import { useOrderAccess, useOrderMutation } from "@/components/orders/shared";
 import { Button } from "@/components/ui/button";
@@ -58,7 +59,7 @@ function cleanDescription(text: string): { title: string; details: string[] } {
 
 export function IntakeView() {
   const meta = pageMeta["/intake-quotes"];
-  const { canQuote, canApprove } = useOrderAccess();
+  const { canQuote, canApprove, canEdit } = useOrderAccess();
   const [f, setF] = useUrlFilters({ tab: "new", search: "", page: "1" });
   const tab = f.tab as Tab;
   const [search, setSearch] = useState(f.search);
@@ -88,6 +89,7 @@ export function IntakeView() {
   const [responding, setResponding] = useState<Quote | null>(null);
   const [approving, setApproving] = useState<Quote | null>(null);
   const [creating, setCreating] = useState(false);
+  const [quickOrder, setQuickOrder] = useState(false);
   const reply = useOrderMutation(({ id, accepted }: { id: number; accepted: boolean }) => quotesApi.reply(id, accepted), {
     success: (q) => ((q as Quote).status === "answered" ? "Customer acceptance recorded" : "Customer declined — quotation moved to New"),
   });
@@ -98,7 +100,18 @@ export function IntakeView() {
       <PageHeader
         title={meta.title}
         description={meta.description}
-        actions={canQuote && <Button onClick={() => setCreating(true)}><Plus className="size-4" /> New Quotation</Button>}
+        actions={
+          (canQuote || canEdit) && (
+            <div className="flex flex-wrap gap-2">
+              {canEdit && (
+                <Button variant="outline" onClick={() => setQuickOrder(true)} title="Create the order straight away, without sending a quotation">
+                  <Zap className="size-4" /> Quick Order (skip quotation)
+                </Button>
+              )}
+              {canQuote && <Button onClick={() => setCreating(true)}><Plus className="size-4" /> New Quotation</Button>}
+            </div>
+          )
+        }
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -291,6 +304,7 @@ export function IntakeView() {
       <RespondDialog quote={responding} onClose={() => setResponding(null)} />
       <ApproveDialog quote={approving} onClose={() => setApproving(null)} />
       <NewQuoteDialog open={creating} onClose={() => setCreating(false)} />
+      <QuickOrderDialog open={quickOrder} onClose={() => setQuickOrder(false)} />
     </PageContainer>
   );
 }

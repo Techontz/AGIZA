@@ -236,6 +236,27 @@ def ship(order: Order, *, user, driver=None, scheduled_at=None, note: str = "", 
 
 
 @transaction.atomic
+def supplier_shipped(order: Order, *, user, tracking_number: str, note: str = "", request=None) -> Order:
+    """The supplier sent the imported items to AGIZA's warehouse abroad, with this tracking number."""
+    order = services._lock(order)
+    services._require_type(order, OrderType.SHOP)
+    tracking_number = (tracking_number or "").strip()
+    if not tracking_number:
+        raise WorkflowError("Enter the supplier's tracking number.", field="tracking_number")
+    services._check_transition(order, ShopStatus.SUPPLIER_SHIPPED, via_action="supplier-shipped")
+    details = order.shop
+    before = details.supplier_tracking_number
+    details.supplier_tracking_number = tracking_number[:80]
+    details.supplier_shipped_at = timezone.now()
+    details.save(update_fields=["supplier_tracking_number", "supplier_shipped_at"])
+    message = f"Tracking: {tracking_number}" + (f" — {note.strip()}" if note.strip() else "")
+    services._set_status(order, ShopStatus.SUPPLIER_SHIPPED, user, message, request)
+    record_audit(action="update", request=request, actor=user, instance=order,
+                 changes={"supplier_tracking_number": [before or None, details.supplier_tracking_number]})
+    return order
+
+
+@transaction.atomic
 def cancel(order: Order, *, user, reason: str, request=None) -> Order:
     order = services._lock(order)
     services._require_type(order, OrderType.SHOP)

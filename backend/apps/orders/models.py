@@ -304,6 +304,9 @@ class ShopDetails(models.Model):
     # Why: what the Shipping Engine is missing for this address (route, rule, manual-quote profile), so staff
     # can set the cost now and fix the setup for the next customers.
     delivery_issue = models.TextField(blank=True)
+    # Imported items bought from a supplier: the supplier's tracking number to AGIZA's warehouse abroad.
+    supplier_tracking_number = models.CharField(max_length=80, blank=True)
+    supplier_shipped_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self) -> str:
         return f"{self._meta.verbose_name} #{self.pk}"

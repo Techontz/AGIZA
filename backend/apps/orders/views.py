@@ -50,6 +50,7 @@ from .serializers import (
     ShopNotesSerializer,
     ShopOrderSerializer,
     SuggestPriceSerializer,
+    SupplierShippedSerializer,
     TransitionSerializer,
 )
 from .workflows import EXPRESS_STAGE, SHOP_IMPORT_STAGES, OrderType
@@ -549,6 +550,14 @@ class ShopOrderViewSet(BaseOrderViewSet):
         s = ShipSerializer(data=request.data)
         s.is_valid(raise_exception=True)
         order = run(shop.ship, self.get_object(), user=request.user, request=request, **s.validated_data)
+        return self._respond(order)
+
+    @extend_schema(request=SupplierShippedSerializer)
+    @action(detail=True, methods=["post"], url_path="supplier-shipped")
+    def supplier_shipped(self, request, pk=None):
+        s = SupplierShippedSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        order = run(shop.supplier_shipped, self.get_object(), user=request.user, request=request, **s.validated_data)
         return self._respond(order)
 
     @extend_schema(request=CancelSerializer)
