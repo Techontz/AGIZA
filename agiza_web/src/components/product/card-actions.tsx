@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { ClipboardList, ShoppingCart, Zap } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { useCart } from "@/hooks/use-cart";
@@ -13,6 +14,7 @@ import type { ProductCard, QuoteRequest } from "@/lib/api/types";
 import { productHref } from "@/lib/format";
 
 import { buttonClass, Button } from "../ui/button";
+import { ConfirmBox } from "../ui/confirm";
 
 /**
  * On the product tile itself: In stock / Out of stock, then Add to cart + Buy now (in stock) or
@@ -32,9 +34,14 @@ export function CardActions({ product }: { product: ProductCard }) {
         product: product.id,
         details: "Out of stock on the AGIZA website. Please source it for me.",
       }),
-    onSuccess: () => toast.success("Request sent — AGIZA will reply with a price", { action: { label: "My requests", onClick: () => router.push("/account/requests") } }),
+    onSuccess: () => {
+      setConfirming(false);
+      toast.success("Request sent — AGIZA will reply with a price", { action: { label: "My requests", onClick: () => router.push("/account/requests") } });
+    },
     onError: (e) => toast.error(errorMessage(e)),
   });
+
+  const [confirming, setConfirming] = useState(false);
 
   const add = async (thenCheckout: boolean) => {
     if (!product.variant) return;
@@ -74,12 +81,23 @@ export function CardActions({ product }: { product: ProductCard }) {
           className="w-full"
           loading={request.isPending}
           disabled={request.isSuccess}
-          onClick={() => (session.signedIn ? request.mutate() : router.push(`/login?next=${encodeURIComponent(pathname)}`))}
+          onClick={() => (session.signedIn ? setConfirming(true) : router.push(`/login?next=${encodeURIComponent(pathname)}`))}
           icon={<ClipboardList className="size-3.5" aria-hidden />}
         >
           {request.isSuccess ? "Requested" : "Request"}
         </Button>
       ) : null}
+      <ConfirmBox
+        open={confirming}
+        title="Request this product?"
+        confirmLabel="Send request"
+        loading={request.isPending}
+        onConfirm={() => request.mutate()}
+        onClose={() => setConfirming(false)}
+      >
+        <strong className="text-ink">{product.name}</strong> is out of stock. AGIZA will look for it and send you a price —
+        nothing is charged now.
+      </ConfirmBox>
     </div>
   );
 }

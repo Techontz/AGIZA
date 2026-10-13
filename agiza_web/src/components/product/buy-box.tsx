@@ -15,6 +15,7 @@ import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
 
 import { Button } from "../ui/button";
+import { ConfirmBox } from "../ui/confirm";
 import { QuantityStepper } from "../ui/stepper";
 import { DeliveryCalculator } from "./delivery-calculator";
 
@@ -53,12 +54,17 @@ export function BuyBox({ product }: { product: ProductDetail }) {
         details: `Out of stock on the AGIZA website. Please source ${requestQty} for me.`,
       });
     },
-    onSuccess: () => client.invalidateQueries({ queryKey: ["requests"] }),
+    onSuccess: () => {
+      setConfirming(false);
+      client.invalidateQueries({ queryKey: ["requests"] });
+      toast.success("Request sent — AGIZA will reply with a price");
+    },
     onError: (e) => toast.error(errorMessage(e)),
   });
+  const [confirming, setConfirming] = useState(false);
   const askForIt = () => {
     if (!session.signedIn) return router.push(`/login?next=${encodeURIComponent(pathname)}`);
-    request.mutate();
+    setConfirming(true);
   };
 
   const add = async (thenCheckout: boolean) => {
@@ -155,6 +161,17 @@ export function BuyBox({ product }: { product: ProductDetail }) {
                 Request this product
               </Button>
             </div>
+            <ConfirmBox
+              open={confirming}
+              title="Request this product?"
+              confirmLabel="Send request"
+              loading={request.isPending}
+              onConfirm={() => request.mutate()}
+              onClose={() => setConfirming(false)}
+            >
+              AGIZA will look for <strong className="text-ink">{requestQty} × {product.name}</strong> and send you a price. You
+              decide after that — nothing is charged now.
+            </ConfirmBox>
             {session.ready && !session.signedIn ? (
               <p className="mt-1.5 text-[13px] text-muted">Sign in to send a request; you&apos;ll come back to this page.</p>
             ) : null}

@@ -1,5 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
+import { Alert } from 'react-native';
+
+import { errorMessage } from '@/components/ui/states';
 
 import { requestApi } from '@/lib/api/endpoints';
 import { useAuth } from '@/lib/auth/session';
@@ -23,11 +26,23 @@ export function useRequestProduct() {
         product: id,
         details: `Out of stock in the AGIZA app. Please source ${quantity} for me.`,
       }),
+    onError: (e) => Alert.alert("Couldn't send the request", errorMessage(e)),
     onSuccess: (quote) => {
       queryClient.invalidateQueries({ queryKey: keys.requests });
       router.push({ pathname: '/requests/[id]', params: { id: quote.id, created: '1' } });
     },
   });
-  const request = (ask: Ask) => (status === 'signedIn' ? mutation.mutate(ask) : router.push('/login'));
+  const request = (ask: Ask) => {
+    if (status !== 'signedIn') return router.push('/login');
+    const quantity = ask.quantity ?? 1;
+    Alert.alert(
+      'Request this product?',
+      `${quantity} × ${ask.name}${ask.options ? ` (${ask.options})` : ''} is out of stock. AGIZA will look for it and send you a price — nothing is charged now.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Send request', onPress: () => mutation.mutate(ask) },
+      ],
+    );
+  };
   return { request, mutation };
 }
