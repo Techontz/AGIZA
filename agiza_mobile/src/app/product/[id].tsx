@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Check, ClipboardList, Plane, ShieldCheck, ShoppingBag, Truck, Zap } from 'lucide-react-native';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -28,6 +28,7 @@ import { useAuth } from '@/lib/auth/session';
 import { money } from '@/lib/format';
 import { shareProduct } from '@/lib/links';
 import { keys } from '@/lib/query';
+import { rememberViewed } from '@/lib/recently-viewed';
 import { colors, fonts, radius, shadow, space, themed } from '@/theme/tokens';
 
 function Perk({
@@ -86,6 +87,9 @@ export default function ProductScreen() {
     // Show the tapped card straight away; the full product fills in a moment later.
     placeholderData: () => productPlaceholder(queryClient, productId),
   });
+  useEffect(() => {
+    rememberViewed(productId); // the Shop page's "Recently viewed" row
+  }, [productId]);
   const { request: requestProduct, mutation: requestIt } = useRequestProduct();
   const cart = useCart();
   const [variantId, setVariantId] = useState<number | null>(null);

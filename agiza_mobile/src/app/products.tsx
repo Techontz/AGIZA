@@ -4,7 +4,7 @@ import { ProductGrid } from '@/components/product-grid';
 
 /** Product list for a filter: /products?category=3&title=Phones, ?featured=1, ?deals=1, ?for_you=1. */
 export default function ProductsScreen() {
-  const params = useLocalSearchParams<{ category?: string; featured?: string; deals?: string; for_you?: string; title?: string }>();
+  const params = useLocalSearchParams<{ category?: string; featured?: string; deals?: string; for_you?: string; purchased?: string; title?: string }>();
   return (
     <>
       <Stack.Screen options={{ title: params.title || 'Products' }} />
@@ -14,6 +14,7 @@ export default function ProductsScreen() {
           featured: params.featured === '1' || undefined,
           deals: params.deals === '1' || undefined,
           for_you: params.for_you === '1' || undefined,
+          purchased: params.purchased === '1' || undefined,
         }}
       />
     </>

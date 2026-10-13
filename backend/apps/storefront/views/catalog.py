@@ -123,6 +123,29 @@ def _for_you(request) -> Q | None:
     return Q(category_id__in=ids) | Q(subcategory_id__in=ids) if ids else None
 
 
+def _purchased(request, qs):
+    """The signed-in customer's previously bought products (not cancelled), most recently bought first."""
+    from django.db.models import Max
+
+    customer = getattr(request.user, "customer", None) if request.user.is_authenticated else None
+    if customer is None:
+        return qs.none()
+    mine = Q(variants__order_items__order__customer=customer) & ~Q(variants__order_items__order__status="cancelled")
+    return (qs.filter(mine).annotate(last_bought=Max("variants__order_items__order__created_at", filter=mine))
+            .order_by("-last_bought", "-id").distinct())
+
+
+def _in_given_order(qs, raw: str):
+    """Only these product ids (comma separated, up to 30), in the order given."""
+    from django.db.models import Case, IntegerField, Value, When
+
+    ids = [int(i) for i in raw.split(",") if i.strip().isdigit()][:30]
+    if not ids:
+        return qs.none()
+    position = Case(*[When(pk=pk, then=Value(i)) for i, pk in enumerate(ids)], output_field=IntegerField())
+    return qs.filter(pk__in=ids).annotate(given_position=position).order_by("given_position")
+
+
 @extend_schema(tags=["app: shop"], responses=ProductCardSerializer(many=True), parameters=[
     OpenApiParameter("search", str), OpenApiParameter("category", int), OpenApiParameter("featured", bool),
     OpenApiParameter("deals", bool), OpenApiParameter("ordering", str, enum=list(ORDERING)),
@@ -131,6 +154,8 @@ def _for_you(request) -> Q | None:
     OpenApiParameter("in_stock", bool, description="Only products that can be bought now"),
     OpenApiParameter("for_you", bool, description="Signed-in customer: their interests, else categories they bought or "
                      "saved, else best sellers"),
+    OpenApiParameter("purchased", bool, description="Signed-in customer: products they bought before, latest first"),
+    OpenApiParameter("ids", str, description="Only these product ids (comma separated, up to 30), in that order"),
 ])
 class ProductListView(PublicAPIView):
     def get(self, request):
@@ -174,6 +199,10 @@ class ProductListView(PublicAPIView):
             qs = qs.annotate(popularity=Count("variants__order_items", filter=~Q(
                 variants__order_items__order__status="cancelled")))
         qs = qs.order_by(*ORDERING.get(ordering, ORDERING["newest"]))
+        if params.get("purchased") in ("1", "true"):
+            qs = _purchased(request, qs)  # bought before, most recent first
+        if ids := params.get("ids"):
+            qs = _in_given_order(qs, ids)  # e.g. recently viewed, kept on the phone
         expand = params.get("expand") == "details"  # the store app shows full products from the list
         if expand:
             qs = qs.prefetch_related("images", "specifications", "shipping_methods")
@@ -238,6 +267,13 @@ class StoreListView(PublicAPIView):
         counts = dict(visible_products().order_by().values("vendor_id").annotate(n=Count("id"))
                       .values_list("vendor_id", "n"))
         stores = public_vendors().select_related("city").order_by("-verified", "name")
+        interested = None
+        if request.query_params.get("for_you") in ("1", "true"):
+            # Stores selling in the categories this customer is interested in (else every store).
+            picked = _for_you(request)
+            if picked is not None:
+                interested = set(visible_products().filter(picked).order_by().values_list("vendor_id", flat=True))
+                stores = stores.filter(pk__in=[v for v in interested if v])
         search = normalize(request.query_params.get("search", ""))
         if search:
             stores = stores.filter(Q(name__icontains=search) | Q(slug__icontains=search.replace(" ", "-"))
@@ -249,7 +285,8 @@ class StoreListView(PublicAPIView):
         ratings = store_ratings(v.pk for v in page)
         rows = [store_payload(request, v, products_count=counts.get(v.pk, 0), rating=ratings.get(v.pk, {}))
                 for v in page]
-        if paginator.page.number == 1 and counts.get(None) and (not search or search in "agiza"):
+        if (paginator.page.number == 1 and counts.get(None) and (not search or search in "agiza")
+                and (interested is None or None in interested)):
             rows.insert(0, store_payload(request, None, products_count=counts[None]))
         return paginator.get_paginated_response(rows)
 

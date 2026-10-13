@@ -80,3 +80,22 @@ def test_one_mobile_money_payment_pays_every_order_of_the_checkout(app, shop, ho
 
     assert all(payment_summary(o).due == 0 for o in orders)
     assert not GatewayPayment.objects.get().needs_attention
+
+
+def test_shop_page_rows_bought_before_by_ids_and_stores_for_my_interests(app, api, shop, home):
+    from apps.crm.models import CustomerInterest
+
+    assert api.get(f"{APP}/products/", {"purchased": "1"}).json()["results"] == []  # guests: nothing
+    assert app.get(f"{APP}/products/", {"purchased": "1"}).json()["results"] == []
+    fill(app, [(shop.cable_variant, 1)])
+    place(app, home, shop.rider)
+    assert [p["name"] for p in app.get(f"{APP}/products/", {"purchased": "1"}).json()["results"]] == ["USB-C Cable"]
+
+    ids = f"{shop.cable.pk},{shop.product.pk},999999,x"
+    assert [p["name"] for p in api.get(f"{APP}/products/", {"ids": ids}).json()["results"]] == ["USB-C Cable",
+                                                                                                 "Galaxy A54"]
+    customer = Order.objects.first().customer
+    CustomerInterest.objects.create(customer=customer, category=shop.product.category, label="phones", confidence=90,
+                                    source=CustomerInterest.Source.MANUAL)
+    stores = app.get(f"{APP}/stores/", {"for_you": "1"}).json()["results"]
+    assert [s["name"] for s in stores] == ["AGIZA"]  # AGIZA sells in that category; no vendor does

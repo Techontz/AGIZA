@@ -64,6 +64,10 @@ export type ProductQuery = {
   in_stock?: boolean;
   /** Signed in: products from the categories AGIZA staff chose for this customer. */
   for_you?: boolean;
+  /** Signed in: products they bought before, latest first. */
+  purchased?: boolean;
+  /** Only these product ids (comma separated), in that order (e.g. recently viewed). */
+  ids?: string;
 };
 
 export const shopApi = {
@@ -73,7 +77,7 @@ export const shopApi = {
   warehouses: () => api.get<{ count: number; results: WarehouseAddress[] }>('warehouse-addresses/'),
   products: (query: ProductQuery & { page?: number }) => api.get<Paginated<ProductCard>>('products/', query),
   product: (id: number) => api.get<ProductDetail>(`products/${id}/`),
-  stores: (query: { search?: string; page?: number }) => api.get<Paginated<Store>>('stores/', query),
+  stores: (query: { search?: string; page?: number; for_you?: boolean }) => api.get<Paginated<Store>>('stores/', query),
   store: (slug: string) => api.get<Store>(`stores/${encodeURIComponent(slug)}/`),
   cities: () => api.get<City[]>('cities/'),
   deliveryEstimate: (variant: number, city: number, quantity = 1) =>
