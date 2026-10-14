@@ -91,7 +91,10 @@ function useUnreadChats(enabled: boolean) {
 function SidebarLink({ link, active, onNavigate }: { link: NavLink; active: boolean; onNavigate?: () => void }) {
   const Icon = link.icon;
   const { data: me } = useMe();
-  const unread = useUnreadChats(link.id === "chat" && can(me, "chat", "view"));
+  const isChat = link.id === "chat";
+  // The query is shared (cached) across links: only the Chat link may show its count.
+  const chatUnread = useUnreadChats(isChat && can(me, "chat", "view"));
+  const unread = isChat ? chatUnread : 0;
   return (
     <Link
       href={link.href}
