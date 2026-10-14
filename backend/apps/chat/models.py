@@ -116,6 +116,41 @@ class Message(models.Model):
         return f"{self._meta.verbose_name} #{self.pk}"
 
 
+def attachment_path(instance: "MessageAttachment", filename: str) -> str:
+    """Random stored name with the extension of the verified type (never the uploader's name)."""
+    import uuid
+
+    from django.utils import timezone
+
+    from .attachments import EXTENSION
+
+    return f"chat/{timezone.now():%Y/%m}/{uuid.uuid4().hex}.{EXTENSION.get(instance.content_type, 'bin')}"
+
+
+class MessageAttachment(models.Model):
+    """A photo, document or voice note sent in a conversation (served only through authenticated views)."""
+
+    class Kind(models.TextChoices):
+        IMAGE = "image", "Photo"
+        FILE = "file", "File"
+        VOICE = "voice", "Voice message"
+
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name="attachments")
+    kind = models.CharField(max_length=6, choices=Kind.choices)
+    file = models.FileField(upload_to=attachment_path)
+    content_type = models.CharField(max_length=100)
+    name = models.CharField(max_length=150, blank=True)
+    size = models.PositiveIntegerField(default=0)
+    duration_ms = models.PositiveIntegerField(null=True, blank=True, help_text="Voice notes: length")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self) -> str:
+        return f"{self.get_kind_display()} #{self.pk}"
+
+
 class QuickReply(TimeStampedModel):
     text = models.CharField(max_length=255)
     sort_order = models.PositiveSmallIntegerField(default=0)

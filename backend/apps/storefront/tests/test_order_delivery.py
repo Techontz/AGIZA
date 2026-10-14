@@ -7,6 +7,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from apps.accounts.constants import StaffLevel
 from apps.deliveries import services as deliveries
 from apps.inventory.models import StockItem
+from apps.orders import services as order_services
 from apps.orders.models import Order
 
 from .conftest import APP
@@ -58,8 +59,32 @@ def test_staff_see_sku_bin_and_warehouse_of_each_line(order, shop, staff):
     assert group["count"] == 1 and group["deliveries"][0]["items"] == row["items"]
 
 
+def test_balance_due_needs_an_admin_to_release_the_delivery(order, staff, driver, client_for):
+    from apps.core.workflow import WorkflowError
+    from apps.orders import services as order_services
+
+    delivery = deliveries.create_delivery(order, user=staff.user, delivery_address="Plot 12")
+    deliveries.assign_driver(delivery, driver, user=staff.user)
+    row = staff.get(f"/api/deliveries/{delivery.pk}/").json()
+    assert row["payment"]["due"] == f"{order.total_amount:.2f}" and row["payment"]["release"]["blocked"] is True
+    with pytest.raises(WorkflowError, match="admin approves"):
+        deliveries.transition(delivery, "out_for_delivery", user=staff.user)
+    url = f"/api/orders/shop/{order.pk}/release-approval/"
+    assert client_for(StaffLevel.SALES).post(url, {"approved": True, "note": "x"}, format="json").status_code == 403
+    admin = client_for(StaffLevel.TOP_ADMIN)
+    assert admin.post(url, {"approved": True}, format="json").status_code == 400  # a reason is required
+    res = admin.post(url, {"approved": True, "note": "Pays cash on delivery"}, format="json")
+    assert res.status_code == 200 and res.json()["release"]["approved"] is True
+    assert res.json()["release"]["blocked"] is False and res.json()["release"]["note"] == "Pays cash on delivery"
+    deliveries.transition(delivery, "out_for_delivery", user=staff.user)
+    assert staff.get(f"/api/deliveries/{delivery.pk}/").json()["payment"]["release"]["approved"] is True
+    order.refresh_from_db()
+    assert order_services.release_blocked(order) is None
+
+
 def test_customer_sees_driver_and_proof_photos(app, other_app, order, staff, driver):
     url = f"{APP}/orders/{order.reference}/"
+    order_services.set_release_approval(order, approved=True, note="Cash on delivery", user=staff.user)
     delivery = deliveries.create_delivery(order, user=staff.user, delivery_address="Plot 12")
     body = app.get(url).json()["delivery"]
     assert body["status"] == "pending" and body["driver"] is None and body["photos"] == []
@@ -81,3 +106,54 @@ def test_customer_sees_driver_and_proof_photos(app, other_app, order, staff, dri
     assert staff.get(photo_url).status_code in (401, 403)
     photo_id = body["photos"][0]["id"]
     assert app.get(f"{APP}/orders/NOPE-1/delivery-photos/{photo_id}/").status_code == 404
+
+
+def test_customer_pays_part_of_the_balance_any_time(app, order, monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr("apps.payments.services.available", lambda: True)
+    started = []
+
+    def start_checkout(o, *, phone, together=False, amount=None):
+        started.append(amount)
+        return SimpleNamespace(status="pending", gateway_url="https://pay.example/c", provider_order_id="S1")
+
+    monkeypatch.setattr("apps.payments.services.start_checkout", start_checkout)
+    card = next(c for c in app.get(f"{APP}/orders/").json()["results"] if c["reference"] == order.reference)
+    assert card["can_pay"] is True and card["amount_due"] == f"{order.total_amount:.2f}"
+    detail = app.get(f"{APP}/orders/{order.reference}/").json()
+    assert detail["min_payment"] == "1000"
+    url = f"{APP}/orders/{order.reference}/pay/"
+    assert app.post(url, {"amount": "500"}, format="json").status_code == 400  # below the minimum
+    too_much = app.post(url, {"amount": str(order.total_amount + 1)}, format="json")
+    assert too_much.status_code == 400 and "up to" in str(too_much.json())
+    assert app.post(url, {"amount": "200000"}, format="json").status_code == 200
+    assert app.post(url).status_code == 200  # no amount: the whole balance
+    assert [str(a) if a is not None else None for a in started] == ["200000", None]
+
+
+def test_my_balance_in_the_app(app, order):
+    body = app.get(f"{APP}/account/balance/").json()
+    # One checkout can make several orders (one per product): all of them are owed.
+    assert float(body["owed_by_customer"]) >= float(order.total_amount) and float(body["net"]) > 0
+    assert body["owed_to_customer"] == "0.00"
+    assert order.reference in [o["reference"] for o in body["orders"]]
+
+
+def test_invoice_and_receipt_pdfs_for_customer_and_staff(app, other_app, order, staff):
+    from apps.orders import services as order_services
+
+    order_services.record_payment(order, amount=order.total_amount / 2, method="cash", user=staff.user,
+                                  reference="CASH-1")
+    for kind in ("invoice", "receipt"):
+        res = app.get(f"{APP}/orders/{order.reference}/{kind}/")
+        assert res.status_code == 200 and res["Content-Type"] == "application/pdf"
+        body = res.content
+        assert body.startswith(b"%PDF-1.4") and body.rstrip().endswith(b"%%EOF")
+        assert order.reference.encode() in body and b"CASH-1" in body
+        assert ("INVOICE" if kind == "invoice" else "RECEIPT").encode() in body
+        assert other_app.get(f"{APP}/orders/{order.reference}/{kind}/").status_code == 404
+        staff_res = staff.get(f"/api/orders/shop/{order.pk}/document/?kind={kind}")
+        assert staff_res.status_code == 200 and staff_res.content.startswith(b"%PDF")
+    assert b"PARTLY PAID" in app.get(f"{APP}/orders/{order.reference}/invoice/").content
+    assert staff.get(f"/api/orders/shop/{order.pk}/document/?kind=quote").status_code == 400

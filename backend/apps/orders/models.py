@@ -41,6 +41,22 @@ class Order(TimeStampedModel):
     total_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True, validators=POSITIVE)
     installment_plan = models.BooleanField(default=False, help_text="Customer pays in installments")
     installment_allowed = models.BooleanField(default=False, help_text="Admin approved proceeding on installments")
+    # An order with a balance due doesn't ship (Shipping & Tracking) or go out for delivery until an admin
+    # approves releasing it with that balance (orders.services.set_release_approval).
+    release_approved_at = models.DateTimeField(null=True, blank=True)
+    release_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    release_note = models.CharField(max_length=255, blank=True)
+    # Cancellation (a reason is required) and, when staff resubmit it, the new order that replaced it.
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancelled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    cancellation_reason = models.TextField(blank=True)
+    resubmitted_as = models.OneToOneField(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="resubmitted_from"
+    )
     notes = models.TextField(blank=True)
     # What the order costs Agiza (Finance → Order Payments). Empty = derived from
     # procurement / order lines / the international cost breakdown.
@@ -68,6 +84,45 @@ class Order(TimeStampedModel):
         if not self.reference:
             self.reference = next_reference(REFERENCE_PREFIX[OrderType(self.order_type)])
         super().save(*args, **kwargs)
+
+
+class OrderFlag(TimeStampedModel):
+    """An exception on an order that someone must follow up: raised by staff (Procurement, Shipping…) or
+    automatically (orders.alerts) when an order stalls or its delivery date is close. Open until resolved."""
+
+    class Kind(models.TextChoices):
+        NEEDS_CARE = "needs_care", "Needs Care"
+        VERY_LATE = "very_late", "Very Late"
+        ANGRY_CLIENT = "angry_client", "Angry Client"
+        NEEDS_DOCUMENTATION = "needs_documentation", "Needs Documentation"
+        OTHER = "other", "Other Issue"
+        # Raised and cleared automatically.
+        PROCUREMENT_STALLED = "procurement_stalled", "Stuck in Procurement"
+        DELIVERY_DUE_SOON = "delivery_due_soon", "Delivery Date Close"
+
+    AUTOMATIC = (Kind.PROCUREMENT_STALLED, Kind.DELIVERY_DUE_SOON)
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="flags")
+    kind = models.CharField(max_length=24, choices=Kind.choices)
+    note = models.CharField(max_length=255, blank=True)
+    department = models.CharField(max_length=16, choices=Department.choices, blank=True,
+                                  help_text="Who raised it (staff) or whose stage it concerns (automatic)")
+    automatic = models.BooleanField(default=False)
+    raised_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                  related_name="+")
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name="+")
+    resolution_note = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        # One open flag per kind and order (orders.alerts.raise_flag checks it under the order's lock:
+        # MySQL has no conditional unique constraints).
+        indexes = [models.Index(fields=["order", "resolved_at"]), models.Index(fields=["kind", "resolved_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.order.reference} · {self.get_kind_display()}"
 
 
 class OrderStatusHistory(models.Model):

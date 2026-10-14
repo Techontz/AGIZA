@@ -215,10 +215,11 @@ def update_parcel(parcel: CargoParcel, *, user, request=None, **fields) -> Cargo
 
 
 def _client_goods_unpaid(order) -> bool:
-    """A "Deliver for Me" order ships only once the customer paid in full (or installments were approved)."""
+    """A "Deliver for Me" order ships only once the customer paid in full, installments were approved, or an
+    admin approved shipping it with the balance due (Order.release_approved_at)."""
     if order.international.service_type != "deliver_for_me":
         return False
-    if order.installment_plan and order.installment_allowed:
+    if order.release_approved_at or (order.installment_plan and order.installment_allowed):
         return False
     return order_services.payment_summary(order, order_services.prefetched_net_paid(order)).status != "fully_paid"
 
@@ -229,7 +230,7 @@ def exception_flags(parcel: CargoParcel) -> list[str]:
         flags.append("weight-not-confirmed")
     order = parcel.order
     if order.status in (I.PENDING_PAYMENT, I.ISSUE_PENDING_PAYMENT) or (
-        order.installment_plan and not order.installment_allowed
+        order.installment_plan and not order.installment_allowed and not order.release_approved_at
     ) or _client_goods_unpaid(order):
         flags.append("payment-pending")
     return flags
@@ -259,8 +260,8 @@ def _check_parcels(parcels: list[CargoParcel], origin_country_id: int):
             raise WorkflowError(f"{p.order.reference} ships from {p.order.international.source_country.name}; "
                                 "a shipment can only consolidate orders from one origin.", field="parcels")
         if p.order.status != I.SENT_TO_CONSOLIDATION or _client_goods_unpaid(p.order):
-            raise WorkflowError(f"{p.order.reference} has a pending customer payment and can't ship yet.",
-                                conflict=True)
+            raise WorkflowError(f"{p.order.reference} has a pending customer payment: it ships once paid or "
+                                "once an admin approves shipping it with the balance due.", conflict=True)
 
 
 def _shipment_number(origin_iso: str, dest_iso: str) -> str:
@@ -480,3 +481,28 @@ def milestone_timeline(parcel: CargoParcel, shipment: Shipment, events: list[Shi
         out.append({"key": key, "label": label, "status": "completed" if at else "pending", "at": at,
                     "expected": expected})
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Expected delivery dates (bulk)
+# --------------------------------------------------------------------------- #
+@transaction.atomic
+def set_expected_delivery(*, when, user, shipments=(), parcels=(), note: str = "", request=None) -> dict:
+    """Give every order of the chosen shipments / parcels a new expected delivery date. Each customer whose
+    date changes is notified; closed orders are skipped. Returns how many orders changed / were skipped."""
+    if not shipments and not parcels:
+        raise WorkflowError("Choose at least one shipment or order.", field="shipments")
+    orders = {p.order_id: p.order for s in shipments for p in s.parcels.select_related("order")
+              if p.stage != ParcelStage.CANCELLED}
+    orders.update({p.order_id: p.order for p in parcels})
+    changed = skipped = 0
+    for order in orders.values():
+        if order.status in ("completed", "cancelled"):
+            skipped += 1
+            continue
+        if order_services.set_expected_delivery(order, when, user=user, note=note, request=request):
+            changed += 1
+    for shipment in shipments:
+        _event(shipment, ShipmentEvent.Kind.UPDATE, user,
+               f"Customers' expected delivery set to {when:%d %b %Y}" + (f" — {note}" if note else ""))
+    return {"changed": changed, "skipped": skipped, "orders": len(orders)}

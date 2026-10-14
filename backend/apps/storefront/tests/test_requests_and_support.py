@@ -120,7 +120,8 @@ def test_order_status_changes_push_to_the_customers_devices(app, account, shop, 
     with django_capture_on_commit_callbacks(execute=True):
         client_for("admin_l2").post(f"/api/orders/shop/{order.pk}/transition/", {"status": "processing"})
     assert sent[-1][0] == ["ExponentPushToken[device-1]"]
-    assert sent[-1][1] == f"Order {reference}" and sent[-1][2] == "Status: Processing"
+    assert sent[-1][1] == f"Order {reference}: Processing"
+    assert sent[-1][2] == "Confirmed — we're preparing your order."
     assert sent[-1][3]["screen"] == "order"
 
     with django_capture_on_commit_callbacks(execute=True):
@@ -314,3 +315,21 @@ def test_a_quotation_chat_becomes_the_order_chat_once_approved(app, request_payl
     assert Conversation.objects.filter(customer=app.account.customer, quote_id=quote_id).count() == 1
     assert [m["body"] for m in app.get(f"{APP}/support/messages/", {"room": f"order:{order}"}).json()["messages"]] \
         == ["Which colour?", "Thanks!"]
+
+
+def test_only_major_order_steps_notify_the_customer(client_for):
+    from apps.locations.models import Country
+    from apps.orders import services as order_services
+    from apps.parties.models import Customer
+    from apps.storefront.models import CustomerNotification
+
+    staff = client_for("admin_l2").user
+    buyer = Customer.objects.create(full_name="Asha", phone="+255700000777")
+    order = order_services.create_order("international", customer=buyer, item_details="Phones", user=staff,
+                                        total_amount=D("100"),
+                                        details={"source_country": Country.objects.get(iso2="CN")})
+    order_services.transition(order, "issue_pending_payment", staff, "Payment bounced")  # intermediate step
+    assert not CustomerNotification.objects.filter(customer=buyer).exists()
+    order_services.transition(order, "cancelled", staff, "Customer withdrew")
+    notes = list(CustomerNotification.objects.filter(customer=buyer).values_list("title", "body"))
+    assert notes == [(f"Order {order.reference}: Cancelled", "Your order was cancelled.")]

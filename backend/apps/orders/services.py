@@ -8,6 +8,7 @@ note) and an audit-log entry, all inside one transaction.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import transaction
@@ -60,6 +61,11 @@ def _set_status(order: Order, to_status: str, user, note: str = "", request=None
     from_status = order.status
     order.status = to_status
     fields = ["status", "updated_at"]
+    if to_status == "cancelled":
+        if not note.strip():
+            raise WorkflowError("Give the reason for cancelling.", field="note")
+        order.cancelled_at, order.cancelled_by, order.cancellation_reason = timezone.now(), user, note.strip()
+        fields += ["cancelled_at", "cancelled_by", "cancellation_reason"]
     if order.order_type == OrderType.INTERNATIONAL:
         order.department = INTERNATIONAL_DEPARTMENT[InternationalStatus(to_status)]
         fields.append("department")
@@ -167,6 +173,8 @@ INITIAL_STATUS = {
     OrderType.EQUIPMENT: EquipmentStatus.PENDING,
     OrderType.SHOP: ShopStatus.PENDING,
 }
+DETAIL_RELATION = {OrderType.EXPRESS: "express", OrderType.INTERNATIONAL: "international",
+                   OrderType.EQUIPMENT: "equipment", OrderType.SHOP: "shop"}
 DETAILS_MODEL = {
     OrderType.EXPRESS: ExpressDetails,
     OrderType.INTERNATIONAL: InternationalDetails,
@@ -279,6 +287,159 @@ def payment_summary(order: Order, paid: Decimal | None = None) -> PaymentSummary
     else:
         status = "unpaid"
     return PaymentSummary(total, paid, due, status)
+
+
+# --------------------------------------------------------------------------- #
+# Cancelled orders: resubmitting
+# --------------------------------------------------------------------------- #
+# What a resubmitted order takes over from the cancelled one (its progress, people and dates start over).
+RESUBMIT_FIELDS = {
+    OrderType.INTERNATIONAL: ("source_country", "order_class", "service_type", "supplier_name", "tracking_number",
+                              "item_cost", "shipping_cost"),
+    OrderType.EXPRESS: ("pickup_address", "pickup_city", "delivery_address", "delivery_city", "priority", "weight_kg",
+                        "package_size", "customer_package_size"),
+    OrderType.EQUIPMENT: ("service_type", "equipment", "classification", "city", "site_address", "priority"),
+}
+
+
+@transaction.atomic
+def resubmit(order: Order, *, user, note: str = "", request=None) -> Order:
+    """Open a new order from a cancelled one (same customer, items, price and details; it starts from the
+    beginning). The cancelled order keeps its history and points to its replacement."""
+    order = _lock(order)
+    if order.status != "cancelled":
+        raise WorkflowError(f"Only cancelled orders can be resubmitted ({order.reference} is {order.status}).",
+                            conflict=True)
+    if order.resubmitted_as_id:
+        raise WorkflowError(f"{order.reference} was already resubmitted as {order.resubmitted_as.reference}.",
+                            conflict=True)
+    order_type = OrderType(order.order_type)
+    if order_type not in RESUBMIT_FIELDS:
+        raise WorkflowError("Shop orders can't be resubmitted: the customer orders again in the app or online store.",
+                            conflict=True)
+    source = getattr(order, DETAIL_RELATION[order_type])
+    details = {f: getattr(source, f) for f in RESUBMIT_FIELDS[order_type]}
+    new = create_order(
+        order_type, customer=order.customer, item_details=order.item_details, details=details, user=user,
+        note=f"Resubmitted from cancelled order {order.reference}" + (f": {note.strip()}" if note.strip() else ""),
+        request=request, currency=order.currency, total_amount=order.total_amount, handler=order.handler,
+        installment_plan=order.installment_plan, notes=order.notes,
+    )
+    order.resubmitted_as = new
+    order.save(update_fields=["resubmitted_as", "updated_at"])
+    _history(order, order.status, order.status, user, f"Resubmitted as {new.reference}")
+    record_audit(action="update", request=request, actor=user, instance=order,
+                 changes={"resubmitted_as": [None, new.reference]})
+    return new
+
+
+# --------------------------------------------------------------------------- #
+# Expected delivery date
+# --------------------------------------------------------------------------- #
+def expected_delivery(order: Order):
+    """The date AGIZA told the customer to expect the order (None when not set or not dated)."""
+    if order.order_type == OrderType.INTERNATIONAL:
+        return order.international.estimated_delivery
+    if order.order_type == OrderType.EXPRESS:
+        at = order.express.estimated_delivery_at
+        return timezone.localdate(at) if at else None
+    if order.order_type == OrderType.EQUIPMENT:
+        at = order.equipment.expected_date
+        return timezone.localdate(at) if at else None
+    return None
+
+
+def _store_expected(order: Order, when):
+    if order.order_type == OrderType.INTERNATIONAL:
+        order.international.estimated_delivery = when
+        order.international.save(update_fields=["estimated_delivery"])
+        return
+    at = timezone.make_aware(timezone.datetime.combine(when, timezone.datetime.min.time().replace(hour=17))) \
+        if when else None
+    if order.order_type == OrderType.EXPRESS:
+        order.express.estimated_delivery_at = at
+        order.express.save(update_fields=["estimated_delivery_at"])
+    elif order.order_type == OrderType.EQUIPMENT:
+        order.equipment.expected_date = at
+        order.equipment.save(update_fields=["expected_date"])
+    else:
+        raise WorkflowError(f"{order.reference}: shop orders are dated by their delivery.", conflict=True)
+
+
+def expected_delivery_changed(order: Order, before, after, user, note: str = "") -> None:
+    """Record a new expected delivery date and tell the customer (always, so they never learn it late)."""
+    if before == after:
+        return
+    text = f"{after:%a %d %b %Y}" if after else "not set"
+    _history(order, order.status, order.status, user,
+             f"Expected delivery: {text}" + (f" (was {before:%d %b %Y})" if before else "") + (f" — {note}" if note else ""))
+    if after is None:
+        return
+    from . import alerts
+
+    if after > timezone.localdate() + timedelta(days=alerts.DUE_SOON_DAYS):  # a later date clears "date close"
+        for flag in order.flags.filter(kind=alerts.K.DELIVERY_DUE_SOON, resolved_at__isnull=True):
+            alerts.resolve_flag(flag, user=user, note="New expected delivery date")
+    from apps.storefront.push import notify_customer
+
+    title = "Delivery date updated" if before else "Expected delivery date"
+    body = f"{order.reference} is now expected on {text}." if before else f"{order.reference} is expected on {text}."
+    if note:
+        body = f"{body} {note}"
+    notify_customer(order.customer, title=title, body=body,
+                    data={"type": "order_expected_delivery", "order": order.reference, "screen": "order"})
+
+
+@transaction.atomic
+def set_expected_delivery(order: Order, when, *, user, note: str = "", request=None) -> bool:
+    """Change when the customer can expect the order. Returns False when the date was already that."""
+    order = _lock(order)
+    if order.status in TERMINAL:
+        raise WorkflowError(f"{order.reference} is closed.", conflict=True)
+    before = expected_delivery(order)
+    if before == when:
+        return False
+    _store_expected(order, when)
+    expected_delivery_changed(order, before, when, user, note.strip())
+    record_audit(action="update", request=request, actor=user, instance=order,
+                 changes={"expected_delivery": [str(before) if before else None, str(when) if when else None]})
+    return True
+
+
+def release_blocked(order: Order, summary: PaymentSummary | None = None) -> Decimal | None:
+    """The balance that stops this order going out for delivery, or None when it may go.
+
+    An order with money still due is handed over only once an admin approved releasing it with that balance.
+    Express deliveries are exempt: their quote carries its own advance-payment rule.
+    """
+    if order.order_type == OrderType.EXPRESS or order.release_approved_at:
+        return None
+    summary = summary or payment_summary(order)
+    return summary.due if summary.due and summary.due > 0 else None
+
+
+@transaction.atomic
+def set_release_approval(order: Order, *, approved: bool, user, note: str = "", request=None) -> Order:
+    """An admin lets the order ship / go out for delivery although it still has a balance due (or withdraws it)."""
+    order = _lock(order)
+    if order.status in TERMINAL:
+        raise WorkflowError(f"{order.reference} is closed.", conflict=True)
+    note = note.strip()
+    if approved and not note:
+        raise WorkflowError("Say why the order may go out with a balance due.", field="note")
+    before = order.release_approved_at is not None
+    if approved:
+        order.release_approved_at, order.release_approved_by, order.release_note = timezone.now(), user, note[:255]
+    else:
+        order.release_approved_at, order.release_approved_by, order.release_note = None, None, ""
+    order.save(update_fields=["release_approved_at", "release_approved_by", "release_note", "updated_at"])
+    due = payment_summary(order).due or Decimal("0")
+    _history(order, order.status, order.status, user,
+             f"Release with {due:,.0f} {order.currency} due approved: {note}" if approved
+             else "Release with balance due withdrawn")
+    record_audit(action="update", request=request, actor=user, instance=order,
+                 changes={"release_approved": [before, approved], **({"release_note": [None, note]} if note else {})})
+    return order
 
 
 @transaction.atomic

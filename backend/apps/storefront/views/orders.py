@@ -1,8 +1,11 @@
+from decimal import Decimal, InvalidOperation
+
 from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from apps.catalog.models import ProductImage
@@ -31,7 +34,8 @@ def customer_orders(customer):
     """The customer's orders, and only theirs (other ids simply don't exist here: 404)."""
     return (
         Order.objects.filter(customer=customer)
-        .select_related("shop__city", "shop__shipping_method", "shop__import_shipping_method", "international__source_country")
+        .select_related("shop__city", "shop__shipping_method", "shop__import_shipping_method", "international__source_country",
+                        "express", "equipment")
         .prefetch_related(
             "adjustments", "returns__history",
             Prefetch("items", queryset=OrderItem.objects.select_related("variant__product", "vendor__city", "fulfillment",
@@ -90,6 +94,9 @@ def _delivery(order, request=None) -> dict | None:
             "received_by": proof.signature_name if proof else None, "photos": photos}
 
 
+MIN_PART_PAYMENT = Decimal("1000")
+
+
 def customer_can_cancel(order: Order, summary=None) -> bool:
     """Only unpaid shop orders AGIZA hasn't started preparing; anything paid needs a refund through staff."""
     summary = summary or payment_summary(order)
@@ -122,9 +129,9 @@ def order_detail_payload(order: Order, request) -> dict:
         "timeline": timeline(order),
         "delivery": _delivery(order, request),
         "can_cancel": customer_can_cancel(order, summary),
-        "can_pay": (payments.available() and order.status != "cancelled" and bool(summary.due)
-                    and summary.due > 0 and not payments.payment_deadline_passed(order)
-                    and not card["delivery_fee_pending"]),  # card: waiting for AGIZA to set the delivery cost
+        "can_pay": card["can_pay"],
+        # Customers may pay part of the balance; Selcom takes whole shillings.
+        "min_payment": str(min(MIN_PART_PAYMENT, summary.due.quantize(Decimal("1")))) if card["can_pay"] else None,
     }
     if order.order_type == OrderType.SHOP:
         details = order.shop
@@ -233,7 +240,18 @@ class OrderPayView(_OrderView):
         from .shopping import start_payment
 
         order = self.get_order(reference)
-        result = start_payment(order, request.user.phone)
+        amount = None
+        if request.data.get("amount") not in (None, ""):
+            try:
+                amount = Decimal(str(request.data["amount"])).quantize(Decimal("1"))
+            except (InvalidOperation, ValueError):
+                raise ValidationError({"amount": ["Enter an amount in shillings."]}) from None
+            due = (payment_summary(order).due or Decimal("0")).quantize(Decimal("1"))
+            if amount <= 0 or amount > due:
+                raise ValidationError({"amount": [f"Enter an amount up to {due:,.0f} {order.currency}."]})
+            if amount < min(MIN_PART_PAYMENT, due):
+                raise ValidationError({"amount": [f"The smallest payment is {MIN_PART_PAYMENT:,.0f} {order.currency}."]})
+        result = start_payment(order, request.user.phone, amount=amount)
         if result["status"] == "failed":
             raise ConflictError(result["message"])
         return Response(result)
@@ -260,3 +278,15 @@ def check_payments(get_order) -> dict:
         "gateway": [{"reference": g.provider_order_id, "status": g.status, "amount": str(g.amount)} for g in results],
         "status_display": status_label(order.order_type, order.status),
     }
+
+
+@extend_schema(tags=["app: orders"], responses={(200, "application/pdf"): OpenApiTypes.BINARY})
+class OrderDocumentView(_OrderView):
+    """My order's invoice or receipt (PDF)."""
+
+    throttle_classes = []
+
+    def get(self, request, reference: str, kind: str):
+        from apps.orders import documents
+
+        return documents.pdf_response(self.get_order(reference), kind)

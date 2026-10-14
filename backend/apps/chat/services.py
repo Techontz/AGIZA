@@ -21,7 +21,8 @@ from apps.notifications.models import Notification
 from apps.notifications.providers import NotConfigured, SendError, get_provider
 from apps.parties.models import Customer
 
-from .models import Conversation, Message
+from . import attachments as chat_files
+from .models import Conversation, Message, MessageAttachment
 
 R = Conversation.ResponseStatus
 LIFECYCLE = ["new_inquiry", "quoted", "awaiting_payment", "paid", "shipping", "delivered"]
@@ -45,10 +46,20 @@ def _digits(phone: str) -> str:
     return re.sub(r"\D", "", phone or "")[-9:]
 
 
-def _touch(conv: Conversation, msg: Message):
+def _attach(msg: Message, attachment: dict | None) -> str:
+    """Store the message's photo / file / voice note; returns its preview text ("📷 Photo")."""
+    if not attachment:
+        return ""
+    MessageAttachment.objects.create(message=msg, kind=attachment["kind"], file=attachment["file"],
+                                     content_type=attachment["content_type"], name=attachment["name"],
+                                     size=attachment["file"].size, duration_ms=attachment.get("duration_ms"))
+    return chat_files.preview(attachment["kind"], attachment["name"])
+
+
+def _touch(conv: Conversation, msg: Message, preview: str = ""):
     conv.last_message_at = msg.created_at
     if msg.sender != Message.Sender.INTERNAL:
-        conv.last_message_preview = (msg.body or ("Quotation card" if msg.quote_id else ""))[:200]
+        conv.last_message_preview = (msg.body or preview or ("Quotation card" if msg.quote_id else ""))[:200]
     fields = ["last_message_at", "last_message_preview", "updated_at"]
     if msg.sender == Message.Sender.CUSTOMER:
         conv.last_customer_message_at = msg.created_at
@@ -62,6 +73,15 @@ def _touch(conv: Conversation, msg: Message):
         conv.team_read_at = msg.created_at
         fields += ["response_status", "team_read_at"]
     conv.save(update_fields=fields)
+
+
+def _link_quote(conv: Conversation, quote):
+    """Link the quotation to the conversation, except in the app: there the linked order / quotation / return
+    is the chat room itself, so a quotation sent in a room stays a card in that room."""
+    if conv.channel == "web":
+        return
+    conv.quote = quote
+    conv.save(update_fields=["quote"])
 
 
 def _system(conv, text: str, user=None) -> Message:
@@ -95,7 +115,7 @@ def room_filter(room: dict | None) -> dict:
 
 @transaction.atomic
 def receive(*, channel: str, handle: str, name: str, body: str, external_id: str = "",
-            thread_id: str = "", room: dict | None = None) -> Message:
+            thread_id: str = "", room: dict | None = None, attachment: dict | None = None) -> Message:
     """Store a customer's message (webhook or web widget); opens a conversation if needed.
 
     `room` (the app) keeps a separate conversation per order, quotation or return; without it the
@@ -113,11 +133,12 @@ def receive(*, channel: str, handle: str, name: str, body: str, external_id: str
                                            **{f: v for f, v in (room or {}).items() if f in ROOM_FIELDS and v})
     msg = Message.objects.create(conversation=conv, sender=Message.Sender.CUSTOMER, body=body,
                                  delivery_status=Message.Delivery.RECEIVED, external_id=external_id)
-    _touch(conv, msg)
+    preview = _attach(msg, attachment)
+    _touch(conv, msg, preview)
     target = conv.active_handler or conv.assigned_agent
     if target:
         notifications.notify(target, kind=Notification.Kind.MESSAGE, title=f"New message from {conv.contact_name}",
-                             body=body[:200], link=f"/chat?open={conv.pk}")
+                             body=(body or preview)[:200], link=f"/chat?open={conv.pk}")
     return msg
 
 
@@ -143,9 +164,9 @@ def _deliver(conv: Conversation, msg: Message, text: str):
 
 
 @transaction.atomic
-def send_message(conv: Conversation, *, user, body: str, request=None) -> Message:
+def send_message(conv: Conversation, *, user, body: str, request=None, attachment: dict | None = None) -> Message:
     conv = _lock(conv)
-    if not body.strip():
+    if not body.strip() and not attachment:
         raise WorkflowError("Type a message.", field="body")
     _require_handler(conv, user)
     if not conv.active_handler_id:  # replying makes you the active handler
@@ -155,8 +176,12 @@ def send_message(conv: Conversation, *, user, body: str, request=None) -> Messag
         conv.assigned_agent = user
         conv.save(update_fields=["assigned_agent"])
     msg = Message.objects.create(conversation=conv, sender=Message.Sender.AGENT, body=body.strip(), author=user)
-    _deliver(conv, msg, msg.body)
-    _touch(conv, msg)
+    preview = _attach(msg, attachment)
+    # The app shows attachments itself; other channels' providers send text, so they get a pointer to it.
+    text = msg.body if not preview or conv.channel == "web" else \
+        f"{msg.body}\n[{preview} — open the AGIZA app to view]".strip()
+    _deliver(conv, msg, text or preview)
+    _touch(conv, msg, preview)
     return msg
 
 
@@ -181,8 +206,7 @@ def send_quote(conv: Conversation, quote, *, user, request=None) -> Message:
     if quote.quoted_amount is None:
         raise WorkflowError(f"{quote.reference} hasn't been priced yet — respond to it in Intake & Quotes.",
                             conflict=True)
-    conv.quote = quote
-    conv.save(update_fields=["quote"])
+    _link_quote(conv, quote)
     msg = Message.objects.create(conversation=conv, sender=Message.Sender.AGENT, author=user, quote=quote,
                                  body=f"Quotation {quote.reference}: TSh {quote.quoted_amount:,.0f}")
     _deliver(conv, msg, f"Your quotation {quote.reference}: TSh {quote.quoted_amount:,.0f}. "
@@ -209,12 +233,24 @@ def create_quote(conv: Conversation, *, user, service_type: str, description: st
     QuoteStatusHistory.objects.create(quote=quote, to_status=quote.status, changed_by=user,
                                       note=f"Created from chat {conv.reference}")
     tasks.open_quote_task(quote, user)
-    conv.quote = quote
-    conv.save(update_fields=["quote"])
+    _link_quote(conv, quote)
     _system(conv, f"Quotation Created ({quote.reference})", user)
     record_audit(action="create", request=request, actor=user, instance=quote,
                  changes={"conversation": [None, conv.reference]})
     return quote
+
+
+@transaction.atomic
+def quick_quote(conv: Conversation, *, user, service_type: str, description: str, amount, estimated_delivery=None,
+                notes: str = "", origin: str = "", destination: str = "", request=None) -> Message:
+    """Quick Quotation: create the quotation, price it and send the card to the customer in one step."""
+    from apps.quotes import services as quotes
+
+    quote = create_quote(conv, user=user, service_type=service_type, description=description, origin=origin,
+                         destination=destination, request=request)
+    quote = quotes.respond(quote, amount=amount, estimated_delivery=estimated_delivery, notes=notes.strip(),
+                           user=user, request=request)
+    return send_quote(conv, quote, user=user, request=request)
 
 
 @transaction.atomic

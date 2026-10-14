@@ -103,8 +103,10 @@ class DeliveryViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.C
     def get_queryset(self):
         qs = (
             Delivery.objects.select_related("order", "order__customer", "order__cargo__warehouse", "driver",
-                                            "destination_city", "pickup_warehouse", "proof", "proof__recorded_by")
-            .prefetch_related("photos", Prefetch("order__items", queryset=OrderItem.objects.select_related(
+                                            "destination_city", "pickup_warehouse", "proof", "proof__recorded_by",
+                                            "order__release_approved_by")
+            .prefetch_related("photos", "order__payments", "order__adjustments",
+                              Prefetch("order__items", queryset=OrderItem.objects.select_related(
                 "warehouse", "variant__product")))
             .order_by("-updated_at", "-id")
         )

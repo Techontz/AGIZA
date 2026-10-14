@@ -82,6 +82,10 @@ def test_shop_order_reserves_ships_and_delivers(ops, world, client_for):
     item.refresh_from_db()
     assert (item.quantity, item.reserved) == (8, 0)
     delivery_id = body["delivery"]["id"]
+    # Unpaid: it goes out once an admin releases it with the balance due (cash on delivery).
+    assert ops.post(f"/api/deliveries/{delivery_id}/transition/", {"status": "out_for_delivery"},
+                    format="json").status_code == 409
+    ops.post(f"{SHOP}/{order['id']}/release-approval/", {"approved": True, "note": "Cash on delivery"}, format="json")
     ops.post(f"/api/deliveries/{delivery_id}/transition/", {"status": "out_for_delivery"}, format="json")
     ops.post(f"/api/deliveries/{delivery_id}/complete/", {"signature_name": "Grace Kimaro"})
     assert ops.get(f"{SHOP}/{order['id']}/").json()["status"] == "delivered"

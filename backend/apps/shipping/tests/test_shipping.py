@@ -90,9 +90,25 @@ def test_deliver_for_me_orders_start_waiting_to_receive_and_ship_once_paid(ops, 
     assert statuses == ["waiting_to_receive", "sent_to_consolidation"]
 
 
+def test_admin_can_release_an_unpaid_deliver_for_me_order_to_ship(ops, make_intl, carrier, sea, dar, client_for):
+    order = make_intl(iso="AE", service="deliver_for_me", tracking_number="DXB-10")
+    body = receive(ops, order).json()
+    assert create(ops, [order], carrier, sea, dar).status_code == 409
+    url = f"/api/orders/international/{order.id}/release-approval/"
+    res = client_for("top_admin").post(url, {"approved": True, "note": "Repeat customer, pays on arrival"},
+                                       format="json")
+    assert res.status_code == 200 and res.json()["release"]["approved"] is True
+    assert res.json()["payment"]["due"] == "2500000.00"  # still owed: only the release is approved
+    assert "payment-pending" not in ops.get(f"{PARCELS}/{body['id']}/").json()["exception_flags"]
+    assert create(ops, [order], carrier, sea, dar).status_code == 201
+    note = OrderStatusHistory.objects.filter(order=order).last().note
+    assert note.startswith("Release with 2,500,000 TZS due approved: Repeat customer")
+
+
 def test_deliver_for_me_order_can_be_cancelled_while_waiting(ops, make_intl):
     order = make_intl(iso="AE", service="deliver_for_me")
-    res = ops.post(f"/api/orders/international/{order.id}/transition/", {"status": "cancelled"}, format="json")
+    res = ops.post(f"/api/orders/international/{order.id}/transition/",
+                   {"status": "cancelled", "note": "Supplier never shipped"}, format="json")
     assert res.status_code == 200, res.json()
     assert CargoParcel.objects.get(order=order).stage == "cancelled"
 
@@ -334,3 +350,38 @@ def test_ready_for_collection_records_the_arrival_warehouse(ops, paid_order, car
     assert delivery.pickup_warehouse_id == hub.id and delivery.pickup_point == "Mwanza Pickup"
     row = ops.get(f"/api/deliveries/{delivery.id}/").json()
     assert row["items"][0]["warehouse"] == "Mwanza Pickup"
+
+
+def test_bulk_expected_delivery_updates_orders_and_tells_customers(ops, make_intl, carrier, sea, dar):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.storefront.models import CustomerNotification
+
+    first, second = make_intl(iso="CN", service="deliver_for_me"), make_intl(iso="CN", service="deliver_for_me")
+    when = timezone.localdate() + timedelta(days=20)
+    url = "/api/shipping/shipments/expected-delivery/"
+    past = ops.post(url, {"parcels": [], "estimated_delivery": "2020-01-01"}, format="json")
+    assert past.status_code == 400
+    assert ops.post(url, {"estimated_delivery": when.isoformat()}, format="json").status_code == 400  # nothing chosen
+    parcels = [CargoParcel.objects.get(order=o).pk for o in (first, second)]
+    res = ops.post(url, {"parcels": parcels, "estimated_delivery": when.isoformat(), "note": "Vessel delayed"},
+                   format="json")
+    assert res.status_code == 200 and res.json() == {"changed": 2, "skipped": 0, "orders": 2}
+    first.refresh_from_db()
+    assert first.international.estimated_delivery == when
+    note = CustomerNotification.objects.filter(data__order=first.reference).latest("id")
+    assert note.title == "Expected delivery date" and when.strftime("%d %b %Y") in note.body
+    assert "Vessel delayed" in note.body and note.data["order"] == first.reference
+    # Same date again: nothing changes, nobody is notified twice.
+    count = CustomerNotification.objects.count()
+    again = ops.post(url, {"parcels": parcels, "estimated_delivery": when.isoformat()}, format="json").json()
+    assert again["changed"] == 0 and CustomerNotification.objects.count() == count
+    later = when + timedelta(days=3)
+    ops.post(url, {"parcels": parcels[:1], "estimated_delivery": later.isoformat()}, format="json")
+    note = CustomerNotification.objects.filter(data__order=first.reference).latest("id")
+    assert note.title == "Delivery date updated"
+    # A same-status note is not pushed as a "Status:" change.
+    assert not CustomerNotification.objects.filter(body__startswith="Status:", customer=first.customer,
+                                                   created_at__gte=timezone.now() - timedelta(minutes=1)).exists()

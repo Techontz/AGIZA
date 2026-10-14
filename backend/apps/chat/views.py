@@ -5,13 +5,15 @@ import logging
 
 import django_filters
 from django.conf import settings
-from django.db.models import Count, DecimalField, OuterRef, Prefetch, Q, Subquery, Sum
+from django.db.models import Count, DecimalField, Exists, OuterRef, Prefetch, Q, Subquery, Sum
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
@@ -20,26 +22,39 @@ from rest_framework.views import APIView
 from apps.accounts.constants import Module
 from apps.accounts.models import User
 from apps.accounts.permissions import HasModulePermission
+from apps.core.uploads import file_response
 from apps.core.workflow import run
 from apps.orders.models import Order, Payment
 from apps.orders.serializers import _dec, _person
 from apps.parties.models import Customer
 from apps.quotes.models import QuoteRequest
 
+from . import attachments as chat_files
 from . import services
-from .models import Channel, Conversation, Message, QuickReply, WebhookEvent
+from .models import Channel, Conversation, Message, MessageAttachment, QuickReply, WebhookEvent
 
 MONEY = DecimalField(max_digits=14, decimal_places=2)
 logger = logging.getLogger("apps.chat")
 
 
+def attachment_payload(a, url: str) -> dict:
+    return {"id": a.id, "kind": a.kind, "name": a.name, "content_type": a.content_type, "size": a.size,
+            "duration_ms": a.duration_ms, "url": url}
+
+
 class MessageSerializer(serializers.ModelSerializer):
     author = serializers.SerializerMethodField()
     quotation = serializers.SerializerMethodField()
+    attachments = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
-        fields = ["id", "sender", "body", "author", "quotation", "delivery_status", "delivery_error", "created_at"]
+        fields = ["id", "sender", "body", "author", "quotation", "attachments", "delivery_status", "delivery_error",
+                  "created_at"]
+
+    def get_attachments(self, obj) -> list[dict]:
+        # Relative to the API root; the admin's proxy serves them with the staff session.
+        return [attachment_payload(a, f"chat/attachments/{a.id}/file") for a in obj.attachments.all()]
 
     def get_author(self, obj) -> dict | None:
         return _person(obj.author)
@@ -114,8 +129,23 @@ class ConversationSerializer(serializers.ModelSerializer):
 
 
 class SendSerializer(serializers.Serializer):
-    body = serializers.CharField()
+    body = serializers.CharField(required=False, allow_blank=True, default="")
     internal = serializers.BooleanField(default=False)
+    # A photo, document or voice note (multipart); `duration_ms` for voice notes.
+    file = serializers.FileField(required=False)
+    duration_ms = serializers.IntegerField(required=False, min_value=0, max_value=30 * 60 * 1000)
+
+
+class QuickQuoteSerializer(serializers.Serializer):
+    """Create, price and send a quotation from the chat in one step."""
+    service_type = serializers.ChoiceField(choices=[("international", "International"), ("express", "Express"),
+                                                    ("equipment", "Equipment")])
+    description = serializers.CharField()
+    amount = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=1)
+    estimated_delivery = serializers.DateField(required=False, allow_null=True, default=None)
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+    origin = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
+    destination = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
 
 
 class QuoteCardSerializer(serializers.Serializer):
@@ -239,19 +269,31 @@ class ConversationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
     @action(detail=True)
     def messages(self, request, pk=None):
         conv = self.get_object()
-        rows = conv.messages.select_related("author", "quote").order_by("created_at", "id")
+        rows = conv.messages.select_related("author", "quote").prefetch_related("attachments").order_by("created_at", "id")
         return Response(MessageSerializer(rows, many=True).data)
 
     @extend_schema(request=SendSerializer, responses=MessageSerializer)
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], parser_classes=[JSONParser, MultiPartParser, FormParser])
     def send(self, request, pk=None):
         s = SendSerializer(data=request.data)
         s.is_valid(raise_exception=True)
         conv = self.get_object()
-        if s.validated_data["internal"]:
-            msg = run(services.add_note, conv, user=request.user, body=s.validated_data["body"])
+        d = s.validated_data
+        if d["internal"]:
+            msg = run(services.add_note, conv, user=request.user, body=d["body"])
         else:
-            msg = run(services.send_message, conv, user=request.user, body=s.validated_data["body"], request=request)
+            attachment = chat_files.prepare(d["file"], d.get("duration_ms")) if d.get("file") else None
+            msg = run(services.send_message, conv, user=request.user, body=d["body"], request=request,
+                      attachment=attachment)
+        return Response(MessageSerializer(msg).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(request=QuickQuoteSerializer, responses=MessageSerializer)
+    @action(detail=True, methods=["post"], url_path="quick-quote")
+    def quick_quote(self, request, pk=None):
+        """Create, price and send a quotation card in one step (it also appears in Intake & Quotes)."""
+        s = QuickQuoteSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        msg = run(services.quick_quote, self.get_object(), user=request.user, request=request, **s.validated_data)
         return Response(MessageSerializer(msg).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(request=QuoteCardSerializer, responses=MessageSerializer)
@@ -340,6 +382,15 @@ class ConversationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
         if s.validated_data["body"].strip():
             run(services.send_message, conv, user=request.user, body=s.validated_data["body"], request=request)
         return self._respond(conv, status.HTTP_201_CREATED)
+
+    @action(detail=False)
+    def unread(self, request):
+        """For the sidebar badge (polled): open conversations with customer messages nobody on the team read yet."""
+        newer = Message.objects.filter(conversation=OuterRef("pk"), sender=Message.Sender.CUSTOMER).filter(
+            Q(created_at__gt=OuterRef("team_read_at")) | Q(conversation__team_read_at__isnull=True))
+        qs = Conversation.objects.filter(status=Conversation.Status.OPEN).filter(Exists(newer))
+        mine = qs.filter(Q(assigned_agent=request.user) | Q(active_handler=request.user))
+        return Response({"conversations": qs.count(), "mine": mine.count()})
 
     @action(detail=False)
     def stats(self, request):
@@ -496,3 +547,15 @@ class TikTokWebhookView(APIView):
             event.error = str(exc)[:255]
         event.save(update_fields=["processed", "error"])
         return HttpResponse("OK")
+
+
+@extend_schema(tags=["chat"], responses={200: bytes})
+class AttachmentFileView(APIView):
+    """A chat photo / document / voice note, for staff with Chat access."""
+
+    module = Module.CHAT
+    permission_classes = [HasModulePermission]
+
+    def get(self, request, pk):
+        att = get_object_or_404(MessageAttachment, pk=pk)
+        return file_response(att.file, att.content_type)

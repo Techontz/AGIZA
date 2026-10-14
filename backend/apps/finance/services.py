@@ -398,3 +398,54 @@ def on_payment(order: Order, payment: Payment):
 def overdue_installments(qs=None):
     qs = qs if qs is not None else Installment.objects.all()
     return qs.filter(due_date__lt=timezone.localdate()).exclude(status=Installment.Status.PAID)
+
+
+# --------------------------------------------------------------------------- #
+# Customer account statement
+# --------------------------------------------------------------------------- #
+def _m(value) -> str | None:
+    """Money as an exact decimal string for hand-built JSON."""
+    return None if value is None else f"{value:.2f}"
+
+
+def account_statement(customer, *, transactions: int = 10) -> dict:
+    """Where the customer stands with AGIZA: what they still owe on their orders (incl. installments and
+    orders released with a balance), what AGIZA owes them (wallet credit: deposits, refunds), and the net.
+
+    Paying orders from the wallet stays a staff action (Finance → Wallets) for now.
+    """
+    orders = order_services.with_paid_total(
+        Order.objects.filter(customer=customer).exclude(status="cancelled").exclude(total_amount__isnull=True)
+        .select_related("installment_schedule").order_by("-created_at", "-id"))
+    open_orders, owed = [], Decimal("0")
+    today = timezone.localdate()
+    for order in orders:
+        summary = order_services.payment_summary(order, order.paid_total or Decimal("0"))
+        if not summary.due or summary.due <= 0:
+            continue
+        owed += summary.due
+        plan = getattr(order, "installment_schedule", None)
+        upcoming = next_installment(plan) if plan and plan.status == PlanStatus.ACTIVE else None
+        open_orders.append({
+            "id": order.id, "reference": order.reference, "order_type": order.order_type,
+            "item_details": order.item_details, "currency": order.currency, "total": _m(order.total_amount),
+            "paid": _m(summary.paid), "due": _m(summary.due), "status": order.status,
+            "on_installments": bool(order.installment_plan),
+            "released_with_balance": order.release_approved_at is not None,
+            "next_installment": {"due_date": upcoming.due_date, "amount": _m(upcoming.amount - upcoming.paid_amount),
+                                 "overdue": upcoming.due_date < today} if upcoming else None,
+        })
+    wallet = Wallet.objects.filter(customer=customer).first()
+    credit = wallet.balance if wallet else Decimal("0")
+    rows = wallet.transactions.select_related("order")[:transactions] if wallet else []
+    return {
+        "currency": wallet.currency if wallet else "TZS",
+        "owed_by_customer": _m(owed),
+        "owed_to_customer": _m(credit),
+        "net": _m(owed - credit),  # > 0: the customer owes AGIZA; < 0: AGIZA owes the customer
+        "orders": open_orders,
+        "wallet_transactions": [{
+            "id": t.id, "kind": t.kind, "source": t.source, "source_display": t.get_source_display(),
+            "amount": _m(t.amount), "balance_after": _m(t.balance_after), "order": t.order.reference if t.order_id else None,
+            "note": t.note, "created_at": t.created_at} for t in rows],
+    }

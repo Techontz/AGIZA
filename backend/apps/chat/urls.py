@@ -2,6 +2,7 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AttachmentFileView,
     ConversationViewSet,
     FacebookWebhookView,
     QuickReplyViewSet,
@@ -18,5 +19,6 @@ urlpatterns = [
     path("chat/webhooks/whatsapp/", WhatsAppWebhookView.as_view(), name="webhook-whatsapp"),
     path("chat/webhooks/facebook/", FacebookWebhookView.as_view(), name="webhook-facebook"),
     path("chat/webhooks/tiktok/", TikTokWebhookView.as_view(), name="webhook-tiktok"),
+    path("chat/attachments/<int:pk>/file/", AttachmentFileView.as_view(), name="chat-attachment-file"),
     *router.urls,
 ]

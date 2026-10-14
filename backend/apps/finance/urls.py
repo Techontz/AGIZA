@@ -2,6 +2,7 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    CustomerAccountView,
     FinanceStatsView,
     InstallmentPlanViewSet,
     InvoiceViewSet,
@@ -21,6 +22,7 @@ router.register("finance/installment-plans", InstallmentPlanViewSet, basename="i
 
 urlpatterns = [
     path("finance/stats/", FinanceStatsView.as_view(), name="finance-stats"),
+    path("finance/customers/<int:pk>/account/", CustomerAccountView.as_view(), name="customer-account"),
     path("finance/profit-loss/", ProfitLossView.as_view(), name="finance-profit-loss"),
     path("finance/profit-loss/export/", ProfitLossExportView.as_view(), name="finance-profit-loss-export"),
     *router.urls,

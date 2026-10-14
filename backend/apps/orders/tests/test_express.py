@@ -133,12 +133,14 @@ def test_action_only_statuses_cannot_be_set_directly(admin, new_express, accepte
     assert move(admin, EXPRESS, accepted["id"], "teleported").status_code == 400
 
 
-def test_cancel_requires_manage(client_for, new_express):
+def test_cancel_requires_manage_and_a_reason(client_for, new_express):
     order = new_express()
     sales = client_for(StaffLevel.SALES)  # orders = edit
     assert move(sales, EXPRESS, order["id"], "cancelled").status_code == 403
     manager = client_for(StaffLevel.ADMIN_L2)
-    assert move(manager, EXPRESS, order["id"], "cancelled").json()["status"] == "cancelled"
+    res = move(manager, EXPRESS, order["id"], "cancelled")
+    assert res.status_code == 400 and "reason" in res.json()["error"]["message"]
+    assert move(manager, EXPRESS, order["id"], "cancelled", "Customer changed plans").json()["status"] == "cancelled"
 
 
 def test_stats_stage_filter_search_and_pagination(admin, new_express, accepted_express, customer):

@@ -74,16 +74,27 @@ def test_payments_summary_overpayment_and_permissions(admin, client_for, new_int
     assert len(admin.get(url).json()) == 2
 
 
-def test_installments_need_attention_until_approved(admin, client_for, new_intl):
+def test_installments_wait_in_their_own_tab_until_approved(admin, client_for, new_intl):
     order = new_intl(installment_plan=True)
     assert order["needs_attention"] is True and order["payment"]["status"] == "installment"
-    assert admin.get(f"{INTL}/?tab=attention").json()["count"] == 1
-    assert admin.get(f"{INTL}/stats/").json() == {"active": 0, "needs_attention": 1, "in_production": 0, "completed": 0}
+    assert admin.get(f"{INTL}/?tab=installments").json()["count"] == 1
+    assert admin.get(f"{INTL}/?tab=attention").json()["count"] == 0
+    assert admin.get(f"{INTL}/?tab=active").json()["count"] == 0
+    assert admin.get(f"{INTL}/stats/").json() == {"active": 0, "needs_attention": 0, "installments": 1,
+                                                  "in_production": 0, "completed": 0}
+    # Not in Procurement either, and a supplier can't be chosen yet.
+    from apps.procurement.models import ProcurementOrder
+
+    proc = ProcurementOrder.objects.get(order_id=order["id"])
+    assert admin.get("/api/procurement/orders/").json()["count"] == 0
+    assert admin.get(f"/api/procurement/orders/{proc.pk}/").status_code == 404
     url = f"{INTL}/{order['id']}/installment-approval/"
     assert client_for(StaffLevel.SALES).post(url, {"allowed": True}, format="json").status_code == 403
     res = admin.post(url, {"allowed": True}, format="json")
     assert res.json()["needs_attention"] is False
     assert admin.get(f"{INTL}/?tab=active").json()["count"] == 1
+    assert admin.get(f"{INTL}/?tab=installments").json()["count"] == 0
+    assert admin.get("/api/procurement/orders/").json()["count"] == 1
 
 
 def test_international_details_update_and_closed_orders(admin, new_intl):
@@ -148,7 +159,7 @@ def test_equipment_expected_date_inline_edit(admin, new_equipment):
     order = new_equipment()
     res = admin.post(f"{EQUIP}/{order['id']}/expected-date/", {"expected_date": "2026-10-02T09:00:00+03:00"}, format="json")
     assert res.status_code == 200 and res.json()["details"]["expected_date"].startswith("2026-10-02")
-    move(admin, EQUIP, order["id"], "cancelled")
+    move(admin, EQUIP, order["id"], "cancelled", "Site not ready")
     assert admin.post(f"{EQUIP}/{order['id']}/expected-date/", {"expected_date": "2026-10-03T09:00:00+03:00"},
                       format="json").status_code == 409
 

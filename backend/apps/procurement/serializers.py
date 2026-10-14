@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from apps.accounts.models import User
 from apps.locations.models import Country
-from apps.orders.serializers import _dec, _person
+from apps.orders.serializers import _dec, _person, flag_payload, open_flags
 from apps.orders.workflows import status_label
 
 from .models import ExceptionFlag, ProcurementOrder, ProcurementStatusHistory, Supplier
@@ -52,7 +52,8 @@ class ProcurementSerializer(serializers.ModelSerializer):
         return {"id": o.id, "reference": o.reference, "status": o.status,
                 "status_display": status_label(o.order_type, o.status), "item_details": o.item_details,
                 "customer": o.customer.full_name, "service_type": o.international.service_type,
-                "service_type_display": o.international.get_service_type_display(), "created_at": o.created_at}
+                "service_type_display": o.international.get_service_type_display(), "created_at": o.created_at,
+                "flags": [flag_payload(f) for f in open_flags(o)]}
 
     def get_origin(self, obj) -> dict:
         c = obj.order.international.source_country

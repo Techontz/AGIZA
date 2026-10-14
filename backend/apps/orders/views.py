@@ -4,7 +4,7 @@ import django_filters
 from django.db.models import Count, F, Prefetch, Q, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -22,11 +22,12 @@ from apps.core.workflow import run
 from apps.shipping_engine.calculator import RateCalculationError, RateCalculator, Shipment
 from apps.shipping_engine.models import ShippingMethod
 
-from . import services, shop
-from .models import Order, OrderAttachment, OrderItem, OrderStatusHistory, PackageSize, ShopDetails
+from . import alerts, services, shop
+from .models import Order, OrderAttachment, OrderFlag, OrderItem, OrderStatusHistory, PackageSize, ShopDetails
 from .serializers import (
     AssignSerializer,
     AttachmentSerializer,
+    CancelledOrderSerializer,
     CancelSerializer,
     DeliveryFeeSerializer,
     EquipmentCreateSerializer,
@@ -41,11 +42,16 @@ from .serializers import (
     InternationalCreateSerializer,
     InternationalOrderSerializer,
     InternationalUpdateSerializer,
+    OrderFlagSerializer,
     OrderFromSupplierSerializer,
     PackageSizeSerializer,
     PaymentSerializer,
     QuoteStatusSerializer,
+    RaiseFlagSerializer,
     RecordPaymentSerializer,
+    ReleaseApprovalSerializer,
+    ResolveFlagSerializer,
+    ResubmitSerializer,
     ShipSerializer,
     ShopCreateSerializer,
     ShopNotesSerializer,
@@ -62,16 +68,24 @@ from .workflows import EXPRESS_STAGE, SHOP_IMPORT_STAGES, OrderType
 SIZE_WEIGHT_KG = {PackageSize.SMALL: Decimal("5"), PackageSize.MEDIUM: Decimal("15"), PackageSize.LARGE: Decimal("30")}
 
 
+# Orders with an unresolved exception flag (a subquery, evaluated with each query).
+FLAGGED = Q(id__in=OrderFlag.objects.filter(resolved_at__isnull=True).values("order_id"))
+
+
 class OrderFilter(django_filters.FilterSet):
     status = django_filters.BaseInFilter(field_name="status")
     customer = django_filters.NumberFilter(field_name="customer_id")
     handler = django_filters.NumberFilter(field_name="handler_id")
     created_from = django_filters.DateFilter(field_name="created_at", lookup_expr="date__gte")
     created_to = django_filters.DateFilter(field_name="created_at", lookup_expr="date__lte")
+    flagged = django_filters.BooleanFilter(method="filter_flagged")
+
+    def filter_flagged(self, qs, name, value):
+        return qs.filter(FLAGGED) if value else qs.exclude(FLAGGED)
 
     class Meta:
         model = Order
-        fields = ["status", "department", "customer", "handler", "created_from", "created_to"]
+        fields = ["status", "department", "customer", "handler", "created_from", "created_to", "flagged"]
 
 
 class BaseOrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin,
@@ -90,12 +104,15 @@ class BaseOrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.
     http_method_names = ["get", "post", "patch", "head", "options"]
     # Reads are "view" by default; uploads (attachments POST) need "edit". Payments POST
     # is checked inside the action (Finance edit or Orders manage).
-    required_access = {"payments": "view", "suggest_price": "view"}
+    # release_approval is checked inside the action too (Orders or Finance manage).
+    required_access = {"payments": "view", "suggest_price": "view", "release_approval": "view", "document": "view"}
 
     def get_queryset(self):
         qs = (
             Order.objects.filter(order_type=self.order_type)
-            .select_related("customer", "handler", "source_quote", *self.detail_select)
+            .select_related("customer", "handler", "source_quote", "release_approved_by", *self.detail_select)
+            .prefetch_related(Prefetch("flags", to_attr="open_flags", queryset=OrderFlag.objects.filter(
+                resolved_at__isnull=True).select_related("raised_by")))
             .annotate(attachments_count=Count("attachments", distinct=True))
             .order_by("-created_at", "-id")
         )
@@ -131,6 +148,7 @@ class BaseOrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.
         if order.status in ("delivered", "completed", "cancelled") and set(data) - {"notes"}:
             raise ConflictError("Closed orders can only have their notes changed.")
         details_obj = getattr(order, self.detail_relation)
+        expected_before = services.expected_delivery(order)
         before = {**snapshot(order), **{f"details.{k}": v for k, v in snapshot(details_obj).items()}}
         for key, value in data.items():
             target = order if hasattr(Order, key) and key not in self.detail_only_fields else details_obj
@@ -141,6 +159,8 @@ class BaseOrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.
         changes = diff(before, after)
         if changes:
             record_audit(action="update", request=request, instance=order, changes=changes)
+        # A new expected delivery date is logged and sent to the customer.
+        services.expected_delivery_changed(order, expected_before, services.expected_delivery(order), request.user)
         return Response(self.serializer_class(self.get_queryset().get(pk=order.pk)).data)
 
     detail_only_fields: set[str] = set()
@@ -184,6 +204,31 @@ class BaseOrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.
             run(services.record_payment, order, user=request.user, request=request, **s.validated_data)
         rows = order.payments.select_related("recorded_by")
         return Response(PaymentSerializer(rows, many=True).data, status=201 if request.method == "POST" else 200)
+
+    @extend_schema(responses={(200, "application/pdf"): bytes},
+                   parameters=[OpenApiParameter("kind", str, enum=["invoice", "receipt"])])
+    @action(detail=True)
+    def document(self, request, pk=None):
+        """The order's invoice or receipt as a PDF (`?kind=invoice|receipt`)."""
+        from . import documents
+
+        kind = request.query_params.get("kind", "invoice")
+        if kind not in documents.DOCUMENTS:
+            raise ValidationError({"kind": ["Choose invoice or receipt."]})
+        return documents.pdf_response(self.get_object(), kind)
+
+    @extend_schema(request=ReleaseApprovalSerializer)
+    @action(detail=True, methods=["post"], url_path="release-approval")
+    def release_approval(self, request, pk=None):
+        """An admin lets an order with a balance due ship / go out for delivery (or withdraws that)."""
+        if not (has_access(request.user, Module.ORDERS, Access.MANAGE)
+                or has_access(request.user, Module.FINANCE, Access.MANAGE)):
+            raise PermissionDenied("Approving a release with a balance due requires Orders or Finance manage access.")
+        s = ReleaseApprovalSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        order = run(services.set_release_approval, self.get_object(), approved=s.validated_data["approved"],
+                    note=s.validated_data["note"], user=request.user, request=request)
+        return self._respond(order)
 
     @action(detail=True, methods=["get", "post"], parser_classes=[MultiPartParser, FormParser, JSONParser])
     def attachments(self, request, pk=None):
@@ -334,19 +379,26 @@ class ExpressOrderViewSet(BaseOrderViewSet):
 # International
 # --------------------------------------------------------------------------- #
 class InternationalFilter(OrderFilter):
-    tab = django_filters.ChoiceFilter(method="filter_tab", choices=[("active", "Active"), ("attention", "Needs attention"),
-                                                                     ("completed", "Completed")])
+    tab = django_filters.ChoiceFilter(method="filter_tab", choices=[
+        ("active", "Active"), ("attention", "Needs attention"), ("installments", "Installments"),
+        ("completed", "Completed")])
     origin = django_filters.CharFilter(field_name="international__source_country__iso2", lookup_expr="iexact")
     service_type = django_filters.CharFilter(field_name="international__service_type")
 
-    ATTENTION = Q(status="issue_pending_payment") | Q(installment_plan=True, installment_allowed=False)
+    # Installment orders wait in their own tab (not Active, not Procurement) until an admin approves them.
+    INSTALLMENTS = Q(installment_plan=True, installment_allowed=False)
+    # Payment issues and orders someone flagged (or flagged automatically) need attention.
+    ATTENTION = (Q(status="issue_pending_payment") | FLAGGED) & ~INSTALLMENTS
 
     def filter_tab(self, qs, name, value):
+        open_qs = qs.exclude(status__in=["completed", "cancelled"])
         if value == "attention":
-            return qs.filter(self.ATTENTION).exclude(status__in=["completed", "cancelled"])
+            return open_qs.filter(self.ATTENTION)
+        if value == "installments":
+            return open_qs.filter(self.INSTALLMENTS)
         if value == "completed":
             return qs.filter(status="completed")
-        return qs.exclude(self.ATTENTION).exclude(status__in=["completed", "cancelled"])
+        return open_qs.exclude(self.ATTENTION).exclude(self.INSTALLMENTS)
 
     class Meta(OrderFilter.Meta):
         fields = [*OrderFilter.Meta.fields, "tab", "origin", "service_type"]
@@ -371,11 +423,12 @@ class InternationalOrderViewSet(BaseOrderViewSet):
         )
 
     def compute_stats(self, qs):
-        attention = InternationalFilter.ATTENTION
+        attention, installments = InternationalFilter.ATTENTION, InternationalFilter.INSTALLMENTS
         open_qs = qs.exclude(status__in=["completed", "cancelled"])
         return {
-            "active": open_qs.exclude(attention).count(),
+            "active": open_qs.exclude(attention).exclude(installments).count(),
             "needs_attention": open_qs.filter(attention).count(),
+            "installments": open_qs.filter(installments).count(),
             "in_production": qs.filter(status="in_production").count(),
             "completed": qs.filter(status="completed").count(),
         }
@@ -612,3 +665,102 @@ class ShopOrderViewSet(BaseOrderViewSet):
                     fee=data["delivery_fee"], shipping_method=data["shipping_method"],
                     estimated_delivery=data["estimated_delivery"], note=data["note"])
         return self._respond(order)
+
+
+# --------------------------------------------------------------------------- #
+# Exception flags
+# --------------------------------------------------------------------------- #
+class OrderFlagFilter(django_filters.FilterSet):
+    order = django_filters.NumberFilter(field_name="order_id")
+    kind = django_filters.BaseInFilter(field_name="kind")
+    open = django_filters.BooleanFilter(field_name="resolved_at", lookup_expr="isnull")
+    order_type = django_filters.CharFilter(field_name="order__order_type")
+
+    class Meta:
+        model = OrderFlag
+        fields = ["order", "kind", "open", "department", "automatic", "order_type"]
+
+
+@extend_schema(tags=["orders"])
+class OrderFlagViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet):
+    """Exception flags on orders: Procurement, Shipping and Deliveries raise them; automatic ones come from
+    orders.alerts. Resolving needs a note of what was done."""
+
+    module = Module.ORDERS
+    permission_classes = [HasModulePermission]
+    read_modules = (Module.PROCUREMENT, Module.SHIPPING, Module.DELIVERIES)
+    edit_modules = (Module.PROCUREMENT, Module.SHIPPING, Module.DELIVERIES)
+    serializer_class = OrderFlagSerializer
+    filterset_class = OrderFlagFilter
+    search_fields = ["order__reference", "order__customer__full_name", "note"]
+    required_access = {"resolve": "edit"}
+
+    def get_queryset(self):
+        return OrderFlag.objects.select_related("order", "order__customer", "raised_by", "resolved_by")
+
+    @extend_schema(request=RaiseFlagSerializer, responses={201: OrderFlagSerializer})
+    def create(self, request, *args, **kwargs):
+        s = RaiseFlagSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        d = s.validated_data
+        flag = run(alerts.raise_flag, d["order"], d["kind"], user=request.user, note=d["note"],
+                   department=d["department"], request=request)
+        return Response(OrderFlagSerializer(self.get_queryset().get(pk=flag.pk)).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(request=ResolveFlagSerializer)
+    @action(detail=True, methods=["post"])
+    def resolve(self, request, pk=None):
+        s = ResolveFlagSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        flag = run(alerts.resolve_flag, self.get_object(), user=request.user, note=s.validated_data["note"],
+                   request=request)
+        return Response(OrderFlagSerializer(self.get_queryset().get(pk=flag.pk)).data)
+
+
+# --------------------------------------------------------------------------- #
+# Cancelled orders
+# --------------------------------------------------------------------------- #
+class CancelledOrderFilter(django_filters.FilterSet):
+    order_type = django_filters.CharFilter(field_name="order_type")
+    customer = django_filters.NumberFilter(field_name="customer_id")
+    resubmitted = django_filters.BooleanFilter(field_name="resubmitted_as", lookup_expr="isnull", exclude=True)
+    cancelled_from = django_filters.DateFilter(field_name="cancelled_at", lookup_expr="date__gte")
+    cancelled_to = django_filters.DateFilter(field_name="cancelled_at", lookup_expr="date__lte")
+
+    class Meta:
+        model = Order
+        fields = ["order_type", "customer", "resubmitted", "cancelled_from", "cancelled_to"]
+
+
+@extend_schema(tags=["orders"])
+class CancelledOrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    """Every cancelled order with its reason and history; staff resubmit one as a new order."""
+
+    module = Module.ORDERS
+    permission_classes = [HasModulePermission]
+    serializer_class = CancelledOrderSerializer
+    filterset_class = CancelledOrderFilter
+    search_fields = ["reference", "item_details", "customer__full_name", "customer__phone", "cancellation_reason"]
+    ordering_fields = ["cancelled_at", "created_at", "total_amount"]
+
+    def get_queryset(self):
+        qs = (Order.objects.filter(status="cancelled")
+              .select_related("customer", "cancelled_by", "resubmitted_as", "resubmitted_from")
+              .order_by(F("cancelled_at").desc(nulls_last=True), "-id"))
+        return services.with_paid_total(qs)
+
+    @action(detail=True)
+    def history(self, request, pk=None):
+        rows = OrderStatusHistory.objects.filter(order=self.get_object()).select_related("changed_by", "order")
+        return Response(HistorySerializer(rows, many=True).data)
+
+    @extend_schema(request=ResubmitSerializer)
+    @action(detail=True, methods=["post"])
+    def resubmit(self, request, pk=None):
+        s = ResubmitSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        new = run(services.resubmit, self.get_object(), user=request.user, note=s.validated_data["note"],
+                  request=request)
+        body = self.get_serializer(self.get_queryset().get(pk=pk)).data
+        body["new_order"] = {"id": new.id, "reference": new.reference, "order_type": new.order_type}
+        return Response(body, status=status.HTTP_201_CREATED)

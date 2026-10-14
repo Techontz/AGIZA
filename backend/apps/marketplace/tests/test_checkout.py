@@ -160,6 +160,8 @@ def _deliver(order, admin):
     driver, _ = __import__("apps.accounts.models", fromlist=["User"]).User.objects.get_or_create(
         email="rider@agiza.test", defaults={"full_name": "Rider One", "staff_level": StaffLevel.DRIVER})
     deliveries.assign_driver(delivery, driver, user=admin)
+    if order_services.release_blocked(order):  # pay later: released to collect the balance on delivery
+        order_services.set_release_approval(order, approved=True, note="Cash on delivery", user=admin)
     deliveries.transition(delivery, "out_for_delivery", user=admin)
     deliveries.complete(delivery, user=admin, signature_name="Neema Joseph")
 

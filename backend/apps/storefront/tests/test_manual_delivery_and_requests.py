@@ -94,7 +94,7 @@ def gateway(monkeypatch):
     monkeypatch.setattr("apps.payments.services.available", lambda: True)
     started = []
 
-    def start_checkout(order, *, phone, together=False):
+    def start_checkout(order, *, phone, together=False, amount=None):
         started.append(order.reference)
         return SimpleNamespace(status="pending", gateway_url="https://pay.example/checkout", provider_order_id="S1")
 

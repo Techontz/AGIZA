@@ -325,8 +325,14 @@ def seed(stdout=None) -> Seeder:
             ProcurementOrder.objects.filter(order=order).update(exception_flag=flag)
             continue
         if target == "issue_pending_payment":
-            procurement.select_supplier(order.procurement, supplier=suppliers[supplier], user=actor,
-                                        item_cost=order.international.item_cost)
+            # Installment orders wait for an admin's approval before Procurement picks a supplier.
+            if order.installment_plan and not order.installment_allowed:
+                if order.procurement.exception_flag == flag:  # seeded on an earlier run
+                    s.created -= 1
+                    s.existing += 1
+            else:
+                procurement.select_supplier(order.procurement, supplier=suppliers[supplier], user=actor,
+                                            item_cost=order.international.item_cost)
             ProcurementOrder.objects.filter(order=order).update(exception_flag=flag)
             continue
         if order.international.service_type == "deliver_for_me":

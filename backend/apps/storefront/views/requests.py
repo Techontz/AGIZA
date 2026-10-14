@@ -6,15 +6,17 @@ quote into an international order, which the customer then tracks and pays.
 """
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.urls import reverse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
+from apps.chat import attachments as chat_files
 from apps.chat import services as chat
-from apps.chat.models import Conversation, Message
+from apps.chat.models import Conversation, Message, MessageAttachment
 from apps.core.audit import record_audit
 from apps.core.pagination import StandardPagination
 from apps.core.uploads import IMAGE_TYPES, file_response, validate_upload
@@ -170,10 +172,23 @@ class QuoteDeclineView(QuoteReplyView):
 # --------------------------------------------------------------------------- #
 # Support chat (appears in the admin Chat inbox as a Web conversation)
 # --------------------------------------------------------------------------- #
-def _message(m: Message) -> dict:
+def _message(m: Message, request=None) -> dict:
+    from apps.chat.views import attachment_payload
+
+    def url(a):
+        path = reverse("storefront:support-attachment", args=[a.pk])
+        return request.build_absolute_uri(path) if request else path
+
+    q = m.quote
     return {"id": m.pk, "from": "me" if m.sender == Message.Sender.CUSTOMER else
             ("agiza" if m.sender == Message.Sender.AGENT else "system"),
             "body": m.body, "author": m.author.full_name.split(" ")[0] if m.author_id else None,
+            "attachments": [attachment_payload(a, url(a)) for a in m.attachments.all()],
+            # A quotation card: the customer opens the quotation to accept or decline it.
+            "quotation": {"id": q.pk, "reference": q.reference, "amount": str(q.quoted_amount) if q.quoted_amount else None,
+                          "currency": q.currency, "estimated_delivery": q.estimated_delivery,
+                          "status": q.status, "status_display": q.get_status_display(),
+                          "can_reply": q.status == "waiting_reply"} if q else None,
             "created_at": m.created_at}
 
 
@@ -260,25 +275,46 @@ class SupportRoomListView(_SupportView):
 
 @extend_schema(tags=["app: support"], request=ChatSendSerializer, responses=None)
 class SupportChatView(_SupportView):
-    """GET/POST messages in a room (`?room=order:<ref>` etc.; no room = the general AGIZA Support room)."""
+    """GET/POST messages in a room (`?room=order:<ref>` etc.; no room = the general AGIZA Support room).
+    POST may carry a photo, document or voice note (multipart `file`)."""
+
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get(self, request):
         conv = self.conversation(self.room(request.query_params.get("room", "")))
         rows = [] if conv is None else (conv.messages.exclude(sender=Message.Sender.INTERNAL)
-                                        .select_related("author").order_by("created_at", "id"))
-        return Response({"messages": [_message(m) for m in rows]})
+                                        .select_related("author", "quote").prefetch_related("attachments")
+                                        .order_by("created_at", "id"))
+        return Response({"messages": [_message(m, request) for m in rows]})
 
     @transaction.atomic
     def post(self, request):
         s = ChatSendSerializer(data=request.data)
         s.is_valid(raise_exception=True)
         body = s.validated_data["body"].strip()
-        if not body:
+        upload = s.validated_data.get("file")
+        if not body and not upload:
             raise ValidationError({"body": ["Type a message."]})
+        attachment = chat_files.prepare(upload, s.validated_data.get("duration_ms")) if upload else None
         room = self.room(request.data.get("room", "") or request.query_params.get("room", ""))
-        msg = chat.receive(channel="web", handle=self.handle, name=self.customer.full_name, body=body, room=room)
+        msg = chat.receive(channel="web", handle=self.handle, name=self.customer.full_name, body=body, room=room,
+                           attachment=attachment)
         conv = msg.conversation
         if conv.customer_id != self.customer.pk:  # link by account, not by phone-number guess
             conv.customer = self.customer
             conv.save(update_fields=["customer", "updated_at"])
-        return Response(_message(msg), status=status.HTTP_201_CREATED)
+        return Response(_message(msg, request), status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=["app: support"], responses={(200, "*/*"): OpenApiTypes.BINARY})
+class SupportAttachmentView(CustomerAPIView):
+    """A photo / document / voice note from the customer's own chat."""
+
+    throttle_classes = []
+
+    def get(self, request, pk: int):
+        att = get_object_or_404(MessageAttachment.objects.exclude(message__sender=Message.Sender.INTERNAL), pk=pk,
+                                message__conversation__customer=self.customer, message__conversation__channel="web")
+        response = file_response(att.file, att.content_type)
+        response["Cache-Control"] = "private, max-age=604800, immutable"  # an attachment never changes
+        return response

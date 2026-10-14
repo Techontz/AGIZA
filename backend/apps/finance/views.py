@@ -7,6 +7,7 @@ import django_filters
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, OuterRef, Prefetch, Q, Subquery, Sum, Value
 from django.db.models.functions import Coalesce, Greatest
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
@@ -513,3 +514,17 @@ class ProfitLossExportView(ProfitLossView):
 
     def get(self, request):
         return self._csv(request, self.filter_queryset(self.get_queryset()))
+
+
+@extend_schema(tags=["finance"], responses=OpenApiTypes.OBJECT)
+class CustomerAccountView(APIView):
+    """A customer's account statement: what they owe on orders, their wallet credit, and the net position.
+    Shown on the customer's profile, so People, Orders and Chat staff can read it too."""
+
+    module = Module.FINANCE
+    permission_classes = [HasModulePermission]
+    read_modules = (Module.PEOPLE, Module.ORDERS, Module.CHAT)
+
+    def get(self, request, pk: int):
+        customer = get_object_or_404(Customer, pk=pk)
+        return Response(services.account_statement(customer))

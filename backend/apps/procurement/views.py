@@ -1,5 +1,5 @@
 import django_filters
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Prefetch, Q, Sum
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, viewsets
@@ -13,6 +13,7 @@ from apps.core.audit import AuditedViewSetMixin, diff, record_audit, snapshot
 from apps.core.exceptions import ConflictError
 from apps.core.uploads import file_response
 from apps.core.workflow import run
+from apps.orders.models import OrderFlag
 
 from . import services
 from .models import ProcurementOrder, ProcurementStatus, Supplier
@@ -52,6 +53,9 @@ class SupplierViewSet(AuditedViewSetMixin, viewsets.ModelViewSet):
         return Supplier.objects.select_related("country").annotate(orders_count=Count("orders")).order_by("name", "id")
 
 
+AWAITING_INSTALLMENT_APPROVAL = Q(order__installment_plan=True, order__installment_allowed=False)
+
+
 class ProcurementFilter(django_filters.FilterSet):
     status = django_filters.BaseInFilter(field_name="status")
     origin = django_filters.CharFilter(field_name="order__international__source_country__iso2", lookup_expr="iexact")
@@ -86,10 +90,14 @@ class ProcurementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixin
     http_method_names = ["get", "post", "patch", "head", "options"]
 
     def get_queryset(self):
-        return ProcurementOrder.objects.select_related(
+        # Installment orders stay out of Procurement until an admin approves the installments
+        # (they wait in International Orders → Installments).
+        return ProcurementOrder.objects.exclude(AWAITING_INSTALLMENT_APPROVAL).select_related(
             "order", "order__customer", "order__international", "order__international__source_country",
             "supplier", "operator",
-        ).prefetch_related("order__attachments")
+        ).prefetch_related("order__attachments", Prefetch("order__flags", to_attr="open_flags",
+                                                          queryset=OrderFlag.objects.filter(resolved_at__isnull=True)
+                                                          .select_related("raised_by")))
 
     def _respond(self, proc):
         return Response(ProcurementSerializer(self.get_queryset().get(pk=proc.pk)).data)
@@ -173,7 +181,7 @@ class ProcurementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixin
 
     @action(detail=False)
     def stats(self, request):
-        qs = ProcurementOrder.objects.all()
+        qs = ProcurementOrder.objects.exclude(AWAITING_INSTALLMENT_APPROVAL)
         counts = qs.aggregate(
             total=Count("id", filter=~Q(status=ProcurementStatus.CANCELLED)),
             pending_sourcing=Count("id", filter=Q(status=ProcurementStatus.PENDING_SOURCING)),

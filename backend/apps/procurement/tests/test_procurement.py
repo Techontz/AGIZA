@@ -186,7 +186,8 @@ def test_supplier_cancellation_before_payment_keeps_order_status(ops, make_intl,
 
 def test_order_cancellation_cancels_procurement(ops, make_intl):
     order = make_intl()
-    res = ops.post(f"/api/orders/international/{order.id}/transition/", {"status": "cancelled"}, format="json")
+    res = ops.post(f"/api/orders/international/{order.id}/transition/",
+                   {"status": "cancelled", "note": "Customer withdrew"}, format="json")
     assert res.status_code == 200
     assert proc_of(order).status == "cancelled"
 

@@ -220,12 +220,12 @@ DELIVERY_FEE_PENDING_MESSAGE = ("AGIZA is confirming the delivery cost of this o
                                 "it's set, then you can pay.")
 
 
-def start_payment(order: Order, phone: str, *, together: bool = False) -> dict:
+def start_payment(order: Order, phone: str, *, together: bool = False, amount=None) -> dict:
     """Open a mobile-money checkout. A failure never undoes the order: the customer can retry from it."""
     if order.order_type == "shop" and getattr(order, "shop", None) and order.shop.delivery_fee_pending:
         return {"status": "failed", "message": DELIVERY_FEE_PENDING_MESSAGE, "checkout_url": None}
     try:
-        gateway = payments.start_checkout(order, phone=phone, together=together)
+        gateway = payments.start_checkout(order, phone=phone, together=together, amount=amount)
     except WorkflowError as exc:
         return {"status": "failed", "message": exc.message, "checkout_url": None}
     return {"status": gateway.status, "message": "", "checkout_url": gateway.gateway_url,

@@ -56,6 +56,43 @@ class QuoteItemSerializer(serializers.ModelSerializer):
         return order_ref(obj.created_order)
 
 
+# CRM tags that mark a customer as priority (Customers → tags, set by staff or tag rules).
+PRIORITY_TAGS = ("priority", "vip")
+
+
+def with_customer_type(qs):
+    """Annotate quotations with what Intake needs to badge the customer: orders so far and a priority tag."""
+    from django.db.models import Count, Exists, IntegerField, OuterRef, Subquery
+
+    from apps.crm.models import CustomerTag
+    from apps.orders.models import Order
+
+    orders = (Order.objects.filter(customer=OuterRef("customer_id")).exclude(status="cancelled").order_by()
+              .values("customer").annotate(n=Count("id")).values("n"))
+    return qs.annotate(
+        customer_orders=Subquery(orders, output_field=IntegerField()),
+        customer_priority=Exists(CustomerTag.objects.filter(customer=OuterRef("customer_id"),
+                                                            tag__name__in=PRIORITY_TAGS)),
+    )
+
+
+def customer_type(quote) -> dict:
+    """Priority (a priority/VIP tag), Repeat (has ordered before) or New customer."""
+    count = getattr(quote, "customer_orders", None)
+    priority = getattr(quote, "customer_priority", None)
+    if count is None or priority is None:  # not annotated (a single quotation just saved)
+        annotated = with_customer_type(QuoteRequest.objects.filter(pk=quote.pk)).values(
+            "customer_orders", "customer_priority").first() or {}
+        count, priority = annotated.get("customer_orders"), annotated.get("customer_priority", False)
+    count = count or 0
+    created = getattr(quote, "created_order", None)
+    if created is not None and created.status != "cancelled":
+        count -= 1  # the order this quotation became doesn't make the customer a repeat one
+    kind = "priority" if priority else "repeat" if count > 0 else "new"
+    label = {"priority": "Priority", "repeat": "Repeat Customer", "new": "New Customer"}[kind]
+    return {"kind": kind, "label": label, "orders": max(count, 0), "priority": bool(priority)}
+
+
 class QuoteSerializer(serializers.ModelSerializer):
     customer = CustomerRefSerializer(read_only=True)
     customer_id = serializers.PrimaryKeyRelatedField(
@@ -70,6 +107,7 @@ class QuoteSerializer(serializers.ModelSerializer):
     # "Several items, one quotation": optional item lines (write on create; read with prices and orders).
     items = QuoteItemSerializer(many=True, required=False)
     description = serializers.CharField(required=False, allow_blank=True)
+    customer_type = serializers.SerializerMethodField()
 
     class Meta:
         model = QuoteRequest
@@ -77,7 +115,8 @@ class QuoteSerializer(serializers.ModelSerializer):
             "id", "reference", "customer", "customer_id", "service_type", "service_type_display", "description",
             "origin", "destination", "status", "status_display", "requested_at", "quoted_amount", "currency",
             "estimated_delivery", "response_notes", "responded_by", "responded_at", "customer_replied_at",
-            "approved_at", "created_order", "created_orders", "photos", "items", "created_at", "updated_at",
+            "approved_at", "created_order", "created_orders", "photos", "items", "customer_type", "created_at",
+            "updated_at",
         ]
         read_only_fields = [
             "id", "reference", "status", "quoted_amount", "currency", "estimated_delivery", "response_notes",
@@ -86,6 +125,9 @@ class QuoteSerializer(serializers.ModelSerializer):
 
     def get_photos(self, obj) -> list[dict]:
         return [photo_ref(obj.id, a) for a in obj.attachments.all()]
+
+    def get_customer_type(self, obj) -> dict:
+        return customer_type(obj)
 
     def get_responded_by(self, obj) -> dict | None:
         return {"id": obj.responded_by.id, "full_name": obj.responded_by.full_name} if obj.responded_by else None

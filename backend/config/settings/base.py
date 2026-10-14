@@ -346,6 +346,19 @@ TIKTOK_CLIENT_SECRET = env("TIKTOK_CLIENT_SECRET", default="")
 # Customer app: online payments and push notifications (optional)
 # --------------------------------------------------------------------------- #
 # Selcom Checkout (mobile money / card). Mobile-money payment is offered only when all four are set.
+# Printed on invoices and receipts (orders.documents). All optional.
+AGIZA_COMPANY = {
+    "name": env("AGIZA_COMPANY_NAME", default="AGIZA"),
+    "address": env("AGIZA_COMPANY_ADDRESS", default="Dar es Salaam, Tanzania"),
+    "phone": env("AGIZA_COMPANY_PHONE", default=""),
+    "email": env("AGIZA_COMPANY_EMAIL", default=""),
+    "website": env("AGIZA_COMPANY_WEBSITE", default="agizastore.xyz"),
+    "tin": env("AGIZA_COMPANY_TIN", default=""),
+    "payment_instructions": env("AGIZA_PAYMENT_INSTRUCTIONS",
+                                default="Pay in the AGIZA app with mobile money, or quote the order number "
+                                        "when paying by bank transfer."),
+}
+
 SELCOM_VENDOR_CODE = env("SELCOM_VENDOR_CODE", default="")
 SELCOM_API_KEY = env("SELCOM_API_KEY", default="")
 SELCOM_SECRET_KEY = env("SELCOM_SECRET_KEY", default="")

@@ -233,3 +233,17 @@ def test_profit_loss_permissions(client_for, pl_orders):
     assert client_for(StaffLevel.DATA_ENTRY).get(f"{F}/profit-loss/?format=csv").status_code == 403
     assert client_for(StaffLevel.SALES).get(f"{F}/profit-loss/").status_code == 200  # finance: view
     assert client_for(StaffLevel.FINANCE).get(f"{F}/profit-loss/export/").status_code == 200
+
+
+def test_customer_account_statement_owed_both_ways(ops, make_intl, buyer, client_for):
+    first = make_intl(total="300000", paid="100000")
+    make_intl(total="50000", paid="50000")  # settled: not listed
+    ops.post(f"{F}/wallets/{buyer.id}/top-up/", {"amount": "80000", "method": "cash"}, format="json")
+    body = ops.get(f"{F}/customers/{buyer.id}/account/").json()
+    assert body["owed_by_customer"] == "200000.00" and body["owed_to_customer"] == "80000.00"
+    assert body["net"] == "120000.00"
+    assert [o["reference"] for o in body["orders"]] == [first.reference]
+    assert body["orders"][0]["due"] == "200000.00" and body["wallet_transactions"][0]["source"] == "top_up"
+    # People staff see it on the customer's profile; drivers don't.
+    assert client_for(StaffLevel.SALES).get(f"{F}/customers/{buyer.id}/account/").status_code == 200
+    assert client_for(StaffLevel.DRIVER).get(f"{F}/customers/{buyer.id}/account/").status_code == 403

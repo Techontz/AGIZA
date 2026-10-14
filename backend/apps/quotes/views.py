@@ -26,6 +26,7 @@ from .serializers import (
     RespondSerializer,
     guess_country,
     order_ref,
+    with_customer_type,
 )
 
 
@@ -62,7 +63,7 @@ class QuoteViewSet(AuditedViewSetMixin, mixins.ListModelMixin, mixins.RetrieveMo
     required_access = {"approve": "edit", "cancel": "manage", "add_photo": "edit", "remove_photo": "edit"}
 
     def get_queryset(self):
-        return (
+        return with_customer_type(
             QuoteRequest.objects.select_related("customer", "responded_by", "created_order")
             .prefetch_related("attachments", "items__attachments", "items__created_order", "items__origin_country")
             .order_by("-requested_at", "-id")

@@ -2,6 +2,7 @@ import django_filters
 from django.db import transaction
 from django.db.models import Count, Prefetch, Q
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -14,12 +15,13 @@ from apps.accounts.permissions import HasModulePermission
 from apps.core.audit import record_audit
 from apps.core.uploads import file_response, validate_upload
 from apps.core.workflow import run
-from apps.orders.models import OrderAttachment
+from apps.orders.models import OrderAttachment, OrderFlag
 
 from . import services
 from .models import CargoParcel, ParcelStage, Shipment, ShipmentDocument, ShipmentEvent, ShipmentStatus
 from .serializers import (
     DocumentSerializer,
+    ExpectedDeliverySerializer,
     MarkLostSerializer,
     ParcelSerializer,
     ParcelsSerializer,
@@ -70,9 +72,11 @@ class ParcelViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Upd
             CargoParcel.objects.exclude(stage=ParcelStage.CANCELLED)
             .select_related("order", "order__customer", "order__international",
                             "order__international__source_country", "shipper", "shipping_method", "warehouse",
-                            "destination_city", "destination_city__country", "shipment")
+                            "destination_city", "destination_city__country", "shipment", "order__release_approved_by")
             .prefetch_related(Prefetch("order__attachments", queryset=OrderAttachment.objects.order_by("id")),
-                              "order__payments")
+                              "order__payments", "order__adjustments",
+                              Prefetch("order__flags", to_attr="open_flags", queryset=OrderFlag.objects.filter(
+                                  resolved_at__isnull=True).select_related("raised_by")))
             .order_by("-updated_at", "-id")
         )
 
@@ -194,6 +198,17 @@ class ShipmentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.C
 
     def update(self, request, *args, **kwargs):
         return self.partial_update(request, *args, **kwargs)
+
+    @extend_schema(request=ExpectedDeliverySerializer, responses=OpenApiTypes.OBJECT)
+    @action(detail=False, methods=["post"], url_path="expected-delivery")
+    def expected_delivery(self, request):
+        """Bulk: set when customers can expect the orders of the chosen shipments / parcels (they're notified)."""
+        s = ExpectedDeliverySerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        d = s.validated_data
+        result = run(services.set_expected_delivery, when=d["estimated_delivery"], shipments=d["shipments"],
+                     parcels=d["parcels"], note=d["note"], user=request.user, request=request)
+        return Response(result)
 
     @extend_schema(request=ParcelsSerializer)
     @action(detail=True, methods=["post"], url_path="add-parcels")

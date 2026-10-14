@@ -73,6 +73,9 @@ def select_supplier(proc: ProcurementOrder, *, supplier, user, item_cost: Decima
                     unit_cost: Decimal | None = None, quantity: int | None = None, expected_at_cargo=None,
                     supplier_order_number: str | None = None, note: str = "", request=None) -> ProcurementOrder:
     proc = _lock(proc)
+    if proc.order.installment_plan and not proc.order.installment_allowed:
+        raise WorkflowError(f"{proc.order.reference} is on an installment plan an admin hasn't approved yet.",
+                            conflict=True)
     if not supplier.is_active:
         raise WorkflowError(f"{supplier.name} is inactive.", field="supplier")
     if proc.status not in (P.PENDING_SOURCING, P.SUPPLIER_CANCELLED, P.SUPPLIER_SELECTED):

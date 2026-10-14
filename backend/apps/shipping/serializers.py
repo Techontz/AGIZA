@@ -70,10 +70,14 @@ class ParcelSerializer(serializers.ModelSerializer):
                   "updated_at"]
 
     def get_order(self, obj) -> dict:
+        from apps.orders.serializers import _dec, flag_payload, open_flags, release_payload
+
         o = obj.order
+        summary = payment_summary(o, prefetched_net_paid(o))
         return {"id": o.id, "reference": o.reference, "status": o.status,
                 "status_display": status_label(o.order_type, o.status), "customer": o.customer.full_name,
-                "payment_status": payment_summary(o, prefetched_net_paid(o)).status}
+                "payment_status": summary.status, "due": _dec(summary.due), "release": release_payload(o, summary),
+                "flags": [flag_payload(f) for f in open_flags(o)]}
 
     def get_origin(self, obj) -> dict:
         c = obj.order.international.source_country
@@ -272,6 +276,22 @@ class ShipmentUpdateSerializer(serializers.Serializer):
 
 class ParcelsSerializer(serializers.Serializer):
     parcels = serializers.PrimaryKeyRelatedField(queryset=CargoParcel.objects.all(), many=True)
+
+
+class ExpectedDeliverySerializer(serializers.Serializer):
+    """Bulk: a new expected delivery date for the orders of these shipments and/or parcels."""
+    shipments = serializers.PrimaryKeyRelatedField(queryset=Shipment.objects.all(), many=True, required=False, default=list)
+    parcels = serializers.PrimaryKeyRelatedField(queryset=CargoParcel.objects.select_related("order"), many=True,
+                                                 required=False, default=list)
+    estimated_delivery = serializers.DateField()
+    note = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
+
+    def validate_estimated_delivery(self, value):
+        from django.utils import timezone
+
+        if value < timezone.localdate():
+            raise serializers.ValidationError("The expected delivery date can't be in the past.")
+        return value
 
 
 class RemoveParcelSerializer(serializers.Serializer):

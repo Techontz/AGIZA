@@ -17,6 +17,7 @@ from .models import (
     InternationalDetails,
     Order,
     OrderAttachment,
+    OrderFlag,
     OrderItem,
     OrderStatusHistory,
     PackageSize,
@@ -37,6 +38,72 @@ def _dec(value, places: int = 2) -> str | None:
 
 def _person(user) -> dict | None:
     return {"id": user.id, "full_name": user.full_name} if user else None
+
+
+def release_payload(order, summary) -> dict:
+    return {
+        "blocked": services.release_blocked(order, summary) is not None,
+        "approved": order.release_approved_at is not None,
+        "approved_at": order.release_approved_at,
+        "approved_by": _person(order.release_approved_by),
+        "note": order.release_note,
+    }
+
+
+def open_flags(order) -> list:
+    """The order's unresolved exception flags (prefetched as `open_flags` by the order lists)."""
+    rows = getattr(order, "open_flags", None)
+    if rows is None:
+        rows = list(order.flags.filter(resolved_at__isnull=True).select_related("raised_by"))
+    return rows
+
+
+def flag_payload(flag) -> dict:
+    return {"id": flag.id, "kind": flag.kind, "kind_display": flag.get_kind_display(), "note": flag.note,
+            "department": flag.department, "automatic": flag.automatic, "raised_by": _person(flag.raised_by),
+            "created_at": flag.created_at}
+
+
+class OrderFlagSerializer(serializers.ModelSerializer):
+    kind_display = serializers.CharField(source="get_kind_display", read_only=True)
+    order = serializers.SerializerMethodField()
+    raised_by = serializers.SerializerMethodField()
+    resolved_by = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrderFlag
+        fields = ["id", "order", "kind", "kind_display", "note", "department", "automatic", "raised_by", "created_at",
+                  "resolved_at", "resolved_by", "resolution_note"]
+
+    def get_order(self, obj) -> dict:
+        o = obj.order
+        return {"id": o.id, "reference": o.reference, "order_type": o.order_type, "status": o.status,
+                "status_display": status_label(o.order_type, o.status), "customer": o.customer.full_name}
+
+    def get_raised_by(self, obj) -> dict | None:
+        return _person(obj.raised_by)
+
+    def get_resolved_by(self, obj) -> dict | None:
+        return _person(obj.resolved_by)
+
+
+class RaiseFlagSerializer(serializers.Serializer):
+    MANUAL = [c for c in OrderFlag.Kind.choices if c[0] not in OrderFlag.AUTOMATIC]
+
+    order = serializers.PrimaryKeyRelatedField(queryset=Order.objects.all())
+    kind = serializers.ChoiceField(choices=MANUAL)
+    note = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    department = serializers.ChoiceField(choices=["procurement", "shipping", "delivery", "support"], required=False,
+                                         allow_blank=True, default="")
+
+
+class ResolveFlagSerializer(serializers.Serializer):
+    note = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+
+
+class ReleaseApprovalSerializer(serializers.Serializer):
+    approved = serializers.BooleanField()
+    note = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
 
 
 class CustomerRefSerializer(serializers.ModelSerializer):
@@ -115,14 +182,16 @@ class OrderSerializer(serializers.ModelSerializer):
     allowed_transitions = serializers.SerializerMethodField()
     attachments_count = serializers.IntegerField(read_only=True, default=0)
     source_quote_reference = serializers.CharField(source="source_quote.reference", read_only=True, default=None)
+    release = serializers.SerializerMethodField()
+    flags = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             "id", "reference", "order_type", "status", "status_display", "customer", "item_details", "department",
             "department_display", "handler", "currency", "total_amount", "payment", "installment_plan",
-            "installment_allowed", "notes", "allowed_transitions", "attachments_count", "source_quote_reference",
-            "created_at", "updated_at",
+            "installment_allowed", "release", "flags", "notes", "allowed_transitions", "attachments_count",
+            "source_quote_reference", "created_at", "updated_at",
         ]
 
     def get_status_display(self, obj) -> str:
@@ -134,6 +203,14 @@ class OrderSerializer(serializers.ModelSerializer):
     def get_payment(self, obj) -> dict:
         summary = payment_summary(obj, getattr(obj, "paid_total", None) or Decimal("0")).as_dict
         return {**summary, **{k: _dec(summary[k]) for k in ("total", "paid", "due")}}
+
+    def get_flags(self, obj) -> list[dict]:
+        """Open exception flags (staff-raised and automatic)."""
+        return [flag_payload(f) for f in open_flags(obj)]
+
+    def get_release(self, obj) -> dict:
+        """Going out with a balance due: `blocked` until an admin approves it (orders.services.release_blocked)."""
+        return release_payload(obj, payment_summary(obj, getattr(obj, "paid_total", None) or Decimal("0")))
 
     def get_allowed_transitions(self, obj) -> list[dict]:
         """Next statuses reachable with a plain status change (action-only ones excluded)."""
@@ -186,7 +263,8 @@ class InternationalOrderSerializer(OrderSerializer):
         fields = [*OrderSerializer.Meta.fields, "needs_attention", "details"]
 
     def get_needs_attention(self, obj) -> bool:
-        return obj.status == "issue_pending_payment" or (obj.installment_plan and not obj.installment_allowed)
+        return (obj.status == "issue_pending_payment" or (obj.installment_plan and not obj.installment_allowed)
+                or bool(open_flags(obj)))
 
     def get_details(self, obj) -> dict:
         d: InternationalDetails = obj.international
@@ -519,3 +597,45 @@ class DeliveryFeeSerializer(serializers.Serializer):
 
 class ShopNotesSerializer(serializers.Serializer):
     notes = serializers.CharField(allow_blank=True)
+
+
+class CancelledOrderSerializer(serializers.ModelSerializer):
+    """Cancelled Orders page: every type in one list, with why and by whom, and what replaced it."""
+    order_type_display = serializers.CharField(source="get_order_type_display", read_only=True)
+    customer = CustomerRefSerializer(read_only=True)
+    payment = serializers.SerializerMethodField()
+    cancelled_by = serializers.SerializerMethodField()
+    resubmitted_as = serializers.SerializerMethodField()
+    resubmitted_from = serializers.SerializerMethodField()
+    can_resubmit = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Order
+        fields = ["id", "reference", "order_type", "order_type_display", "customer", "item_details", "currency",
+                  "total_amount", "payment", "cancelled_at", "cancelled_by", "cancellation_reason", "resubmitted_as",
+                  "resubmitted_from", "can_resubmit", "created_at"]
+
+    def get_payment(self, obj) -> dict:
+        summary = payment_summary(obj, getattr(obj, "paid_total", None) or Decimal("0")).as_dict
+        return {**summary, **{k: _dec(summary[k]) for k in ("total", "paid", "due")}}
+
+    def get_cancelled_by(self, obj) -> dict | None:
+        return _person(obj.cancelled_by)
+
+    @staticmethod
+    def _ref(o) -> dict | None:
+        return {"id": o.id, "reference": o.reference, "order_type": o.order_type,
+                "status_display": status_label(o.order_type, o.status)} if o else None
+
+    def get_resubmitted_as(self, obj) -> dict | None:
+        return self._ref(obj.resubmitted_as)
+
+    def get_resubmitted_from(self, obj) -> dict | None:
+        return self._ref(getattr(obj, "resubmitted_from", None))
+
+    def get_can_resubmit(self, obj) -> bool:
+        return obj.order_type != OrderType.SHOP and not obj.resubmitted_as_id
+
+
+class ResubmitSerializer(serializers.Serializer):
+    note = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")

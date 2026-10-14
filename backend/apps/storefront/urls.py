@@ -34,6 +34,7 @@ urlpatterns = [
     path("auth/change-password/", account.ChangePasswordView.as_view(), name="change-password"),
     path("auth/delete-account/", account.DeleteAccountView.as_view(), name="delete-account"),
     path("me/", account.ProfileView.as_view(), name="me"),
+    path("account/balance/", account.AccountBalanceView.as_view(), name="account-balance"),
     path("devices/", account.DeviceView.as_view(), name="devices"),
     # Shop
     path("categories/", catalog.CategoryListView.as_view(), name="categories"),
@@ -73,6 +74,10 @@ urlpatterns = [
     path("orders/<str:reference>/", orders.OrderDetailView.as_view(), name="order"),
     path("orders/<str:reference>/cancel/", orders.OrderCancelView.as_view(), name="order-cancel"),
     path("orders/<str:reference>/pay/", orders.OrderPayView.as_view(), name="order-pay"),
+    path("orders/<str:reference>/invoice/", orders.OrderDocumentView.as_view(), {"kind": "invoice"},
+         name="order-invoice"),
+    path("orders/<str:reference>/receipt/", orders.OrderDocumentView.as_view(), {"kind": "receipt"},
+         name="order-receipt"),
     path("orders/<str:reference>/check-payment/", orders.OrderPaymentCheckView.as_view(), name="order-check-payment"),
     path("orders/<str:reference>/returns/", engagement.OrderReturnsView.as_view(), name="order-returns"),
     path("orders/<str:reference>/delivery-photos/<int:photo_id>/", orders.OrderDeliveryPhotoView.as_view(),
@@ -99,6 +104,7 @@ urlpatterns = [
     path("requests/<int:pk>/decline/", requests.QuoteDeclineView.as_view(), name="request-decline"),
     path("support/messages/", requests.SupportChatView.as_view(), name="support-messages"),
     path("support/rooms/", requests.SupportRoomListView.as_view(), name="support-rooms"),
+    path("support/attachments/<int:pk>/", requests.SupportAttachmentView.as_view(), name="support-attachment"),
     # Seller (vendor) area — the signed-in account's own store only
     path("seller/store/", seller.ApplicationView.as_view(), name="seller-store"),
     path("seller/store/<store_media:kind>/", seller.StoreMediaUploadView.as_view(), name="seller-store-media"),

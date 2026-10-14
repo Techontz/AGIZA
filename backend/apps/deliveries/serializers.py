@@ -5,8 +5,9 @@ from apps.accounts.constants import StaffLevel
 from apps.accounts.models import User
 from apps.core.workflow import allowed_next
 from apps.locations.models import City, Warehouse
+from apps.orders import services as order_services
 from apps.orders.models import Order
-from apps.orders.serializers import _person
+from apps.orders.serializers import _dec, _person, release_payload
 from apps.orders.workflows import status_label
 
 from .models import (
@@ -82,6 +83,7 @@ class DeliverySerializer(serializers.ModelSerializer):
     proof = serializers.SerializerMethodField()
     items = serializers.SerializerMethodField()
     allowed_transitions = serializers.SerializerMethodField()
+    payment = serializers.SerializerMethodField()
 
     class Meta:
         model = Delivery
@@ -89,12 +91,22 @@ class DeliverySerializer(serializers.ModelSerializer):
                   "delivery_type_display", "status", "status_display", "driver", "scheduled_at", "pickup_point",
                   "pickup_warehouse", "delivery_address", "destination_city", "destination_area", "recipient_name",
                   "recipient_phone", "exception_flag", "exception_flag_display", "attempts", "notes", "delivered_at",
-                  "proof", "items", "allowed_transitions", "created_at", "updated_at"]
+                  "proof", "items", "allowed_transitions", "payment", "created_at", "updated_at"]
 
     def get_order(self, obj) -> dict:
         o = obj.order
         return {"id": o.id, "reference": o.reference, "order_type": o.order_type, "status": o.status,
                 "status_display": status_label(o.order_type, o.status)}
+
+    def get_payment(self, obj) -> dict:
+        """What the customer still owes, so the delivery team and drivers know before handing the order over:
+        `release.blocked` means it doesn't go out until an admin approves releasing it with the balance due."""
+        order = obj.order
+        cached = getattr(order, "_prefetched_objects_cache", {})
+        summary = order_services.payment_summary(
+            order, order_services.prefetched_net_paid(order) if "payments" in cached else None)
+        return {"total": _dec(summary.total), "paid": _dec(summary.paid), "due": _dec(summary.due),
+                "status": summary.status, "currency": order.currency, "release": release_payload(order, summary)}
 
     def get_source(self, obj) -> str:
         return SOURCE.get(obj.order.order_type, "local_delivery")

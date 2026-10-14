@@ -164,3 +164,13 @@ class DeviceView(CustomerAPIView):
             "is_active": True,
             "last_seen_at": timezone.now()})
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(tags=["app: account"], responses=OpenApiTypes.OBJECT)
+class AccountBalanceView(CustomerAPIView):
+    """My balance with AGIZA: what I still owe on my orders, my credit with AGIZA, and the net."""
+
+    def get(self, request):
+        from apps.finance.services import account_statement
+
+        return Response(account_statement(self.customer, transactions=20))

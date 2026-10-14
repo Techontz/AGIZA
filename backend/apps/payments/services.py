@@ -48,16 +48,18 @@ def _checkout_reference(order: Order) -> str:
     return details.checkout_reference if details else ""
 
 
-def start_checkout(order: Order, *, phone: str, together: bool = False) -> GatewayPayment:
+def start_checkout(order: Order, *, phone: str, together: bool = False, amount: Decimal | None = None) -> GatewayPayment:
     """Open Selcom's checkout for what is due on the order — or, with `together`, on every order of its
-    checkout (one cart split into an order per product), paid in one go right after ordering."""
-    group = _checkout_reference(order) if together else ""
+    checkout (one cart split into an order per product), paid in one go right after ordering.
+    `amount` pays only part of the order's balance (the customer reduces what they owe at any time)."""
+    group = _checkout_reference(order) if together and amount is None else ""
     if group:
         return _start(order, phone=phone, orders=_together(order), label=group)
-    return _start(order, phone=phone, orders=[order], label=order.reference)
+    return _start(order, phone=phone, orders=[order], label=order.reference, part=amount)
 
 
-def _start(order: Order, *, phone: str, orders: list[Order], label: str) -> GatewayPayment:
+def _start(order: Order, *, phone: str, orders: list[Order], label: str,
+           part: Decimal | None = None) -> GatewayPayment:
     if not available():
         raise WorkflowError("Mobile money payment isn't available right now. Choose Pay later.", conflict=True)
     if order.status == "cancelled":
@@ -68,6 +70,8 @@ def _start(order: Order, *, phone: str, orders: list[Order], label: str) -> Gate
     if not due or due <= 0:
         raise WorkflowError("This order has nothing left to pay.", conflict=True)
     amount = due.quantize(Decimal("1"))  # Selcom takes whole shillings
+    if part is not None:
+        amount = min(part.quantize(Decimal("1")), amount)
     recent = (GatewayPayment.objects.filter(order=order, status=GatewayPayment.Status.PENDING, amount=amount,
                                             created_at__gte=timezone.now() - REUSE_PENDING_FOR)
               .exclude(gateway_url="").first())

@@ -8,6 +8,8 @@ DeliveryEvent and an audit entry, and keeps the order in step:
     Assigned Driver, picked up → Out for Delivery, delivered → Delivered);
     completing an express delivery here requires the order to have Arrived.
   - Returned → a Return is opened for the order.
+  - an order with a balance due goes out (Out for Delivery / Delivered) only once an admin approved
+    releasing it with that balance (orders.services.release_blocked).
 """
 from __future__ import annotations
 
@@ -33,6 +35,15 @@ from .models import (
 )
 
 D = DeliveryStatus
+
+
+def _check_paid(delivery: Delivery):
+    order = delivery.order
+    due = order_services.release_blocked(order)
+    if due:
+        raise WorkflowError(
+            f"{order.reference} still has {due:,.0f} {order.currency} due. It goes out once the customer pays "
+            "or an admin approves releasing it with the balance due.", conflict=True)
 
 
 def _lock(delivery: Delivery) -> Delivery:
@@ -231,6 +242,8 @@ def transition(delivery: Delivery, to_status: str, *, user, note: str = "", exce
         fields.append("scheduled_at")
     if to_status == D.OUT_FOR_DELIVERY and not delivery.driver_id:
         raise WorkflowError("Assign a driver first.", conflict=True)
+    if to_status == D.OUT_FOR_DELIVERY:
+        _check_paid(delivery)
     if to_status == D.CANCELLED and delivery.order.order_type == OrderType.EXPRESS:
         raise WorkflowError("Cancel express deliveries by cancelling the order in Express Delivery.", conflict=True)
     _set_status(delivery, to_status, user, note, request, fields)
@@ -250,6 +263,7 @@ def complete(delivery: Delivery, *, user, signature_name: str, notes: str = "", 
     if not signature_name.strip():
         raise WorkflowError("Enter the name of the person who received the delivery.", field="signature_name")
     order = order_services._lock(delivery.order)
+    _check_paid(delivery)
     completed_at = completed_at or timezone.now()
     DeliveryProof.objects.create(
         delivery=delivery, signature_name=signature_name.strip(), signature_image=signature_image or "",

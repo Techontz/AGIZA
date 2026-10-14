@@ -8,6 +8,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.catalog.models import Category, Product, ProductVariant
@@ -510,6 +511,42 @@ def order_group(order: Order) -> str:
     return "completed" if order.status in TERMINAL_STATUSES else ACTIVE_GROUP
 
 
+def customer_can_pay(order: Order, summary) -> bool:
+    """The customer may pay (all or part of) what's still due with mobile money, at any time."""
+    from apps.payments import services as payments
+
+    fee_pending = order.order_type == OrderType.SHOP and getattr(order, "shop", None) is not None \
+        and order.shop.delivery_fee_pending
+    return (payments.available() and order.status != "cancelled" and bool(summary.due) and summary.due > 0
+            and not payments.payment_deadline_passed(order) and not fee_pending)
+
+
+def expected_delivery(order: Order) -> dict | None:
+    """When the customer can expect the order: a date where AGIZA set one, else the checkout estimate text.
+    `delivered_at` once it has arrived."""
+    if order.status == "cancelled":
+        return None
+    delivered = next((d.delivered_at for d in order.deliveries.all() if d.delivered_at), None) \
+        if order.status in ("delivered", "completed") else None
+    when, text = None, ""
+    if order.order_type == OrderType.INTERNATIONAL:
+        when = order.international.estimated_delivery
+    elif order.order_type == OrderType.EXPRESS:
+        at = order.express.estimated_delivery_at
+        when = timezone.localdate(at) if at else None
+    elif order.order_type == OrderType.EQUIPMENT:
+        at = order.equipment.expected_date
+        when = timezone.localdate(at) if at else None
+    elif order.order_type == OrderType.SHOP:
+        scheduled = [d.scheduled_at for d in order.deliveries.all() if d.scheduled_at and d.status != "cancelled"]
+        when = timezone.localdate(max(scheduled)) if scheduled else None
+        text = order.shop.estimated_delivery
+    if not (when or text or delivered):
+        return None
+    return {"date": when.isoformat() if when else None, "text": text or None,
+            "delivered_at": delivered.isoformat() if delivered else None}
+
+
 class OrderCardSerializer(serializers.ModelSerializer):
     type = serializers.CharField(source="order_type")
     type_display = serializers.CharField(source="get_order_type_display")
@@ -519,11 +556,32 @@ class OrderCardSerializer(serializers.ModelSerializer):
     payment_status = serializers.SerializerMethodField()
     image = serializers.SerializerMethodField()
     delivery_fee_pending = serializers.SerializerMethodField()
+    amount_due = serializers.SerializerMethodField()
+    can_pay = serializers.SerializerMethodField()
+    expected_delivery = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = ["reference", "type", "type_display", "status", "status_display", "group", "item_details",
-                  "total", "currency", "payment_status", "image", "created_at", "delivery_fee_pending"]
+                  "total", "currency", "payment_status", "amount_due", "can_pay", "expected_delivery", "image",
+                  "created_at", "delivery_fee_pending"]
+
+    def _summary(self, order):
+        from apps.orders.services import payment_summary, prefetched_net_paid
+
+        if not hasattr(order, "_app_summary"):
+            order._app_summary = payment_summary(order, paid=prefetched_net_paid(order))
+        return order._app_summary
+
+    def get_amount_due(self, order) -> str | None:
+        due = self._summary(order).due
+        return str(due) if due and due > 0 and order.status != "cancelled" else None
+
+    def get_can_pay(self, order) -> bool:
+        return customer_can_pay(order, self._summary(order))
+
+    def get_expected_delivery(self, order) -> dict | None:
+        return expected_delivery(order)
 
     def get_delivery_fee_pending(self, order) -> bool:
         """Waiting for AGIZA to set the delivery cost (manual quote): the order can't be paid yet."""
@@ -537,9 +595,7 @@ class OrderCardSerializer(serializers.ModelSerializer):
         return order_group(order)
 
     def get_payment_status(self, order) -> str:
-        from apps.orders.services import payment_summary, prefetched_net_paid
-
-        return payment_summary(order, paid=prefetched_net_paid(order)).status
+        return self._summary(order).status
 
     def get_image(self, order) -> str | None:
         if order.order_type != OrderType.SHOP:
@@ -649,4 +705,7 @@ class CancelSerializer(serializers.Serializer):
 
 
 class ChatSendSerializer(serializers.Serializer):
-    body = serializers.CharField(max_length=2000)
+    body = serializers.CharField(max_length=2000, required=False, allow_blank=True, default="")
+    # A photo, document or voice note (multipart); `duration_ms` for voice notes.
+    file = serializers.FileField(required=False)
+    duration_ms = serializers.IntegerField(required=False, min_value=0, max_value=30 * 60 * 1000)
