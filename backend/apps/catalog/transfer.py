@@ -29,7 +29,7 @@ from .serializers import ProductWriteSerializer
 COLUMNS = [
     "sku", "name", "category", "subcategory", "brand", "status", "condition", "price", "compare_at_price",
     "purchase_cost", "stock", "location", "origin_country", "weight_kg", "length_cm", "width_cm", "height_cm",
-    "featured", "keywords", "description",
+    "featured", "keywords", "video_url", "description",
 ]
 # Export-only (ignored on import).
 INFO_COLUMNS = ["seller", "has_variations", "uploaded"]
@@ -60,7 +60,7 @@ def export_csv(products) -> bytes:
             _stock(p), p.location.code if p.location_id else "",
             p.origin_country.iso2 if p.origin_country_id else "",
             p.weight_kg or "", p.length_cm or "", p.width_cm or "", p.height_cm or "",
-            "yes" if p.featured else "no", p.keywords, p.description,
+            "yes" if p.featured else "no", p.keywords, p.video_url, p.description,
             p.vendor.name if p.vendor_id else "AGIZA",
             "yes" if p.has_variations else "no",
             f"{p.created_at:%Y-%m-%d}",
@@ -75,6 +75,7 @@ def template_csv() -> bytes:
     writer.writerow(COLUMNS)
     writer.writerow(["SAMSUNG-A54-128", "Samsung Galaxy A54 128GB", "Phones", "", "Samsung", "active", "new",
                      "850000", "950000", "700000", "10", "", "CN", "0.4", "", "", "", "no", "samsung, simu",
+                     "https://www.youtube.com/shorts/aqz-KE-bpKQ",
                      "Brand new, 1 year warranty"])
     return out.getvalue().encode("utf-8")
 
@@ -179,7 +180,7 @@ def _payload(row: dict, product: Product | None) -> dict:
         if value not in TRUE | FALSE:
             raise WorkflowError("featured: write yes or no.", field="featured")
         data["featured"] = value in TRUE
-    for column in ("keywords", "description"):
+    for column in ("keywords", "description", "video_url"):
         if column in row:
             data[column] = row[column]
     if row.get("stock", "") != "" and not (product and product.has_variations):

@@ -95,6 +95,19 @@ export type ProductDetail = ProductCard & {
   ready_to_ship_days: number;
   allow_chat: boolean;
   rating_distribution?: Record<string, number>;
+  /** The floating product video (null without one). */
+  video?: ProductVideo | null;
+};
+
+/** A product video link: YouTube / TikTok play in their own players; Instagram opens the original. */
+export type ProductVideo = {
+  provider: "youtube" | "tiktok" | "instagram";
+  id: string;
+  url: string;
+  embed_url: string | null;
+  thumbnail_url: string | null;
+  embeddable: boolean;
+  vertical: boolean;
 };
 
 export type CartLine = {

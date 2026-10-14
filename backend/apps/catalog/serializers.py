@@ -337,6 +337,7 @@ class ProductDetailSerializer(ProductListSerializer):
     volumetric_kg = serializers.SerializerMethodField()
     relations = serializers.SerializerMethodField()
     location_stock = serializers.SerializerMethodField()
+    video = serializers.SerializerMethodField()
 
     class Meta(ProductListSerializer.Meta):
         fields = [*ProductListSerializer.Meta.fields, "subcategory", "condition", "condition_description",
@@ -346,7 +347,12 @@ class ProductDetailSerializer(ProductListSerializer):
                   "variation_options", "variants", "specifications", "vendor", "vendor_sku", "vendor_location",
                   "vendor_profit_type", "vendor_profit_value", "ofa_kali", "allow_save", "allow_chat", "keywords",
                   "gift_eligible", "relations", "tax_category", "vat_applicable", "images", "location_stock",
-                  "created_at"]
+                  "video_url", "video", "created_at"]
+
+    def get_video(self, obj) -> dict | None:
+        from .video import payload
+
+        return payload(obj.video_url)
 
     def get_subcategory(self, obj) -> dict | None:
         return _ref(obj.subcategory, "name")
@@ -418,6 +424,24 @@ class VariantWriteSerializer(serializers.Serializer):
     stock = serializers.IntegerField(min_value=0, required=False, allow_null=True)
 
 
+class VideoUrlField(serializers.CharField):
+    """A product video link: checked and stored in its canonical form ("" removes the video)."""
+
+    def __init__(self, **kwargs):
+        super().__init__(max_length=500, required=False, allow_blank=True, **kwargs)
+
+    def to_internal_value(self, data):
+        from .video import VideoUrlError, parse
+
+        text = super().to_internal_value(data).strip()
+        if not text:
+            return ""
+        try:
+            return parse(text).url
+        except VideoUrlError as exc:
+            raise serializers.ValidationError(str(exc)) from None
+
+
 class ProductWriteSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=200)
     sku = serializers.CharField(max_length=64)
@@ -456,6 +480,7 @@ class ProductWriteSerializer(serializers.Serializer):
                                                            required=False)
     variants = VariantWriteSerializer(many=True, required=False)
     description = serializers.CharField(required=False, allow_blank=True)
+    video_url = VideoUrlField()
     specifications = SpecSerializer(many=True, required=False)
     vendor = serializers.PrimaryKeyRelatedField(queryset=Vendor.objects.all(), required=False, allow_null=True)
     vendor_sku = serializers.CharField(max_length=64, required=False, allow_blank=True)

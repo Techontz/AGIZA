@@ -99,6 +99,9 @@ export type SellerProductDetail = SellerProduct & {
   condition_description: string;
   description: string;
   keywords: string;
+  /** Product video link (YouTube, TikTok or Instagram); "" without one. */
+  video_url?: string;
+  video?: { provider: 'youtube' | 'tiktok' | 'instagram'; url: string; embeddable: boolean } | null;
   weight_kg: string | null;
   length_cm: string | null;
   width_cm: string | null;
@@ -119,6 +122,7 @@ export type SellerProductInput = {
   compare_at_price?: string | null;
   weight_kg?: string;
   keywords?: string;
+  video_url?: string;
   status?: 'draft' | 'active' | 'inactive';
   stock?: number;
   specifications?: { name: string; value: string }[];

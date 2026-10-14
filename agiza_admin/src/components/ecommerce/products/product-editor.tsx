@@ -33,6 +33,7 @@ import {
 } from "@/lib/api/services/products";
 import { cn } from "@/lib/cn";
 import { formatTSh } from "@/lib/format";
+import { detectVideoProvider, VIDEO_PROVIDER_LABEL } from "@/lib/video";
 
 import { ReviewStatusBadge } from "../marketplace-ui";
 
@@ -847,6 +848,30 @@ function EditorForm({ product, onClose }: { product: ProductDetail | null; onClo
           <div className="space-y-4">
             <SI label="Description" htmlFor={f("desc")} hint="Displayed on the customer product page" error={errors.description}>
               <FTA id={f("desc")} rows={3} value={form.description} onChange={(e) => set("description", e.target.value)} />
+            </SI>
+            <SI
+              label="Product Video (optional)"
+              htmlFor={f("video")}
+              hint="YouTube, TikTok or Instagram link. Shown as a small video over the product photo; clear the field to remove it."
+              error={errors.video_url}
+            >
+              <FI
+                id={f("video")}
+                type="url"
+                inputMode="url"
+                value={form.video_url}
+                onChange={(e) => set("video_url", e.target.value)}
+                placeholder="https://www.youtube.com/shorts/… or https://www.tiktok.com/@name/video/…"
+                maxLength={500}
+                invalid={!!errors.video_url}
+              />
+              {form.video_url.trim() && (
+                <p className={`text-xs mt-1 ${detectVideoProvider(form.video_url) ? "text-green-700" : "text-amber-700"}`}>
+                  {detectVideoProvider(form.video_url)
+                    ? `✓ ${VIDEO_PROVIDER_LABEL[detectVideoProvider(form.video_url)!]} link`
+                    : "Not a YouTube, TikTok or Instagram link"}
+                </p>
+              )}
             </SI>
             <div data-error={errors.specifications ? "true" : undefined}>
               <p className="block text-sm font-semibold text-gray-700 mb-2">

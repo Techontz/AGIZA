@@ -24,7 +24,7 @@ from apps.core.workflow import WorkflowError
 from .models import MarketplaceSettings
 
 VENDOR_STATUSES = {ProductStatus.DRAFT, ProductStatus.ACTIVE, ProductStatus.INACTIVE}
-REVIEWED_FIELDS = {"name", "description", "category", "subcategory", "brand", "condition", "condition_description",
+REVIEWED_FIELDS = {"name", "description", "video_url", "category", "subcategory", "brand", "condition", "condition_description",
                    "specifications", "has_variations"}
 
 

@@ -78,7 +78,20 @@ export type Variant = {
   options: { option: string; value: string }[];
 };
 
+/** A product video link: YouTube / TikTok play in their own players; Instagram opens the original. */
+export type ProductVideo = {
+  provider: 'youtube' | 'tiktok' | 'instagram';
+  id: string;
+  url: string;
+  embed_url: string | null;
+  thumbnail_url: string | null;
+  embeddable: boolean;
+  vertical: boolean;
+};
+
 export type ProductDetail = ProductCard & {
+  /** The floating product video (null without one). */
+  video?: ProductVideo | null;
   /** Shown under the product: staff picks, then same category / bought in the same orders. */
   related?: ProductCard[];
   bought_together?: ProductCard[];

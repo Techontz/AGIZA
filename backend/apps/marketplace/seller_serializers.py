@@ -10,6 +10,8 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.catalog.models import Brand, Category, Condition, Product, Vendor
+from apps.catalog.serializers import VideoUrlField
+from apps.catalog.video import payload as video_payload
 from apps.locations.models import City
 from apps.storefront.serializers import money
 
@@ -127,6 +129,7 @@ class SellerProductWriteSerializer(serializers.Serializer):
     height_cm = serializers.DecimalField(max_digits=8, decimal_places=1, min_value=Decimal("0"), required=False,
                                          allow_null=True)
     keywords = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    video_url = VideoUrlField()
     ready_to_ship_days = serializers.IntegerField(min_value=0, max_value=60, required=False)
     status = serializers.ChoiceField(choices=["draft", "active", "inactive"], required=False)
     stock = serializers.IntegerField(min_value=0, max_value=100000, required=False,
@@ -184,6 +187,7 @@ def seller_product_payload(product: Product, request, *, stock: dict | None = No
         body.update({
             "condition": product.condition, "condition_description": product.condition_description,
             "description": product.description, "keywords": product.keywords,
+            "video_url": product.video_url, "video": video_payload(product.video_url),
             "weight_kg": str(product.weight_kg) if product.weight_kg is not None else None,
             "length_cm": str(product.length_cm) if product.length_cm is not None else None,
             "width_cm": str(product.width_cm) if product.width_cm is not None else None,

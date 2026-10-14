@@ -105,7 +105,7 @@ export default async function ProductPage({ params }: Props) {
 
       {/* agizastore.com: photos | details and buying | the service box */}
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_290px]">
-        <Gallery images={product.images} name={product.name} />
+        <Gallery images={product.images} name={product.name} video={product.video} productId={product.id} />
 
         <div>
           <div className="flex items-start justify-between gap-3 border-b border-line pb-4">

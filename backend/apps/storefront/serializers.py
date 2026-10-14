@@ -286,11 +286,18 @@ class ProductDetailSerializer(ProductCardSerializer):
     subcategory = serializers.CharField(source="subcategory.name", default=None)
     condition_display = serializers.CharField(source="get_condition_display")
     shipping_methods = serializers.SerializerMethodField()
+    video = serializers.SerializerMethodField()
 
     class Meta(ProductCardSerializer.Meta):
         fields = [*ProductCardSerializer.Meta.fields, "description", "condition_display", "condition_description",
                   "subcategory", "images", "variants", "specifications", "shipping_methods", "ready_to_ship_days",
-                  "allow_chat"]
+                  "allow_chat", "video"]
+
+    def get_video(self, product) -> dict | None:
+        """The floating product video (embed link, or a preview that opens the original); None without one."""
+        from apps.catalog.video import payload
+
+        return payload(product.video_url)
 
     def get_images(self, product) -> list[str]:
         request = self.context.get("request")

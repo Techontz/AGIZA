@@ -59,6 +59,7 @@ export function ProductEditor({
     compare_at_price: num(product?.compare_at_price),
     weight_kg: num(product?.weight_kg),
     keywords: product?.keywords ?? '',
+    video_url: product?.video_url ?? '',
     stock: String(product ? product.stock : 0),
   });
   const [category, setCategory] = useState<number | null>(product?.category ?? null);
@@ -92,6 +93,7 @@ export function ProductEditor({
         compare_at_price: form.compare_at_price.trim() || null,
         weight_kg: form.weight_kg.trim(),
         keywords: form.keywords,
+        video_url: form.video_url.trim(),
         status,
         has_variations: hasVariations,
         specifications: specs.filter((s) => s.name.trim() && s.value.trim()).map(({ name, value }) => ({ name: name.trim(), value: value.trim() })),
@@ -171,6 +173,23 @@ export function ProductEditor({
           editable={!locked}
         />
         <Input label="Description" value={form.description} onChangeText={set('description')} maxLength={5000} multiline error={f('description')} editable={!locked} />
+        <Input
+          label="Product video (optional)"
+          value={form.video_url}
+          onChangeText={set('video_url')}
+          placeholder="Paste a YouTube, TikTok or Instagram link"
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          maxLength={500}
+          error={f('video_url')}
+          hint={
+            form.video_url.trim()
+              ? 'Shown as a small video over your product photo. Clear the field to remove it.'
+              : 'Customers see it as a small video over your product photo.'
+          }
+          editable={!locked}
+        />
       </Card>
 
       <Card style={styles.card}>

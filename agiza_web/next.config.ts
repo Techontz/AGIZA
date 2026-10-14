@@ -13,13 +13,16 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || vercelSiteUrl;
 /**
  * Content Security Policy. Browsers only talk to this Next.js server: Django is reached
  * server-side (pages, /api/proxy) and product images are served from /img/* (optimised by
- * next/image), so nothing else needs to be allowed.
+ * next/image). The only outside sources are product videos: YouTube's no-cookie and TikTok's
+ * players in an iframe, and YouTube's thumbnails.
  */
 const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  // Product videos (catalog/video.py): YouTube thumbnails, and the providers' own players.
+  "img-src 'self' data: blob: https://i.ytimg.com",
+  "frame-src https://www.youtube-nocookie.com https://www.tiktok.com",
   "font-src 'self' data:",
   "connect-src 'self'",
   "frame-ancestors 'none'",

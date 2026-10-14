@@ -82,6 +82,7 @@ export interface ProductForm {
   allow_save: boolean;
   allow_chat: boolean;
   keywords: string;
+  video_url: string;
   labels: number[];
   related_products: ProductRelationRef[];
   bought_together: ProductRelationRef[];
@@ -145,6 +146,7 @@ export function emptyForm(): ProductForm {
     allow_save: true,
     allow_chat: true,
     keywords: "",
+    video_url: "",
     labels: [],
     related_products: [],
     bought_together: [],
@@ -219,6 +221,7 @@ export function formFromDetail(p: ProductDetail): ProductForm {
     allow_save: p.allow_save,
     allow_chat: p.allow_chat,
     keywords: p.keywords,
+    video_url: p.video_url ?? "",
     labels: p.labels.map((l) => l.id),
     related_products: [...p.relations.related_products],
     bought_together: [...p.relations.bought_together],
@@ -301,6 +304,7 @@ export function toPayload(f: ProductForm, isNew: boolean): ProductWrite {
     allow_save: f.allow_save,
     allow_chat: f.allow_chat,
     keywords: f.keywords.trim(),
+    video_url: f.video_url.trim(),
     labels: f.labels,
     related_products: f.related_products.map((p) => p.id),
     bought_together: f.bought_together.map((p) => p.id),

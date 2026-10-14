@@ -50,3 +50,22 @@ def test_pushes_go_to_the_matching_app_only(vendor_a):
         assert thread.call_args.kwargs["args"][0] == [SELLER_TOKEN]
         push.notify_customer(customer, title="Your order", body="y")
         assert thread.call_args.kwargs["args"][0] == [CUSTOMER_TOKEN]
+
+
+def test_seller_adds_updates_and_removes_a_product_video(vendor_a, staff):
+    from apps.catalog.models import ReviewStatus
+
+    from .conftest import SELLER
+
+    url = f"{SELLER}/products/{vendor_a.product.pk}/"
+    bad = vendor_a.client.patch(url, {"video_url": "https://example.com/video.mp4"}, format="json")
+    assert bad.status_code == 400
+    res = vendor_a.client.patch(url, {"video_url": "https://www.tiktok.com/@vendora/video/7231338487075638570"},
+                                format="json")
+    assert res.status_code == 200, res.json()
+    body = vendor_a.client.get(url).json()
+    assert body["video"]["provider"] == "tiktok" and body["video"]["embeddable"] is True
+    vendor_a.product.refresh_from_db()
+    assert vendor_a.product.review_status == ReviewStatus.PENDING  # a new video is checked like other content
+    vendor_a.client.patch(url, {"video_url": ""}, format="json")
+    assert vendor_a.client.get(url).json()["video"] is None

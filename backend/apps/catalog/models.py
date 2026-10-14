@@ -384,6 +384,9 @@ class Product(TimeStampedModel):
     variation_options = models.ManyToManyField(ProductOption, blank=True, related_name="products")
     # 8. Description
     description = models.TextField(blank=True)
+    # Product video: a YouTube / TikTok / Instagram link (catalog.video), shown as the floating player.
+    video_url = models.CharField(max_length=500, blank=True)
+    video_provider = models.CharField(max_length=10, blank=True, editable=False)
     # 9. Vendor / source
     vendor = models.ForeignKey(Vendor, null=True, blank=True, on_delete=models.PROTECT, related_name="products")
     vendor_sku = models.CharField(max_length=64, blank=True)
@@ -433,10 +436,13 @@ class Product(TimeStampedModel):
         if not self.reference:
             self.reference = next_reference("PROD", width=3)
         from .search import product_search_text
+        from .video import payload as video_payload
 
         self.search_text = product_search_text(self)
+        video = video_payload(self.video_url)
+        self.video_provider = video["provider"] if video else ""
         if kwargs.get("update_fields") is not None:
-            kwargs["update_fields"] = {*kwargs["update_fields"], "search_text"}
+            kwargs["update_fields"] = {*kwargs["update_fields"], "search_text", "video_provider"}
         super().save(*args, **kwargs)
 
     @property

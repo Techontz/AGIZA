@@ -8,6 +8,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { DeliveryCalculator } from '@/components/delivery-calculator';
 import { ProductReviews } from '@/components/product-reviews';
+import { FloatingVideo } from '@/components/floating-video';
 import { ProductImage, ProductTile } from '@/components/product-tile';
 import { RatingSummaryLine } from '@/components/rating';
 import { SellerRow } from '@/components/store';
@@ -164,6 +165,14 @@ export default function ProductScreen() {
               <ProductImage uri={null} />
             </View>
           )}
+          {p.video ? (
+            <FloatingVideo
+              key={p.id}
+              video={p.video}
+              galleryWidth={width}
+              bottom={p.images.length > 1 ? space.xxxl + space.sm + 36 : space.xxxl + space.sm}
+            />
+          ) : null}
           {p.images.length > 1 ? (
             <View style={styles.counter}>
               <Text variant="caption" color="#FFFFFF" style={styles.counterText}>

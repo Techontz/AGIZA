@@ -173,6 +173,9 @@ export interface ProductDetail extends ProductRow {
   allow_save: boolean;
   allow_chat: boolean;
   keywords: string;
+  video_url: string;
+  /** The floating product video as customers see it (null without one). */
+  video: ProductVideo | null;
   gift_eligible: boolean;
   relations: {
     related_products: ProductRelationRef[];
@@ -248,6 +251,7 @@ export interface ProductWrite {
   allow_save: boolean;
   allow_chat: boolean;
   keywords: string;
+  video_url: string;
   labels: number[];
   related_products: number[];
   bought_together: number[];
@@ -343,6 +347,17 @@ export interface DeliveryEstimate {
 }
 
 /* ------------------------------------------------------------------ api */
+
+/** Product video (YouTube / TikTok embeds; Instagram opens the original). */
+export interface ProductVideo {
+  provider: "youtube" | "tiktok" | "instagram";
+  id: string;
+  url: string;
+  embed_url: string | null;
+  thumbnail_url: string | null;
+  embeddable: boolean;
+  vertical: boolean;
+}
 
 const P = "catalog/products";
 

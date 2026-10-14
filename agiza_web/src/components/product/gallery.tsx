@@ -2,18 +2,21 @@
 
 import { useState } from "react";
 
+import type { ProductVideo } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
 
+import { FloatingVideo } from "./floating-video";
 import { ProductImage } from "./product-image";
 
 /** agizastore.com: thumbnails in a column on the left of the main photo (a row under it on phones). */
-export function Gallery({ images, name }: { images: string[]; name: string }) {
+export function Gallery({ images, name, video, productId }: { images: string[]; name: string; video?: ProductVideo | null; productId?: number }) {
   const [index, setIndex] = useState(0);
   const current = images[index] ?? null;
   return (
     <div className="flex flex-col gap-3 sm:flex-row-reverse">
       <div className="relative aspect-square w-full overflow-hidden bg-surface sm:flex-1">
         <ProductImage src={current} alt={name} priority sizes="(min-width: 1280px) 520px, (min-width: 640px) 60vw, 100vw" iconClass="size-14" className="object-contain" />
+        {video && productId ? <FloatingVideo video={video} productId={productId} /> : null}
       </div>
       {images.length > 1 ? (
         <ul className="no-scrollbar flex gap-2 overflow-x-auto sm:w-[60px] sm:flex-col sm:overflow-visible" aria-label="Product photos">
