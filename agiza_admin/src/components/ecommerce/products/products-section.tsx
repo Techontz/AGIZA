@@ -1,7 +1,7 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Clock, Edit, Eye, Image as ImageIcon, Package, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Clock, Download, Edit, Eye, Image as ImageIcon, Package, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -30,6 +30,7 @@ import { formatDate } from "@/lib/format";
 
 import { ReviewStatusBadge, SellerKindTag } from "../marketplace-ui";
 
+import { ProductImportDialog } from "./import-dialog";
 import { LABEL_COLORS, ProductEditor } from "./product-editor";
 import { ProductModerationButtons } from "./product-moderation";
 
@@ -105,6 +106,7 @@ export function ProductsSection() {
   const editorId = f.product === "new" ? null : f.product ? Number(f.product) : undefined;
 
   /* ---- delete (409 → offer Inactive) ---- */
+  const [importing, setImporting] = useState(false);
   const [toDelete, setToDelete] = useState<ProductRow | null>(null);
   const [relisting, setRelisting] = useState<ProductRow | null>(null);
   const [relistDate, setRelistDate] = useState("");
@@ -141,8 +143,26 @@ export function ProductsSection() {
 
   return (
     <div>
-      {canEdit && (
-        <div className="flex justify-end mb-6">
+      <div className="flex flex-wrap justify-end gap-3 mb-6">
+        <a
+          href={productsApi.exportUrl(query)}
+          className="bg-white border border-gray-300 text-gray-700 px-5 py-3 rounded-lg hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
+          title="Download the products in this list (search and filters applied) as CSV / Excel"
+        >
+          <Download className="size-5" />
+          Export
+        </a>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => setImporting(true)}
+            className="bg-white border border-gray-300 text-gray-700 px-5 py-3 rounded-lg hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
+          >
+            <Upload className="size-5" />
+            Import
+          </button>
+        )}
+        {canEdit && (
           <button
             type="button"
             onClick={() => openEditor("new")}
@@ -151,8 +171,9 @@ export function ProductsSection() {
             <Plus className="size-5" />
             Add New Product
           </button>
-        </div>
-      )}
+        )}
+      </div>
+      <ProductImportDialog open={importing} onClose={() => setImporting(false)} />
 
       {pendingCount > 0 && f.review !== "pending" && (
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">

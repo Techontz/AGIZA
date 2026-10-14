@@ -207,3 +207,53 @@ def test_sliders_managed_through_settings_or_ecommerce(client_for):
     assert client_for(StaffLevel.PROCUREMENT).get(f"{C}/sliders/").status_code == 403
     _set_access(StaffLevel.DRIVER, settings="manage")
     assert client_for(StaffLevel.DRIVER).get(f"{C}/sliders/").status_code == 403
+
+
+def csv_file(text: str, name="products.csv"):
+    return SimpleUploadedFile(name, text.encode("utf-8"), content_type="text/csv")
+
+
+def test_products_export_template_and_import(ecom, cats, dar_wh, client_for):
+    ecom.post(f"{C}/products/", product_payload(cats, stock=5, location=dar_wh.id), format="json")
+    res = ecom.get(f"{C}/products/export/")
+    assert res.status_code == 200 and res["Content-Type"].startswith("text/csv")
+    text = res.content.decode("utf-8-sig")
+    header, row = text.splitlines()[:2]
+    assert header.startswith("sku,name,category,subcategory,brand,status")
+    assert row.startswith("ELEC-SAM-A54,Samsung Galaxy A54 5G,Electronics,Smartphones,") and ",5," in row
+    assert "sku," in ecom.get(f"{C}/products/export/?template=1").content.decode("utf-8-sig")
+    assert ecom.get(f"{C}/products/export/?search=nothing-matches").content.decode("utf-8-sig").count("\n") == 1
+
+    sheet = (
+        "sku,name,category,subcategory,brand,price,stock,location,origin_country,featured\n"
+        f"ELEC-SAM-A54,,,,,799000,8,{dar_wh.code},,yes\n"           # update price + stock of an existing product
+        "NEW-TV-55,Hisense 55 inch TV,Electronics,,Hisense,1200000,2,,CN,no\n"  # new one (stock needs a location)
+        "NEW-TV-43,Hisense 43 inch TV,Electronics,,Hisense,900000,,,CN,no\n"   # new one, no stock
+        "BAD-1,Thing,Toys,,,100,,,,\n"                                         # unknown category
+        "NEW-TV-43,Duplicate,Electronics,,,1,,,,\n"                            # duplicate SKU in the file
+    )
+    preview = ecom.post(f"{C}/products/import/", {"file": csv_file(sheet), "dry_run": "true"}, format="multipart")
+    assert preview.status_code == 200, preview.json()
+    body = preview.json()
+    assert body["dry_run"] is True and body["updated"] == 1 and body["created"] == 1
+    assert {e["row"] for e in body["errors"]} == {3, 5, 6}
+    assert "location" in next(e for e in body["errors"] if e["row"] == 3)["message"].lower()
+    assert "Toys" in next(e for e in body["errors"] if e["row"] == 5)["message"]
+    assert not Product.objects.filter(sku="NEW-TV-43").exists()  # the preview saved nothing
+    assert str(Product.objects.get(sku="ELEC-SAM-A54").price) == "850000.00"
+
+    done = ecom.post(f"{C}/products/import/", {"file": csv_file(sheet), "dry_run": "false"}, format="multipart")
+    assert done.json()["created"] == 1 and done.json()["updated"] == 1
+    phone = Product.objects.get(sku="ELEC-SAM-A54")
+    assert str(phone.price) == "799000.00" and phone.featured is True and phone.name == "Samsung Galaxy A54 5G"
+    assert StockItem.objects.get(variant__product=phone, warehouse=dar_wh).quantity == 8
+    tv = Product.objects.get(sku="NEW-TV-43")
+    assert tv.brand.name == "Hisense" and tv.origin_country.iso2 == "CN" and tv.status == "draft"
+    # Excel-style semicolons and a missing sku column.
+    semi = ecom.post(f"{C}/products/import/", {"file": csv_file("sku;price\nNEW-TV-43;950000\n"), "dry_run": "false"},
+                     format="multipart")
+    assert semi.json()["updated"] == 1 and str(Product.objects.get(sku="NEW-TV-43").price) == "950000.00"
+    assert ecom.post(f"{C}/products/import/", {"file": csv_file("name\nX\n")}, format="multipart").status_code == 400
+    # Viewers can export but not import.
+    viewer = client_for(StaffLevel.DRIVER)
+    assert viewer.post(f"{C}/products/import/", {"file": csv_file(sheet)}, format="multipart").status_code == 403

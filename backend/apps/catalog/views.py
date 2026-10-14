@@ -395,6 +395,35 @@ class ProductViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cr
         return Response(ProductDetailSerializer(self.get_queryset().get(pk=product.pk)).data, status=code)
 
 
+    @extend_schema(responses={(200, "text/csv"): OpenApiTypes.BINARY})
+    @action(detail=False, url_path="export")
+    def export(self, request):
+        """Products as CSV (Excel), with the same search and filters as the list."""
+        from django.http import HttpResponse
+        from django.utils import timezone
+
+        from . import transfer
+
+        qs = self.filter_queryset(self.get_queryset()).select_related("subcategory", "location")
+        if request.query_params.get("template"):
+            data, name = transfer.template_csv(), "agiza-products-template.csv"
+        else:
+            data, name = transfer.export_csv(qs), f"agiza-products-{timezone.localdate():%Y-%m-%d}.csv"
+        response = HttpResponse(data, content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = f'attachment; filename="{name}"'
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+    @extend_schema(request={"multipart/form-data": OpenApiTypes.OBJECT}, responses=OpenApiTypes.OBJECT)
+    @action(detail=False, methods=["post"], url_path="import", parser_classes=[MultiPartParser, FormParser])
+    def import_products(self, request):
+        """CSV `file`: new SKUs are created, known SKUs updated. `dry_run=true` previews without saving."""
+        from . import transfer
+
+        dry_run = str(request.data.get("dry_run", "true")).lower() in ("1", "true", "yes")
+        result = transfer.import_csv(request.FILES.get("file"), user=request.user, dry_run=dry_run, request=request)
+        return Response(result)
+
     @extend_schema(request=OpenApiTypes.OBJECT)
     @action(detail=True, methods=["post"])
     def relist(self, request, pk=None):

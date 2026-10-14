@@ -2,7 +2,7 @@
  * E-commerce products (catalog/products) plus the reference lists the
  * product editor needs. Every shape mirrors backend/apps/catalog/serializers.py.
  */
-import { api, type QueryParams } from "../client";
+import { api, buildQuery, type QueryParams } from "../client";
 import type { City, Country, Paginated } from "../types";
 
 /* ------------------------------------------------------------------ enums */
@@ -360,8 +360,26 @@ export interface ProductListQuery extends QueryParams {
   page_size?: number;
 }
 
+/** Result of a products CSV import (or its preview when `dry_run`). */
+export interface ProductImportResult {
+  rows: number;
+  created: number;
+  updated: number;
+  dry_run: boolean;
+  errors: { row: number; sku: string; message: string }[];
+}
+
 export const productsApi = {
   list: (query: ProductListQuery, signal?: AbortSignal) => api.get<Paginated<ProductRow>>(P, query, signal),
+  /** Same-origin URL of the CSV export (the list's search and filters), or of the empty template. */
+  exportUrl: (query: QueryParams, template = false) =>
+    `/api/proxy/${P}/export/${buildQuery({ ...query, page: undefined, page_size: undefined, template: template ? 1 : undefined })}`,
+  importCsv: (file: File, dryRun: boolean) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("dry_run", dryRun ? "true" : "false");
+    return api.post<ProductImportResult>(`${P}/import`, form);
+  },
   get: (id: number) => api.get<ProductDetail>(`${P}/${id}`),
   create: (data: ProductWrite) => api.post<ProductDetail>(P, data),
   update: (id: number, data: Partial<ProductWrite>) => api.patch<ProductDetail>(`${P}/${id}`, data),
