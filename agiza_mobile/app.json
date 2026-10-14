@@ -52,8 +52,7 @@
         "expo-image-picker",
         {
           "photosPermission": "AGIZA uses your photos so you can show us the product you want.",
-          "cameraPermission": false,
-          "microphonePermission": false
+          "cameraPermission": false
         }
       ],
       [
