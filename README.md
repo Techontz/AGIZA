@@ -117,6 +117,8 @@ Migrations are additive (data migrations only add rows, e.g. the procurement bac
 .venv/bin/python manage.py send_due_notifications    # every 5 min: chat follow-up reminders
 .venv/bin/python manage.py expire_unpaid_orders      # every 5 min: cancel unpaid orders with imported items past
                                                      #   their payment deadline (Shipping Engine → Settings)
+.venv/bin/python manage.py refresh_order_alerts      # hourly: flag orders stuck 3+ days in procurement or 3 days
+                                                     #   from their expected delivery date; clear flags that no longer apply
 ```
 
 ## Frontend setup
