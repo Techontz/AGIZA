@@ -7,6 +7,7 @@ import {
   LogOut,
   MapPin,
   PackageX,
+  Scale,
   Star,
   Trash2,
   UserRound,
@@ -93,6 +94,7 @@ export default function AccountScreen() {
       </View>
 
       <Card style={styles.group}>
+        <Item icon={Scale} label="My balance" href="/balance" />
         <Item icon={Bell} label="Notifications" href="/notifications" count={unread} />
         <Item icon={Heart} label="Saved products" href="/saved" />
         <Item icon={Star} label="My reviews" href="/my-reviews" />

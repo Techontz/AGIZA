@@ -1,6 +1,7 @@
 import { type PickedPhoto, shrinkPhoto } from '../shrink-photo';
 import { api } from './client';
 import type {
+  AccountBalance,
   ChatRoom,
   HomeSlider,
   WarehouseAddress,
@@ -35,6 +36,8 @@ import type {
 } from './types';
 
 export const accountApi = {
+  /** What I owe on my orders, my credit with AGIZA, and the net. */
+  balance: () => api.get<AccountBalance>('account/balance/'),
   requestCode: (phone: string, purpose: 'register' | 'reset_password') =>
     api.public<{ detail: string; sms_configured: boolean }>('auth/request-code/', { phone, purpose }),
   register: (data: { phone: string; code: string; full_name: string; email?: string; password: string }) =>
@@ -123,7 +126,9 @@ export const orderApi = {
   list: (group?: string) => api.get<Paginated<OrderCard>>('orders/', { group, page_size: 50 }),
   get: (reference: string) => api.get<OrderDetail>(`orders/${reference}/`),
   cancel: (reference: string, reason: string) => api.post<OrderDetail>(`orders/${reference}/cancel/`, { reason }),
-  pay: (reference: string) => api.post<PaymentStart>(`orders/${reference}/pay/`),
+  /** Mobile money for the whole balance, or `amount` (part of it). */
+  pay: (reference: string, amount?: string) =>
+    api.post<PaymentStart>(`orders/${reference}/pay/`, amount ? { amount } : undefined),
   checkPayment: (reference: string) =>
     api.post<{ payment: PaymentSummary; gateway: { reference: string; status: string; amount: string }[] }>(
       `orders/${reference}/check-payment/`,
@@ -173,6 +178,16 @@ export const supportApi = {
   /** `room`: '' = general AGIZA Support, or `order:<ref>`, `quote:<id>`, `return:<ref>`. */
   messages: (room = '') => api.get<{ messages: ChatMessage[] }>('support/messages/', { room: room || undefined }),
   send: (body: string, room = '') => api.post<ChatMessage>('support/messages/', { body, room }),
+  /** A photo, document or voice note (`durationMs` for voice notes), with an optional caption. */
+  sendFile: (file: { uri: string; name: string; type: string }, room = '', body = '', durationMs?: number) => {
+    const form = new FormData();
+    // React Native's FormData takes a {uri, name, type} file descriptor.
+    form.append('file', file as unknown as Blob);
+    form.append('room', room);
+    form.append('body', body);
+    if (durationMs !== undefined) form.append('duration_ms', String(Math.round(durationMs)));
+    return api.upload<ChatMessage>('support/messages/', form);
+  },
   rooms: () => api.get<{ rooms: ChatRoom[] }>('support/rooms/'),
 };
 

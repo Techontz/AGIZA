@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { ChevronRight, CircleCheck, Copy, MessageCircle, PackageX, Phone, Truck } from 'lucide-react-native';
+import { ChevronRight, CircleCheck, Copy, FileDown, MessageCircle, PackageX, Phone, Truck } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert, Linking, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 
+import { ExpectedDeliveryBanner } from '@/components/expected-delivery';
 import { PrivatePhotos } from '@/components/private-photos';
 import { ProductImage } from '@/components/product-tile';
 import { StoreAvatar, StoreName, VerifiedMark, openStore } from '@/components/store';
@@ -19,10 +20,35 @@ import { orderApi } from '@/lib/api/endpoints';
 import type { OrderDelivery, OrderDetail, OrderSeller } from '@/lib/api/types';
 import { date, dateTime, isFree, money, signedMoney } from '@/lib/format';
 import { openPaymentPage } from '@/lib/payment-page';
+import { appUrl, openPrivateFile } from '@/lib/private-file';
 import { keys } from '@/lib/query';
 import { REFUND_LABEL, refundTone, returnTone } from '@/lib/returns';
 import { openChatRoom, orderRoom } from '@/lib/chat';
 import { colors, space, themed } from '@/theme/tokens';
+
+/** Download the order's invoice / receipt PDF and open it (share sheet: save, print, send). */
+function DocumentButton({ label, path, name }: { label: string; path: string; name: string }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Button
+      title={label}
+      variant="secondary"
+      icon={<FileDown size={18} color={colors.ink} />}
+      loading={busy}
+      style={{ flex: 1 }}
+      onPress={async () => {
+        setBusy(true);
+        try {
+          await openPrivateFile(appUrl(path), name, 'application/pdf');
+        } catch {
+          Alert.alert(`Couldn't open the ${label.toLowerCase()}`, 'Check your connection and try again.');
+        } finally {
+          setBusy(false);
+        }
+      }}
+    />
+  );
+}
 
 /** Who is bringing the order (tap to call the driver) and, once delivered, who received it with the photos. */
 function DeliveryCard({ delivery: d }: { delivery: OrderDelivery }) {
@@ -242,11 +268,13 @@ function Returns({ order }: { order: OrderDetail }) {
 }
 
 export default function OrderScreen() {
-  const { reference, placed, paymentFailed, paymentPending } = useLocalSearchParams<{
+  const { reference, placed, paymentFailed, paymentPending, pay: payParam } = useLocalSearchParams<{
     reference: string;
     placed?: string;
     paymentFailed?: string;
     paymentPending?: string;
+    /** Opened from "Pay" on the orders list: show the amount choice straight away. */
+    pay?: string;
   }>();
   const queryClient = useQueryClient();
   const order = useQuery({
@@ -255,14 +283,17 @@ export default function OrderScreen() {
   });
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState('');
+  // Paying part of the balance: null = the whole balance.
+  const [partOpen, setPartOpen] = useState(payParam === '1');
+  const [part, setPart] = useState('');
 
   const refreshAll = () => {
     queryClient.invalidateQueries({ queryKey: keys.order(reference) });
     queryClient.invalidateQueries({ queryKey: ['orders'] });
   };
   const pay = useMutation({
-    mutationFn: async () => {
-      const start = await orderApi.pay(reference);
+    mutationFn: async (amount?: string) => {
+      const start = await orderApi.pay(reference, amount);
       if (start.checkout_url) await openPaymentPage(start.checkout_url);
       return orderApi.checkPayment(reference);
     },
@@ -290,6 +321,15 @@ export default function OrderScreen() {
   // Delivery needs a manual quote: AGIZA sets the cost first, then the customer pays.
   const feePending = !!o.delivery_fee_pending && o.status !== 'cancelled';
   const actionError = pay.error ?? check.error;
+  const partNumber = Number(part);
+  const minPart = Number(o.min_payment ?? 1000);
+  const partValid = !!part && !!due && partNumber >= minPart && partNumber <= Number(due);
+  const partError =
+    part && due && partNumber > Number(due)
+      ? `At most ${money(due, o.currency)}.`
+      : part && partNumber < minPart
+        ? `At least ${money(String(minPart), o.currency)}.`
+        : null;
   // Name the seller per item once an order mixes sellers, or when it is not AGIZA's own.
   const sellerSlugs = new Set(o.items.map((item) => item.vendor?.slug).filter(Boolean));
   const showItemSellers = sellerSlugs.size > 1 || o.items.some((item) => item.vendor && !item.vendor.is_agiza);
@@ -305,6 +345,8 @@ export default function OrderScreen() {
       {placed && o.status !== 'cancelled' ? (
         <Confirmation order={o} paymentFailed={!!paymentFailed} paymentPending={!!paymentPending && !!due} />
       ) : null}
+
+      {o.status !== 'cancelled' ? <ExpectedDeliveryBanner value={o.expected_delivery} /> : null}
 
       <Card style={styles.head}>
         <View style={styles.headRow}>
@@ -544,9 +586,32 @@ export default function OrderScreen() {
           <View style={styles.actions}>
             <Button
               title={`Pay ${money(due, o.currency)} with mobile money`}
-              onPress={() => pay.mutate()}
-              loading={pay.isPending}
+              onPress={() => pay.mutate(undefined)}
+              loading={pay.isPending && !pay.variables}
+              disabled={pay.isPending}
             />
+            {partOpen ? (
+              <Card style={styles.partBox}>
+                <Input
+                  label={`Amount to pay now (${o.currency})`}
+                  value={part}
+                  onChangeText={(v) => setPart(v.replace(/[^\d]/g, ''))}
+                  keyboardType="number-pad"
+                  placeholder={`${Number(o.min_payment ?? 1000).toLocaleString('en-US')} – ${Number(due).toLocaleString('en-US')}`}
+                  hint="Pay what you can now; the rest stays on the order."
+                  error={partError ?? undefined}
+                />
+                <Button
+                  title={partValid ? `Pay ${money(part, o.currency)}` : 'Pay this amount'}
+                  variant="secondary"
+                  onPress={() => pay.mutate(part)}
+                  loading={pay.isPending && !!pay.variables}
+                  disabled={!partValid || pay.isPending}
+                />
+              </Card>
+            ) : (
+              <Button title="Pay part of the balance" variant="secondary" onPress={() => setPartOpen(true)} />
+            )}
             <Button
               title="I've paid, check status"
               variant="ghost"
@@ -555,6 +620,13 @@ export default function OrderScreen() {
             />
           </View>
         ) : null}
+      </Section>
+
+      <Section title="Documents">
+        <View style={styles.docs}>
+          <DocumentButton label="Invoice" path={`orders/${o.reference}/invoice/`} name={`INV-${o.reference}.pdf`} />
+          <DocumentButton label="Receipt" path={`orders/${o.reference}/receipt/`} name={`RCT-${o.reference}.pdf`} />
+        </View>
       </Section>
 
       <Returns order={o} />
@@ -661,6 +733,8 @@ const styles = themed(() => ({
     flexWrap: 'wrap',
   },
   actions: { gap: space.xs },
+  partBox: { gap: space.md },
+  docs: { flexDirection: 'row', gap: space.sm },
   cancelBox: { gap: space.md },
   delivery: { gap: space.sm },
   deliveryTitle: { flexDirection: 'row', alignItems: 'center', gap: space.xs },

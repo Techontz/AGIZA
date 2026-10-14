@@ -57,6 +57,13 @@
         }
       ],
       [
+        "expo-audio",
+        {
+          "microphonePermission": "AGIZA uses the microphone so you can send voice messages to our team.",
+          "enableBackgroundPlayback": false
+        }
+      ],
+      [
         "expo-notifications",
         {
           "color": "#E25805",

@@ -28,6 +28,7 @@ export const keys = {
   cart: ['cart'] as const,
   addresses: ['addresses'] as const,
   orders: (group?: string) => ['orders', group ?? 'all'] as const,
+  balance: ['orders', 'balance'] as const,
   order: (reference: string) => ['order', reference] as const,
   requests: ['requests'] as const,
   request: (id: number) => ['request', id] as const,

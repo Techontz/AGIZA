@@ -244,11 +244,19 @@ export type OrderCard = {
   total: string | null;
   currency: string;
   payment_status: PaymentSummary['status'];
+  /** What is still owed (null when nothing is). */
+  amount_due?: string | null;
+  /** The customer can pay all or part of the balance with mobile money now. */
+  can_pay?: boolean;
+  expected_delivery?: ExpectedDelivery | null;
   image: string | null;
   created_at: string;
   /** Waiting for AGIZA to set the delivery cost (manual quote): the order can't be paid until then. */
   delivery_fee_pending?: boolean;
 };
+
+/** When the order should arrive: a date AGIZA set, else the checkout estimate ("2–3 days"); or when it was delivered. */
+export type ExpectedDelivery = { date: string | null; text: string | null; delivered_at: string | null };
 
 /** The order's latest delivery: who brings it (once assigned) and the proof once delivered. */
 export type OrderDelivery = {
@@ -288,6 +296,8 @@ export type OrderDetail = OrderCard & {
   delivery: OrderDelivery | null;
   can_cancel: boolean;
   can_pay: boolean;
+  /** Smallest part-payment accepted (whole shillings); null when nothing can be paid. */
+  min_payment?: string | null;
   shipping?: {
     address: string;
     city: string;
@@ -371,7 +381,38 @@ export type QuoteItemLine = {
   order: string | null;
 };
 
-export type ChatMessage = { id: number; from: 'me' | 'agiza' | 'system'; body: string; author: string | null; created_at: string };
+/** A photo, document or voice note in chat (`url` needs the customer's token). */
+export type ChatAttachment = {
+  id: number;
+  kind: 'image' | 'file' | 'voice';
+  name: string;
+  content_type: string;
+  size: number;
+  duration_ms: number | null;
+  url: string;
+};
+
+/** A quotation AGIZA sent in the chat; the customer opens it to accept or decline. */
+export type ChatQuotation = {
+  id: number;
+  reference: string;
+  amount: string | null;
+  currency: string;
+  estimated_delivery: string | null;
+  status: string;
+  status_display: string;
+  can_reply: boolean;
+};
+
+export type ChatMessage = {
+  id: number;
+  from: 'me' | 'agiza' | 'system';
+  body: string;
+  author: string | null;
+  attachments?: ChatAttachment[];
+  quotation?: ChatQuotation | null;
+  created_at: string;
+};
 
 export type Review = {
   id: number;
@@ -473,4 +514,33 @@ export type WarehouseAddress = {
   phone: string;
   contact_person: string;
   country: { code: string; name: string };
+};
+
+/** My account with AGIZA: what I owe on orders, my credit with AGIZA, and the net (> 0: I owe AGIZA). */
+export type AccountBalance = {
+  currency: string;
+  owed_by_customer: string;
+  owed_to_customer: string;
+  net: string;
+  orders: {
+    id: number;
+    reference: string;
+    order_type: string;
+    item_details: string;
+    currency: string;
+    total: string;
+    paid: string;
+    due: string;
+    on_installments: boolean;
+    next_installment: { due_date: string; amount: string; overdue: boolean } | null;
+  }[];
+  wallet_transactions: {
+    id: number;
+    kind: 'credit' | 'debit';
+    source_display: string;
+    amount: string;
+    order: string | null;
+    note: string;
+    created_at: string;
+  }[];
 };
