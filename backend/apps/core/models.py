@@ -46,3 +46,22 @@ class SeedRecord(models.Model):
 
     def __str__(self) -> str:
         return f"{self.seed}: {self.content_type.model} #{self.object_id}"
+
+
+class LegacyRecord(models.Model):
+    """Which row of the old AGIZA cargo system (`source` table, `legacy_id`) became which record here.
+
+    Written by `manage.py import_legacy`: re-running the import skips rows already brought over, and staff can
+    trace any imported record back to the old system.
+    """
+
+    source = models.CharField(max_length=40)
+    legacy_id = models.BigIntegerField()
+    object_id = models.BigIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["source", "legacy_id"], name="uniq_legacy_source_id")]
+
+    def __str__(self) -> str:
+        return f"{self.source}#{self.legacy_id} → {self.object_id}"
