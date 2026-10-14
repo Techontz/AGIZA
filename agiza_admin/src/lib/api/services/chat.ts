@@ -62,12 +62,24 @@ export interface Quotation {
   status_display: string;
 }
 
+/** A photo, document or voice note (`url` is served through the authenticated proxy: fileSrc). */
+export interface ChatAttachment {
+  id: number;
+  kind: "image" | "file" | "voice";
+  name: string;
+  content_type: string;
+  size: number;
+  duration_ms: number | null;
+  url: string;
+}
+
 export interface ChatMessage {
   id: number;
   sender: "customer" | "agent" | "system" | "internal";
   body: string;
   author: ChatPerson | null;
   quotation: Quotation | null;
+  attachments: ChatAttachment[];
   delivery_status: DeliveryStatus;
   delivery_error: string;
   created_at: string;
@@ -113,6 +125,21 @@ export const chatApi = {
 
   send: (id: number, body: string, internal: boolean) =>
     api.post<ChatMessage>(`${base}/${id}/send`, { body, internal }),
+  /** A photo / document / voice note to the client (with an optional caption). */
+  sendFile: (id: number, file: File, body = "", durationMs?: number) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("body", body);
+    if (durationMs !== undefined) form.append("duration_ms", String(Math.round(durationMs)));
+    return api.post<ChatMessage>(`${base}/${id}/send`, form);
+  },
+  /** Quick Quotation: create, price and send the quotation card in one step. */
+  quickQuote: (
+    id: number,
+    data: { service_type: QuoteServiceType; description: string; amount: string; estimated_delivery?: string | null; notes?: string },
+  ) => api.post<ChatMessage>(`${base}/${id}/quick-quote`, data),
+  /** Open conversations with client messages nobody on the team has read (sidebar badge). */
+  unread: () => api.get<{ conversations: number; mine: number }>(`${base}/unread`),
   sendQuote: (id: number, quote: number) => api.post<ChatMessage>(`${base}/${id}/send-quote`, { quote }),
   createQuote: (
     id: number,
@@ -141,4 +168,5 @@ export const chatKeys = {
   agents: ["chat", "agents"] as const,
   channels: ["chat", "channels"] as const,
   quickReplies: ["chat", "quick-replies"] as const,
+  unread: ["chat", "unread"] as const,
 };

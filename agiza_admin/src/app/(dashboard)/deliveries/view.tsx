@@ -6,7 +6,7 @@ import React, { useEffect, useState } from "react";
 
 import { useDeliveryAccess } from "@/components/deliveries/access";
 import { CustomerGroups } from "@/components/deliveries/customer-groups";
-import { DeliveryExceptionBadge, DeliveryStatusBadge, DeliveryTypeBadge, OrderSourceBadge } from "@/components/deliveries/badges";
+import { DeliveryExceptionBadge, DeliveryStatusBadge, PaymentDueBadge, DeliveryTypeBadge, OrderSourceBadge } from "@/components/deliveries/badges";
 import { NewDeliveryDialog } from "@/components/deliveries/new-delivery-dialog";
 import { PickupsPanel } from "@/components/deliveries/pickups";
 import { DeliveryRowDetails } from "@/components/deliveries/row-details";
@@ -344,7 +344,10 @@ function Row({ delivery: d, open, toggle }: { delivery: Delivery; open: boolean;
           <DeliveryStatusBadge delivery={d} />
         </td>
         <td className="px-6 py-4">
-          <DeliveryExceptionBadge flag={d.exception_flag} />
+          <div className="flex flex-col gap-1">
+            <DeliveryExceptionBadge flag={d.exception_flag} />
+            <PaymentDueBadge payment={d.payment} />
+          </div>
         </td>
         <td className="px-6 py-4">
           <button

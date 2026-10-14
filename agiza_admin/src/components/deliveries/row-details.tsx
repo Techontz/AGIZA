@@ -11,6 +11,8 @@ import { fileSrc } from "@/lib/api/files";
 import { deliveriesApi, deliveryKeys, type Delivery, type DeliveryStatus } from "@/lib/api/services/deliveries";
 import { formatDateTime } from "@/lib/format";
 
+import { ReleaseApproval } from "@/components/orders/release-approval";
+
 import { useDeliveryAccess } from "./access";
 import { EditItemLabelsButton } from "./item-labels-dialog";
 import { AddProofDialog, AssignDriverDialog, CompleteDeliveryDialog, StatusDialog, type StatusMode } from "./action-dialogs";
@@ -230,6 +232,7 @@ function Actions({ delivery }: { delivery: Delivery }) {
   const allowed = new Set(delivery.allowed_transitions.map((t) => t.value));
   const s = delivery.status;
   const isExpress = delivery.order.order_type === "express";
+  const held = delivery.payment.release.blocked;
 
   if (!canEdit) return <p className="text-sm text-gray-500">You have view-only access to deliveries.</p>;
 
@@ -237,7 +240,14 @@ function Actions({ delivery }: { delivery: Delivery }) {
   const buttons: React.ReactNode[] = [];
   if (s === "out_for_delivery")
     buttons.push(
-      <button key="complete" type="button" className={btnSuccess} onClick={() => setCompleteOpen(true)}>
+      <button
+        key="complete"
+        type="button"
+        className={cn(btnSuccess, "disabled:bg-gray-300 disabled:cursor-not-allowed")}
+        onClick={() => setCompleteOpen(true)}
+        disabled={held}
+        title={held ? "Balance due: needs payment or an admin's release approval" : undefined}
+      >
         Complete Delivery
       </button>,
     );
@@ -248,8 +258,10 @@ function Actions({ delivery }: { delivery: Delivery }) {
         type="button"
         className={btnPrimary}
         onClick={() => setMode("out_for_delivery")}
-        disabled={!delivery.driver}
-        title={delivery.driver ? undefined : "Assign a driver first"}
+        disabled={!delivery.driver || held}
+        title={
+          held ? "Balance due: needs payment or an admin's release approval" : delivery.driver ? undefined : "Assign a driver first"
+        }
       >
         Mark Out for Delivery
       </button>,
@@ -415,8 +427,19 @@ export function DeliveryItemsTable({ delivery }: { delivery: Delivery }) {
 
 /** Expanded "Details" row of the Deliveries table. */
 export function DeliveryRowDetails({ delivery }: { delivery: Delivery }) {
+  const closed = ["delivered", "returned", "cancelled"].includes(delivery.status);
   return (
     <div className="space-y-6">
+      {delivery.order.order_type !== "express" && (
+        <ReleaseApproval
+          orderType={delivery.order.order_type}
+          orderId={delivery.order.id}
+          reference={delivery.order.reference}
+          due={delivery.payment.due}
+          release={delivery.payment.release}
+          closed={closed}
+        />
+      )}
       <ProofPanel delivery={delivery} />
       {delivery.items.length > 0 && (
         <div>

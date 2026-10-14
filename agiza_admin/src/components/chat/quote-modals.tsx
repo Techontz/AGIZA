@@ -212,3 +212,119 @@ export function SendQuoteModal({ conversation, open, onClose, onLinkClient }: Mo
     </ChatModal>
   );
 }
+
+/* ---------------------------------------------------------- quick quote */
+
+/** Quick Quotation: describe, price and send the quotation card in one step (it also lands in Intake & Quotes). */
+export function QuickQuoteModal({ conversation, open, onClose, onLinkClient }: ModalProps) {
+  const qc = useQueryClient();
+  const [serviceType, setServiceType] = useState<QuoteServiceType>("international");
+  const [description, setDescription] = useState("");
+  const [amount, setAmount] = useState("");
+  const [eta, setEta] = useState("");
+  const [notes, setNotes] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+  const send = useApiMutation(
+    () =>
+      chatApi.quickQuote(conversation.id, {
+        service_type: serviceType,
+        description: description.trim(),
+        amount,
+        estimated_delivery: eta || null,
+        notes: notes.trim(),
+      }),
+    {
+      invalidate: [chatKeys.messages(conversation.id), chatKeys.one(conversation.id), chatKeys.lists, orderKeys.quotes],
+      success: (m) =>
+        m.delivery_status === "stored" && conversation.channel !== "web"
+          ? `Quotation ${m.quotation?.reference ?? ""} saved (channel not connected)`
+          : `Quotation ${m.quotation?.reference ?? ""} sent`,
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: orderKeys.quotes });
+        onClose();
+      },
+      onError: (e) => {
+        setErrors(fieldErrors(e));
+        setError(Object.keys(fieldErrors(e)).length ? null : errorText(e));
+      },
+    },
+  );
+
+  return (
+    <ChatModal open={open} onClose={onClose} title="Quick Quote" size="md">
+      {!conversation.customer ? (
+        <NeedsClient onLinkClient={onLinkClient} />
+      ) : (
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const errs: Record<string, string> = {};
+            if (!description.trim()) errs.description = "Describe what is being quoted.";
+            if (!(Number(amount) > 0)) errs.amount = "Enter the price.";
+            setErrors(errs);
+            setError(null);
+            if (!Object.keys(errs).length) send.mutate(undefined);
+          }}
+        >
+          <p className="text-sm text-slate-600">
+            Price it and send it to <span className="text-slate-900">{conversation.customer.full_name}</span> now. They accept or decline it in
+            the chat / app, and it appears in Intake &amp; Quotes.
+          </p>
+          <div>
+            <label htmlFor="qq-service" className="block text-xs text-slate-600 mb-1">Service type</label>
+            <select id="qq-service" className={slateInput} value={serviceType} onChange={(e) => setServiceType(e.target.value as QuoteServiceType)}>
+              <option value="international">International</option>
+              <option value="express">Express</option>
+              <option value="equipment">Equipment</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="qq-description" className="block text-xs text-slate-600 mb-1">
+              What is quoted <span className="text-red-600">*</span>
+            </label>
+            <textarea
+              id="qq-description"
+              rows={2}
+              autoFocus
+              className={`${slateInput} resize-none`}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              aria-invalid={Boolean(errors.description) || undefined}
+              placeholder="e.g. 3 laptops from Dubai, air freight"
+            />
+            {errors.description && <p className="text-xs text-red-600 mt-1">{errors.description}</p>}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="qq-amount" className="block text-xs text-slate-600 mb-1">
+                Price (TSh) <span className="text-red-600">*</span>
+              </label>
+              <input id="qq-amount" type="number" min="1" className={slateInput} value={amount} onChange={(e) => setAmount(e.target.value)} aria-invalid={Boolean(errors.amount) || undefined} />
+              {(errors.amount || errors.quoted_amount) && <p className="text-xs text-red-600 mt-1">{errors.amount || errors.quoted_amount}</p>}
+            </div>
+            <div>
+              <label htmlFor="qq-eta" className="block text-xs text-slate-600 mb-1">Estimated delivery</label>
+              <input id="qq-eta" type="date" className={slateInput} value={eta} onChange={(e) => setEta(e.target.value)} />
+              {errors.estimated_delivery && <p className="text-xs text-red-600 mt-1">{errors.estimated_delivery}</p>}
+            </div>
+          </div>
+          <div>
+            <label htmlFor="qq-notes" className="block text-xs text-slate-600 mb-1">Notes for the client</label>
+            <textarea id="qq-notes" rows={2} className={`${slateInput} resize-none`} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+          {amount && Number(amount) > 0 && <p className="text-sm text-slate-700">Client sees: <strong>{formatTSh(amount)}</strong></p>}
+          <InlineError message={error} />
+          <div className="flex gap-2 justify-end pt-2">
+            <button type="button" className={secondaryBtn} onClick={onClose}>Cancel</button>
+            <button type="submit" className={primaryBtn} disabled={send.isPending}>
+              <Send className="size-4" />
+              {send.isPending ? "Sending…" : "Send Quote"}
+            </button>
+          </div>
+        </form>
+      )}
+    </ChatModal>
+  );
+}

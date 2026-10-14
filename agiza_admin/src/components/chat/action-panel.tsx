@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Check, CheckCircle, Edit3, FileText, Package, RotateCcw, Send, User, UserPlus, type LucideIcon } from "lucide-react";
+import { AlertCircle, Check, CheckCircle, Edit3, FileText, Package, RotateCcw, Send, User, UserPlus, Zap, type LucideIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import type { Conversation } from "@/lib/api/services/chat";
@@ -18,6 +18,7 @@ interface Action {
 }
 
 export interface PanelHandlers {
+  onQuickQuote: () => void;
   onCreateQuote: () => void;
   onSendQuote: () => void;
   onResendQuote: () => void;
@@ -50,7 +51,8 @@ export function ActionPanel({
     switch (conv.lifecycle) {
       case "new_inquiry":
         return [
-          { label: "Create Quote", icon: FileText, variant: "primary", onClick: handlers.onCreateQuote },
+          { label: "Quick Quote", icon: Zap, variant: "primary", onClick: handlers.onQuickQuote },
+          { label: "Create Quote", icon: FileText, variant: "secondary", onClick: handlers.onCreateQuote },
           { label: "Send Quote", icon: Send, variant: "secondary", onClick: handlers.onSendQuote },
         ];
       case "quoted":

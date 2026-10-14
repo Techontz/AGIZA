@@ -1,11 +1,13 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Package } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { can, useMe } from "@/hooks/use-me";
+import { chatApi, chatKeys } from "@/lib/api/services/chat";
 import { cn } from "@/lib/cn";
 import { isGroup, navigation, type NavGroup, type NavItem, type NavLink } from "@/lib/nav";
 
@@ -74,8 +76,22 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
+/** Open conversations with client messages nobody on the team has read yet (polled every 30 s). */
+function useUnreadChats(enabled: boolean) {
+  const { data } = useQuery({
+    queryKey: chatKeys.unread,
+    queryFn: chatApi.unread,
+    enabled,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+  });
+  return data?.conversations ?? 0;
+}
+
 function SidebarLink({ link, active, onNavigate }: { link: NavLink; active: boolean; onNavigate?: () => void }) {
   const Icon = link.icon;
+  const { data: me } = useMe();
+  const unread = useUnreadChats(link.id === "chat" && can(me, "chat", "view"));
   return (
     <Link
       href={link.href}
@@ -88,6 +104,14 @@ function SidebarLink({ link, active, onNavigate }: { link: NavLink; active: bool
     >
       <Icon className="size-5 flex-shrink-0" />
       <span className="text-sm font-medium">{link.label}</span>
+      {unread > 0 && (
+        <span
+          className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-red-600 text-white text-xs font-semibold flex items-center justify-center"
+          aria-label={`${unread} conversation${unread === 1 ? "" : "s"} with unread messages`}
+        >
+          {unread > 99 ? "99+" : unread}
+        </span>
+      )}
     </Link>
   );
 }

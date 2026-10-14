@@ -201,6 +201,7 @@ export function TransitionDialog({
   const choices = options.filter((o) => o.value !== "cancelled" || canCancel);
   const [status, setStatus] = useState("");
   const [note, setNote] = useState("");
+  const cancelling = status === "cancelled";
   useEffect(() => {
     if (open) {
       setStatus(choices[0]?.value ?? "");
@@ -216,8 +217,14 @@ export function TransitionDialog({
       size="md"
       footer={
         <>
-          <Button className="flex-1" onClick={() => onSubmit(status, note)} loading={pending} disabled={!status}>
-            Update Status
+          <Button
+            className="flex-1"
+            variant={cancelling ? "danger" : "primary"}
+            onClick={() => onSubmit(status, note)}
+            loading={pending}
+            disabled={!status || (cancelling && !note.trim())}
+          >
+            {cancelling ? "Cancel Order" : "Update Status"}
           </Button>
           <Button variant="muted" onClick={onClose}>
             Cancel
@@ -242,9 +249,15 @@ export function TransitionDialog({
             </Select>
           </Field>
         )}
-        <Field label="Note (optional)" htmlFor="tr-note">
-          <Textarea id="tr-note" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add context for the history..." />
-        </Field>
+        {cancelling ? (
+          <Field label="Reason for cancelling" required htmlFor="tr-note" hint="Kept with the order in Cancelled Orders">
+            <Textarea id="tr-note" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Customer changed their mind" />
+          </Field>
+        ) : (
+          <Field label="Note (optional)" htmlFor="tr-note">
+            <Textarea id="tr-note" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add context for the history..." />
+          </Field>
+        )}
       </div>
     </Modal>
   );

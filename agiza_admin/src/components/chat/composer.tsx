@@ -1,10 +1,15 @@
 "use client";
 
-import { CloudOff, MousePointerClick, Send, StickyNote, UserCheck, Zap } from "lucide-react";
+import { CloudOff, Mic, MousePointerClick, Paperclip, Send, StickyNote, Trash2, UserCheck, Zap } from "lucide-react";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 
 import type { QuickReply } from "@/lib/api/services/chat";
 import { cn } from "@/lib/cn";
+
+import { formatDuration, useVoiceRecorder } from "./voice-recorder";
+
+/** What the server accepts in chat: photos, PDF, Word and Excel (voice notes are recorded here). */
+const ACCEPT = "image/jpeg,image/png,image/webp,application/pdf,.docx,.xlsx";
 
 export interface ComposerHandle {
   focus: () => void;
@@ -28,12 +33,17 @@ export const Composer = forwardRef<
     conflict: { message: string; onTakeOver: () => void; pending: boolean } | null;
     /** Someone else is the active handler (sending will be refused). */
     handlerNotice?: string | null;
+    /** Send a photo / document (with the typed text as its caption) or a recorded voice note. */
+    onSendFile?: (file: File, durationMs?: number) => void;
   }
 >(function Composer(
-  { value, onChange, internal, onInternalChange, onSend, sending, disabled, disabledReason, quickReplies, channelLabel, channelConnected, error, conflict, handlerNotice },
+  { value, onChange, internal, onInternalChange, onSend, sending, disabled, disabledReason, quickReplies, channelLabel, channelConnected, error, conflict, handlerNotice, onSendFile },
   ref,
 ) {
   const input = useRef<HTMLTextAreaElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const voice = useVoiceRecorder();
+  const canAttach = Boolean(onSendFile) && !internal && !disabled && !sending;
   useImperativeHandle(ref, () => ({ focus: () => input.current?.focus() }), []);
 
   // Grow with the text (up to ~6 lines).
@@ -121,6 +131,35 @@ export const Composer = forwardRef<
           </p>
         )}
         {disabled && disabledReason && <p className="mb-2 text-xs text-slate-500">{disabledReason}</p>}
+        {voice.error && <p role="alert" className="mb-2 text-xs text-red-700">{voice.error}</p>}
+        {voice.recording ? (
+          <div className="flex items-center gap-3" role="group" aria-label="Recording a voice note">
+            <button
+              type="button"
+              onClick={voice.cancel}
+              className="p-2.5 rounded-lg hover:bg-slate-100 text-slate-600"
+              aria-label="Discard voice note"
+              title="Discard"
+            >
+              <Trash2 className="size-5" />
+            </button>
+            <div className="flex-1 flex items-center gap-2 px-4 py-2.5 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+              <span className="size-2.5 rounded-full bg-red-600 animate-pulse" aria-hidden />
+              Recording… <span className="font-mono">{formatDuration(voice.elapsed)}</span>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                const note = await voice.stop();
+                if (note) onSendFile?.(note.file, note.durationMs);
+              }}
+              aria-label="Send voice note"
+              className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800"
+            >
+              <Send className="size-5 text-white" />
+            </button>
+          </div>
+        ) : (
         <form
           className="flex items-end gap-3"
           onSubmit={(e) => {
@@ -142,6 +181,31 @@ export const Composer = forwardRef<
           >
             <StickyNote className="size-5" />
           </button>
+          {onSendFile && !internal && (
+            <>
+              <input
+                ref={picker}
+                type="file"
+                accept={ACCEPT}
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) onSendFile(file);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => picker.current?.click()}
+                disabled={!canAttach}
+                className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 disabled:opacity-50"
+                title="Send a photo or document (the typed text is sent as its caption)"
+                aria-label="Attach a photo or document"
+              >
+                <Paperclip className="size-5" />
+              </button>
+            </>
+          )}
           <label htmlFor="chat-composer" className="sr-only">
             {internal ? "Internal note" : "Message"}
           </label>
@@ -161,6 +225,18 @@ export const Composer = forwardRef<
             }}
             className="flex-1 px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm resize-none leading-5 disabled:bg-slate-50"
           />
+          {onSendFile && !internal && !value.trim() && (
+            <button
+              type="button"
+              onClick={voice.start}
+              disabled={!canAttach}
+              aria-label="Record a voice note"
+              title="Record a voice note"
+              className="p-2.5 rounded-lg hover:bg-slate-100 text-slate-600 disabled:opacity-50"
+            >
+              <Mic className="size-5" />
+            </button>
+          )}
           <button
             type="submit"
             disabled={!canSend}
@@ -177,6 +253,7 @@ export const Composer = forwardRef<
             )}
           </button>
         </form>
+        )}
       </div>
     </>
   );

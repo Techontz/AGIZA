@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
 import { useEffect, useId } from "react";
 
+import { OrderDocumentLinks } from "@/components/orders/documents";
 import { Skeleton, ErrorState } from "@/components/ui/states";
 import { errorText } from "@/lib/api/errors";
 import { financeApi, financeKeys } from "@/lib/api/services/finance";
@@ -151,7 +152,8 @@ export function ReceiptModal({ orderId, onClose }: { orderId: number; onClose: (
             </>
           )}
 
-          <div className="agz-no-print mt-8 flex gap-3">
+          {o && <OrderDocumentLinks orderType={o.order_type} orderId={o.id} className="agz-no-print mt-6 justify-center" />}
+          <div className="agz-no-print mt-4 flex gap-3">
             <button
               type="button"
               onClick={() => window.print()}

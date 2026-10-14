@@ -13,6 +13,8 @@ import { fileSrc } from "@/lib/api/files";
 import { procurementApi, procurementKeys, type ProcurementOrder, type ProcurementPhoto } from "@/lib/api/services/procurement";
 import { formatDate, formatDateTime, formatTSh } from "@/lib/format";
 
+import { OrderFlagsPanel } from "@/components/orders/flags";
+
 import { ExceptionBadge, ProcurementOriginBadge, ProcurementStatusBadge } from "./badges";
 import {
   CancelSupplierDialog,
@@ -193,6 +195,14 @@ export function ProcurementDetailsModal({ proc, onClose }: { proc: ProcurementOr
               <p className="text-sm text-yellow-800 whitespace-pre-line">{proc.notes}</p>
             </div>
           )}
+
+          <OrderFlagsPanel
+            orderId={proc.order.id}
+            reference={proc.order.reference}
+            flags={proc.order.flags}
+            department="procurement"
+            closed={proc.status === "cancelled"}
+          />
 
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-3">Status History</h3>

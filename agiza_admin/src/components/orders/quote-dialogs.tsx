@@ -13,7 +13,7 @@ import { PhotoViewer } from "@/components/ui/photo-viewer";
 import { useCities, useCountries } from "@/components/shipping-engine/hooks";
 import { cn } from "@/lib/cn";
 import { fileSrc } from "@/lib/api/files";
-import { quotesApi, type Customer, type Quote, type QuoteItem } from "@/lib/api/services/orders";
+import { quotesApi, type Customer, type CustomerType, type Quote, type QuoteItem } from "@/lib/api/services/orders";
 import { formatDate, formatTSh } from "@/lib/format";
 
 import { CustomerPicker, errorText, useOrderMutation } from "./shared";
@@ -257,7 +257,9 @@ function QuoteSummary({ quote, showPrices }: { quote: Quote; showPrices?: boolea
       </div>
       <div>
         <p className="text-sm font-semibold text-gray-700 mb-1">Customer</p>
-        <p className="text-gray-900">{quote.customer.full_name}</p>
+        <p className="text-gray-900 flex flex-wrap items-center gap-2">
+          {quote.customer.full_name} <CustomerTypeBadge type={quote.customer_type} />
+        </p>
         {quote.customer.phone && (
           <a href={`tel:${quote.customer.phone}`} className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:underline">
             <Phone className="size-3.5" />
@@ -868,5 +870,20 @@ export function NewQuoteDialog({ open, onClose }: { open: boolean; onClose: () =
         {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
       </div>
     </Modal>
+  );
+}
+
+/** Intake: Priority (tagged priority/VIP in Customers), Repeat Customer (ordered before) or New Customer. */
+export function CustomerTypeBadge({ type }: { type?: CustomerType }) {
+  if (!type) return null;
+  const tone = type.kind === "priority" ? "bg-purple-100 text-purple-800" : type.kind === "repeat" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800";
+  const title =
+    type.kind === "new" ? "No orders yet" : `${type.orders} order${type.orders === 1 ? "" : "s"} so far${type.priority ? " · tagged priority" : ""}`;
+  return (
+    <span title={title} className={`inline-flex w-fit items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${tone}`}>
+      {type.kind === "priority" && "★ "}
+      {type.label}
+      {type.kind === "repeat" && ` · ${type.orders}`}
+    </span>
   );
 }

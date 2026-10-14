@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 
+import { OrderDocumentLinks } from "@/components/orders/documents";
 import { cn } from "@/lib/cn";
 import { attachmentSrc, orderKeys, ordersApi, type ExpressOrder } from "@/lib/api/services/orders";
 import { formatDateTime, formatTSh } from "@/lib/format";
@@ -413,6 +414,7 @@ function Quoted({ order }: { order: ExpressOrder }) {
           <QuoteForm order={order} isEditing onDone={() => setEditing(false)} />
         </div>
       )}
+      <OrderDocumentLinks orderType="express" orderId={order.id} />
       <HistoryToggle order={order} />
       <AssignDialog
         open={assignOpen}
@@ -500,6 +502,7 @@ function InProgress({ order }: { order: ExpressOrder }) {
           <p className="text-xs text-gray-500 mt-3">Driver assigned — mark the parcel as picked up once collected.</p>
         )}
       </div>
+      <OrderDocumentLinks orderType="express" orderId={order.id} />
       <HistoryToggle order={order} />
       <AssignDialog
         open={assignOpen}

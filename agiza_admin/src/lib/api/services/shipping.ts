@@ -1,5 +1,6 @@
 import { api, type QueryParams } from "../client";
 import type { Paginated } from "../types";
+import type { OrderFlagRef, ReleaseState } from "./orders";
 
 /* ------------------------------------------------------------------ types */
 
@@ -51,6 +52,9 @@ export interface Parcel {
     status_display: string;
     customer: string;
     payment_status: "unpaid" | "partial" | "fully_paid" | "installment";
+    due: string | null;
+    release: ReleaseState;
+    flags: OrderFlagRef[];
   };
   origin: OriginRef;
   stage: ParcelStage;
@@ -246,6 +250,9 @@ export const shippingApi = {
     transition: (id: number, data: TransitionInput) => api.post<Shipment>(`${S}/${id}/transition`, data),
     events: (id: number) => api.get<ShipmentEvent[]>(`${S}/${id}/events`),
     addEvent: (id: number, data: TrackingUpdateInput) => api.post<ShipmentEvent[]>(`${S}/${id}/events`, data),
+    /** Bulk: new expected delivery date for the orders of these shipments / parcels (customers are notified). */
+    expectedDelivery: (data: { shipments?: number[]; parcels?: number[]; estimated_delivery: string; note?: string }) =>
+      api.post<{ changed: number; skipped: number; orders: number }>(`${S}/expected-delivery`, data),
     documents: (id: number) => api.get<ShipmentDocument[]>(`${S}/${id}/documents`),
     uploadDocument: (id: number, form: FormData) => api.post<ShipmentDocument[]>(`${S}/${id}/documents`, form),
   },

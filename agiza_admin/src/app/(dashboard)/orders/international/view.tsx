@@ -1,10 +1,11 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Clock, Package2, Plus, User } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCircle2, Clock, Package2, Plus, User } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { DepartmentBadge, ORIGIN, OrderTypeBadge, OriginBadge, PaymentBadge, ServiceBadge, StatusBadge } from "@/components/orders/international/badges";
+import { FlagBadges } from "@/components/orders/flags";
 import { InternationalDetailsModal } from "@/components/orders/international/details-modal";
 import { QuickOrderDialog } from "@/components/orders/international/quick-order-dialog";
 import { useOrderAccess } from "@/components/orders/shared";
@@ -30,7 +31,7 @@ const STATUS_OPTIONS = [
   ["sent_to_consolidation", "Sent to Consolidation"], ["shipping_to_destination", "Shipping"], ["clearance", "Clearance"],
   ["ready_for_collection", "Ready for Collection"], ["completed", "Completed"],
 ];
-type Tab = "active" | "attention" | "completed";
+type Tab = "active" | "attention" | "installments" | "completed";
 
 export function InternationalView() {
   const meta = pageMeta["/orders/international"];
@@ -70,9 +71,10 @@ export function InternationalView() {
         }
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
         <StatCard label="Active Orders" value={s?.active} icon={Package2} tone="blue" loading={!s} />
         <StatCard label="Needs Attention" value={s?.needs_attention} icon={AlertTriangle} tone="red" loading={!s} />
+        <StatCard label="Installments to Approve" value={s?.installments} icon={CalendarClock} tone="orange" loading={!s} />
         <StatCard label="In Production" value={s?.in_production} icon={Clock} tone="purple" loading={!s} />
         <StatCard label="Completed" value={s?.completed} icon={CheckCircle2} tone="green" loading={!s} />
       </div>
@@ -116,6 +118,7 @@ export function InternationalView() {
             options={[
               { value: "active", label: `Active Orders (${s?.active ?? "…"})` },
               { value: "attention", label: <><AlertTriangle className="size-4" />Needs Attention ({s?.needs_attention ?? "…"})</>, activeClass: "bg-red-600" },
+              { value: "installments", label: <><CalendarClock className="size-4" />Installments ({s?.installments ?? "…"})</>, activeClass: "bg-orange-600" },
               { value: "completed", label: `Completed (${s?.completed ?? "…"})` },
             ]}
           />
@@ -162,9 +165,10 @@ export function InternationalView() {
                         <td className="px-6 py-4">
                           <div className="space-y-1">
                             <StatusBadge status={o.status} label={o.status_display} />
-                            {o.needs_attention && (
+                            {o.needs_attention && o.flags.length === 0 && (
                               <div className="flex items-center gap-1 text-red-600"><AlertTriangle className="size-3" /><span className="text-xs">Attention Required</span></div>
                             )}
+                            <FlagBadges flags={o.flags} />
                           </div>
                         </td>
                         <td className="px-6 py-4"><OrderTypeBadge type={o.details.order_class} /></td>

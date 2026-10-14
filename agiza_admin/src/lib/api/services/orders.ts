@@ -28,6 +28,43 @@ export interface Transition {
   label: string;
 }
 
+/** Going out (shipping / delivery) with a balance due: `blocked` until an admin approves the release. */
+export interface ReleaseState {
+  blocked: boolean;
+  approved: boolean;
+  approved_at: string | null;
+  approved_by: PersonRef | null;
+  note: string;
+}
+
+export type OrderFlagKind =
+  | "needs_care"
+  | "very_late"
+  | "angry_client"
+  | "needs_documentation"
+  | "other"
+  | "procurement_stalled"
+  | "delivery_due_soon";
+
+/** An open exception on an order (raised by staff, or automatically when it stalls / its date is close). */
+export interface OrderFlagRef {
+  id: number;
+  kind: OrderFlagKind;
+  kind_display: string;
+  note: string;
+  department: string;
+  automatic: boolean;
+  raised_by: PersonRef | null;
+  created_at: string;
+}
+
+export interface OrderFlag extends OrderFlagRef {
+  order: { id: number; reference: string; order_type: string; status: string; status_display: string; customer: string };
+  resolved_at: string | null;
+  resolved_by: PersonRef | null;
+  resolution_note: string;
+}
+
 export interface OrderBase {
   id: number;
   reference: string;
@@ -44,6 +81,8 @@ export interface OrderBase {
   payment: PaymentSummary;
   installment_plan: boolean;
   installment_allowed: boolean;
+  release: ReleaseState;
+  flags: OrderFlagRef[];
   notes: string;
   allowed_transitions: Transition[];
   attachments_count: number;
@@ -145,10 +184,19 @@ export interface Assignee {
   staff_level: string;
 }
 
+/** Intake badge: a priority/VIP-tagged customer, one who has ordered before, or a new one. */
+export interface CustomerType {
+  kind: "priority" | "repeat" | "new";
+  label: string;
+  orders: number;
+  priority: boolean;
+}
+
 export interface Quote {
   id: number;
   reference: string;
   customer: CustomerRef;
+  customer_type?: CustomerType;
   service_type: "express" | "international" | "equipment";
   service_type_display: string;
   description: string;
@@ -242,7 +290,46 @@ function orderResource<T extends OrderBase>(kind: Kind) {
   };
 }
 
+export interface CancelledOrder {
+  id: number;
+  reference: string;
+  order_type: "express" | "international" | "equipment" | "shop";
+  order_type_display: string;
+  customer: CustomerRef;
+  item_details: string;
+  currency: string;
+  total_amount: string | null;
+  payment: PaymentSummary;
+  cancelled_at: string | null;
+  cancelled_by: PersonRef | null;
+  cancellation_reason: string;
+  resubmitted_as: { id: number; reference: string; order_type: string; status_display: string } | null;
+  resubmitted_from: { id: number; reference: string; order_type: string; status_display: string } | null;
+  can_resubmit: boolean;
+  created_at: string;
+}
+
+export const cancelledApi = {
+  list: (query: QueryParams, signal?: AbortSignal) => api.get<Paginated<CancelledOrder>>("orders/cancelled", query, signal),
+  history: (id: number) => api.get<HistoryEntry[]>(`orders/cancelled/${id}/history`),
+  resubmit: (id: number, note = "") =>
+    api.post<CancelledOrder & { new_order: { id: number; reference: string; order_type: string } }>(
+      `orders/cancelled/${id}/resubmit`,
+      { note },
+    ),
+};
+
+export const flagsApi = {
+  list: (query: QueryParams) => api.get<Paginated<OrderFlag>>("order-flags", query),
+  raise: (data: { order: number; kind: OrderFlagKind; note?: string; department?: string }) =>
+    api.post<OrderFlag>("order-flags", data),
+  resolve: (id: number, note = "") => api.post<OrderFlag>(`order-flags/${id}/resolve`, { note }),
+};
+
 export const ordersApi = {
+  /** Let an order with a balance due ship / go out for delivery (admins), or withdraw that. */
+  releaseApproval: (orderType: string, id: number, approved: boolean, note = "") =>
+    api.post<OrderBase>(`orders/${orderType}/${id}/release-approval`, { approved, note }),
   express: {
     ...orderResource<ExpressOrder>("express"),
     quote: (id: number, data: Record<string, unknown>) => api.post<ExpressOrder>(`orders/express/${id}/quote`, data),

@@ -1,15 +1,17 @@
 "use client";
 
-import { AlertTriangle, Check, CheckCheck, CheckCircle, Clock, CloudOff, Edit3, FileText, MessageSquare, StickyNote } from "lucide-react";
+import { AlertTriangle, Check, CheckCheck, CheckCircle, Clock, CloudOff, Edit3, FileText, MessageSquare, Mic, StickyNote } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 
 import { ErrorState } from "@/components/ui/states";
-import type { ChatMessage, Quotation } from "@/lib/api/services/chat";
+import { fileSrc } from "@/lib/api/files";
+import type { ChatAttachment, ChatMessage, Quotation } from "@/lib/api/services/chat";
 import { cn } from "@/lib/cn";
 import { formatDate, formatTSh } from "@/lib/format";
 
 import { clockTime, quoteHref, shortStamp } from "./config";
+import { formatDuration } from "./voice-recorder";
 
 const QUOTE_VALID_DAYS = 7; // apps.chat.services.QUOTE_EXPIRES_AFTER
 
@@ -143,6 +145,43 @@ function QuotationCard({
   );
 }
 
+/** Photos open full size; documents download; voice notes play inline. */
+function Attachments({ items, dark }: { items: ChatAttachment[]; dark: boolean }) {
+  return (
+    <div className="space-y-2">
+      {items.map((a) =>
+        a.kind === "image" ? (
+          <a key={a.id} href={fileSrc(a.url)} target="_blank" rel="noopener noreferrer" className="block" title="Open full size">
+            {/* eslint-disable-next-line @next/next/no-img-element -- authenticated proxy URL */}
+            <img src={fileSrc(a.url)} alt={a.name || "Photo"} className="max-h-64 w-auto rounded-lg border border-black/10 bg-white" />
+          </a>
+        ) : a.kind === "voice" ? (
+          <div key={a.id} className="flex items-center gap-2">
+            <Mic className={cn("size-4 flex-shrink-0", dark ? "text-slate-300" : "text-slate-500")} aria-hidden />
+            <audio controls preload="metadata" src={fileSrc(a.url)} className="h-9 max-w-[16rem]" aria-label="Voice message" />
+            {a.duration_ms !== null && <span className={cn("text-xs", dark ? "text-slate-400" : "text-slate-500")}>{formatDuration(a.duration_ms)}</span>}
+          </div>
+        ) : (
+          <a
+            key={a.id}
+            href={fileSrc(a.url)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(
+              "flex items-center gap-2 rounded-lg px-3 py-2 text-sm",
+              dark ? "bg-white/10 hover:bg-white/20 text-white" : "bg-slate-100 hover:bg-slate-200 text-slate-900",
+            )}
+          >
+            <FileText className="size-4 flex-shrink-0" />
+            <span className="truncate">{a.name}</span>
+            <span className={cn("text-xs flex-shrink-0", dark ? "text-slate-400" : "text-slate-500")}>{Math.max(1, Math.round(a.size / 1024))} KB</span>
+          </a>
+        ),
+      )}
+    </div>
+  );
+}
+
 export function MessageThread({
   messages,
   loading,
@@ -231,7 +270,8 @@ export function MessageThread({
                       m.delivery_status === "failed" && "ring-1 ring-red-400",
                     )}
                   >
-                    <p className="text-sm leading-relaxed whitespace-pre-line break-words">{m.body}</p>
+                    {m.attachments?.length > 0 && <Attachments items={m.attachments} dark={m.sender === "agent"} />}
+                    {m.body && <p className={cn("text-sm leading-relaxed whitespace-pre-line break-words", m.attachments?.length > 0 && "mt-2")}>{m.body}</p>}
                     <div className={cn("flex items-center gap-1 mt-2 text-xs flex-wrap", m.sender === "agent" ? "text-slate-400" : "text-slate-500")}>
                       <Clock className="size-3" />
                       <span title={new Date(m.created_at).toLocaleString("en-US")}>{shortStamp(m.created_at) || clockTime(m.created_at)}</span>

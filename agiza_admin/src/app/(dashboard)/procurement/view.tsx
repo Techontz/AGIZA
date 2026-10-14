@@ -4,6 +4,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Building2, CheckCircle2, Clock, DollarSign, ShoppingCart, Truck, User } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { FlagBadges, FlagButton } from "@/components/orders/flags";
 import { ExceptionBadge, ProcurementOriginBadge, ProcurementStatusBadge } from "@/components/procurement/badges";
 import { ProcurementDetailsModal } from "@/components/procurement/details-modal";
 import { SuppliersModal } from "@/components/procurement/suppliers-modal";
@@ -145,7 +146,13 @@ export function ProcurementView() {
                     </Td>
                     <Td><div className="font-semibold text-gray-900 whitespace-nowrap">{p.item_cost ? formatTSh(p.item_cost) : <span className="text-gray-400 font-normal">—</span>}</div></Td>
                     <Td className="text-sm text-gray-900">{formatDate(p.updated_at)}</Td>
-                    <Td><ExceptionBadge flag={p.exception_flag} /></Td>
+                    <Td>
+                      <div className="space-y-1">
+                        <ExceptionBadge flag={p.exception_flag} />
+                        <FlagBadges flags={p.order.flags} />
+                        <FlagButton orderId={p.order.id} reference={p.order.reference} department="procurement" />
+                      </div>
+                    </Td>
                     <Td>
                       {p.expected_at_cargo ? <div className="text-sm text-gray-900">{formatDate(p.expected_at_cargo)}</div> : <span className="text-gray-400">—</span>}
                     </Td>

@@ -1,6 +1,7 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Banknote } from "lucide-react";
 
 import { cn } from "@/lib/cn";
+import { formatTSh } from "@/lib/format";
 import type { Delivery, DeliveryExceptionFlag, DeliverySource, DeliveryStatus, DeliveryType } from "@/lib/api/services/deliveries";
 
 /* Colours reproduce DeliveriesManagement.tsx (Figma Make). */
@@ -54,6 +55,21 @@ export function DeliveryExceptionBadge({ flag }: { flag: DeliveryExceptionFlag |
     <span className={cn(pill, "gap-1", cls)}>
       <AlertTriangle className="size-3" />
       {label}
+    </span>
+  );
+}
+
+/** Money still owed on the order: red while it can't go out, amber once an admin released it. */
+export function PaymentDueBadge({ payment }: { payment: Delivery["payment"] }) {
+  if (!payment.due || Number(payment.due) <= 0) return null;
+  const held = payment.release.blocked;
+  return (
+    <span
+      className={cn(pill, "gap-1", held ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800")}
+      title={held ? "Doesn't go out until paid or an admin approves the release" : "Released by an admin: collect on handover"}
+    >
+      <Banknote className="size-3" />
+      {held ? "Due" : "Released"} {formatTSh(payment.due)}
     </span>
   );
 }

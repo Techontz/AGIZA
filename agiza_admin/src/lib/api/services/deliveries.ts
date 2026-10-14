@@ -1,6 +1,6 @@
 import { api, type QueryParams } from "../client";
 import type { Paginated } from "../types";
-import type { Assignee, PersonRef, Transition } from "./orders";
+import type { Assignee, PersonRef, ReleaseState, Transition } from "./orders";
 
 /* ------------------------------------------------------------------ types */
 
@@ -81,6 +81,15 @@ export interface Delivery {
   proof: DeliveryProof | null;
   items: DeliveryItem[];
   allowed_transitions: Transition[];
+  /** What the customer still owes: the order doesn't go out while `release.blocked`. */
+  payment: {
+    total: string | null;
+    paid: string;
+    due: string | null;
+    status: string;
+    currency: string;
+    release: ReleaseState;
+  };
   created_at: string;
   updated_at: string;
 }

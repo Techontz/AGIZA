@@ -14,7 +14,7 @@ import { deliveriesApi, deliveryKeys, type Delivery, type DeliveryGroup, type De
 
 import { useDeliveryAccess } from "./access";
 import { BulkAssignDriverDialog, BulkCompleteDialog } from "./action-dialogs";
-import { DELIVERY_STATUS, DeliveryExceptionBadge, DeliveryStatusBadge, OrderSourceBadge } from "./badges";
+import { DELIVERY_STATUS, DeliveryExceptionBadge, DeliveryStatusBadge, PaymentDueBadge, OrderSourceBadge } from "./badges";
 import { EditItemLabelsButton } from "./item-labels-dialog";
 import { DeliveryItemsTable, DeliveryRowDetails } from "./row-details";
 
@@ -262,7 +262,10 @@ function DeliveryCard({ delivery: d, checked, onCheck, open, onToggle }: { deliv
         </div>
         <OrderSourceBadge source={d.source} label={d.source_display} />
         <DeliveryStatusBadge delivery={d} />
-        <DeliveryExceptionBadge flag={d.exception_flag} />
+        <div className="flex flex-col gap-1">
+          <DeliveryExceptionBadge flag={d.exception_flag} />
+          <PaymentDueBadge payment={d.payment} />
+        </div>
         <div className="text-sm text-gray-700 whitespace-nowrap">
           {d.driver ? (
             <>

@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 
 import { DeliveryQuotesTab } from "@/components/orders/delivery-quotes-tab";
 import { QuickOrderDialog } from "@/components/orders/international/quick-order-dialog";
-import { ApproveDialog, NewQuoteDialog, RespondDialog, ServiceTypeBadge } from "@/components/orders/quote-dialogs";
+import { ApproveDialog, CustomerTypeBadge, NewQuoteDialog, RespondDialog, ServiceTypeBadge } from "@/components/orders/quote-dialogs";
 import { useOrderAccess, useOrderMutation } from "@/components/orders/shared";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -182,6 +182,7 @@ export function IntakeView() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="text-gray-900 whitespace-nowrap">{q.customer.full_name}</div>
+                          <div className="mt-1"><CustomerTypeBadge type={q.customer_type} /></div>
                         </td>
                         <td className="px-6 py-4">
                           {q.customer.phone ? (

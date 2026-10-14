@@ -5,6 +5,7 @@
 import {
   AlignJustify,
   ArrowRight,
+  Ban,
   BarChart,
   CheckSquare,
   FileText,
@@ -63,6 +64,7 @@ export const navigation: NavItem[] = [
       { id: "express-delivery", label: "Express Delivery Management", icon: CheckSquare, href: "/orders/express", module: "orders" },
       { id: "ecommerce-orders", label: "E-commerce Shop Orders", icon: Store, href: "/orders/ecommerce", module: "orders" },
       { id: "equipment-support", label: "Equipment Support Orders", icon: Wrench, href: "/orders/equipment-support", module: "orders" },
+      { id: "cancelled-orders", label: "Cancelled Orders", icon: Ban, href: "/orders/cancelled", module: "orders" },
     ],
   },
   { id: "deliveries", label: "Deliveries", icon: Truck, href: "/deliveries", module: "deliveries" },
@@ -113,6 +115,7 @@ export const pageMeta: Record<string, { title: string; description: string; icon
   "/orders/express": { title: "Express Delivery Management", description: "Manage and track all local deliveries", icon: CheckSquare, module: "orders" },
   "/orders/ecommerce": { title: "E-commerce Shop Orders", description: "Manage orders from your online store", icon: Store, module: "orders" },
   "/orders/equipment-support": { title: "Equipment Support Orders", description: "Installation, Setup, Maintenance, and Repairs Management", icon: Wrench, module: "orders" },
+  "/orders/cancelled": { title: "Cancelled Orders", description: "Why each order was cancelled, its history, and resubmitting it as a new order", icon: Ban, module: "orders" },
   "/deliveries": { title: "Deliveries Management", description: "Track and manage all delivery operations", icon: Truck, module: "deliveries" },
   "/returns": { title: "Returns Management", description: "Track and process product returns and refunds", icon: RotateCcw, module: "returns" },
   "/tasks": { title: "Tasks", description: "Track and manage operational tasks across all orders and deliveries", icon: CheckSquare, module: "tasks" },

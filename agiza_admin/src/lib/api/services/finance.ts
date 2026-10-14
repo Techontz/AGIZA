@@ -232,8 +232,43 @@ export interface ProfitLossReport extends Paginated<ProfitLossRow> {
 
 /* ---------------------------------------------------------------- service */
 
+/** A customer's account: owed on orders (by them), wallet credit (owed to them), and the net. */
+export interface AccountStatement {
+  currency: string;
+  owed_by_customer: string;
+  owed_to_customer: string;
+  /** > 0: the customer owes AGIZA; < 0: AGIZA owes the customer. */
+  net: string;
+  orders: {
+    id: number;
+    reference: string;
+    order_type: string;
+    item_details: string;
+    currency: string;
+    total: string;
+    paid: string;
+    due: string;
+    status: string;
+    on_installments: boolean;
+    released_with_balance: boolean;
+    next_installment: { due_date: string; amount: string; overdue: boolean } | null;
+  }[];
+  wallet_transactions: {
+    id: number;
+    kind: "credit" | "debit";
+    source: string;
+    source_display: string;
+    amount: string;
+    balance_after: string;
+    order: string | null;
+    note: string;
+    created_at: string;
+  }[];
+}
+
 export const financeApi = {
   stats: () => api.get<FinanceStats>("finance/stats"),
+  account: (customerId: number) => api.get<AccountStatement>(`finance/customers/${customerId}/account`),
 
   profitLoss: {
     get: (query: QueryParams, signal?: AbortSignal) => api.get<ProfitLossReport>("finance/profit-loss", query, signal),
@@ -314,5 +349,6 @@ export const financeKeys = {
   invoice: (id: number) => ["finance", "invoice", id] as const,
   wallets: (query: object) => ["finance", "wallets", query] as const,
   wallet: (customerId: number) => ["finance", "wallet", customerId] as const,
+  account: (customerId: number) => ["finance", "account", customerId] as const,
   plans: (query: object) => ["finance", "plans", query] as const,
 };

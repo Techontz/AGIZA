@@ -4,12 +4,14 @@ import { ChevronDown, ChevronUp, Package2, PackageCheck, PackageX, Paperclip } f
 import Link from "next/link";
 import React, { useEffect, useRef } from "react";
 
+import { FlagBadges, FlagButton } from "@/components/orders/flags";
+import { ReleaseButton } from "@/components/orders/release-approval";
 import { Card } from "@/components/ui/card";
 import { TableSkeletonRows } from "@/components/ui/table";
 import { fileSrc } from "@/lib/api/files";
 import type { Parcel, Shipment } from "@/lib/api/services/shipping";
 import { cn } from "@/lib/cn";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatTSh } from "@/lib/format";
 
 import { AlertBadge, CargoTypeBadge, METHOD_LABEL, ShipmentStatusBadge, num } from "./shared";
 import { ShipmentDetails } from "./shipment-details";
@@ -99,15 +101,28 @@ export function ReadyTable({
                   <td className={td}><CargoTypeBadge type={p.cargo_type} label={p.cargo_type_display} /></td>
                   <td className={cn(td, "text-gray-900 text-sm whitespace-nowrap")}>{formatDate(p.received_at)}</td>
                   <td className={td}>
+                    <FlagBadges flags={p.order.flags} className="mb-1" />
                     {p.exception_flags.length > 0 ? (
                       <div className="space-y-1">
                         {p.exception_flags.map((flag) => (
                           <span key={flag} className="inline-block px-2 py-1 bg-red-100 text-red-800 text-xs rounded mr-1 whitespace-nowrap">{flag}</span>
                         ))}
+                        {p.exception_flags.includes("payment-pending") && (
+                          <div>
+                            <ReleaseButton orderType="international" orderId={p.order.id} reference={p.order.reference} due={p.order.due} />
+                          </div>
+                        )}
                       </div>
-                    ) : (
+                    ) : p.order.release.approved && p.order.due && Number(p.order.due) > 0 ? (
+                      <span className="inline-block px-2 py-1 bg-amber-100 text-amber-800 text-xs rounded whitespace-nowrap" title={p.order.release.note}>
+                        Released · {formatTSh(p.order.due)} due
+                      </span>
+                    ) : p.order.flags.length === 0 ? (
                       <span className="text-green-600 text-sm whitespace-nowrap">✓ No issues</span>
-                    )}
+                    ) : null}
+                    <div className="mt-1">
+                      <FlagButton orderId={p.order.id} reference={p.order.reference} department="shipping" />
+                    </div>
                   </td>
                   <td className={td}>
                     {p.shipping_method ? (
@@ -171,7 +186,13 @@ export function WaitingTable({
             ) : (
               rows.map((p) => (
                 <tr key={p.id} className="hover:bg-gray-50 transition-colors">
-                  <td className={td}><OrderLink parcel={p} /></td>
+                  <td className={td}>
+                    <OrderLink parcel={p} />
+                    <FlagBadges flags={p.order.flags} className="mt-1" />
+                    <div className="mt-1">
+                      <FlagButton orderId={p.order.id} reference={p.order.reference} department="shipping" />
+                    </div>
+                  </td>
                   <td className={cn(td, "whitespace-nowrap")}>{p.supplier_tracking_number || <span className="text-gray-400">—</span>}</td>
                   <td className={td}><span className="text-gray-900 uppercase text-sm whitespace-nowrap">{p.origin.name}</span></td>
                   <td className={cn(td, "text-gray-900 whitespace-nowrap")}>{p.shipper?.name ?? <span className="text-gray-400">Not set</span>}</td>
@@ -258,6 +279,9 @@ export function ShipmentsTable({
   onDocuments,
   canEdit,
   footer,
+  selected,
+  onToggle,
+  onToggleAll,
 }: {
   rows: Shipment[];
   loading: boolean;
@@ -266,14 +290,26 @@ export function ShipmentsTable({
   onDocuments: (s: Shipment) => void;
   canEdit: boolean;
   footer?: React.ReactNode;
+  /** Bulk selection (e.g. to update the customers' expected delivery); omitted = no checkboxes. */
+  selected?: Set<number>;
+  onToggle?: (id: number) => void;
+  onToggleAll?: () => void;
 }) {
   const headers = ["Cargo ID", "Shipment #", "Shipper", "Status", "Weight/CBM", "Method", "Route", "ETA", "Alert", "Actions"];
+  const selectable = Boolean(selected && onToggle && onToggleAll);
+  const picked = selected ? rows.filter((r) => selected.has(r.id)).length : 0;
+  const all = rows.length > 0 && picked === rows.length;
   return (
     <Card className="overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
+              {selectable && (
+                <th scope="col" className="px-6 py-4 text-left">
+                  <Checkbox checked={all} indeterminate={picked > 0 && !all} onChange={onToggleAll!} label="Select all shipments on this page" />
+                </th>
+              )}
               {headers.map((h) => (
                 <th key={h} scope="col" className={th}>{h}</th>
               ))}
@@ -281,13 +317,18 @@ export function ShipmentsTable({
           </thead>
           <tbody className="divide-y divide-gray-200">
             {loading ? (
-              <TableSkeletonRows rows={5} columns={headers.length} />
+              <TableSkeletonRows rows={5} columns={headers.length + (selectable ? 1 : 0)} />
             ) : (
               rows.map((s) => {
                 const open = expanded === s.id;
                 return (
                   <React.Fragment key={s.id}>
-                    <tr className="hover:bg-gray-50 transition-colors">
+                    <tr className={cn("hover:bg-gray-50 transition-colors", selected?.has(s.id) && "bg-blue-50/50")}>
+                      {selectable && (
+                        <td className={td}>
+                          <Checkbox checked={selected!.has(s.id)} onChange={() => onToggle!(s.id)} label={`Select ${s.cargo_id}`} />
+                        </td>
+                      )}
                       <td className={td}>
                         <div className="font-semibold text-gray-900 whitespace-nowrap">{s.cargo_id}</div>
                         <div className="text-xs text-gray-500">{s.orders.length} order(s)</div>
@@ -338,7 +379,7 @@ export function ShipmentsTable({
                     </tr>
                     {open && (
                       <tr id={`shipment-${s.id}-details`}>
-                        <td colSpan={headers.length} className="px-6 py-4 bg-gray-50">
+                        <td colSpan={headers.length + (selectable ? 1 : 0)} className="px-6 py-4 bg-gray-50">
                           <ShipmentDetails shipment={s} canEdit={canEdit} />
                         </td>
                       </tr>

@@ -10,6 +10,9 @@ import { Modal } from "@/components/ui/modal";
 import { orderKeys, ordersApi, type InternationalOrder } from "@/lib/api/services/orders";
 import { formatDate, formatTSh } from "@/lib/format";
 
+import { OrderDocumentLinks } from "../documents";
+import { OrderFlagsPanel } from "../flags";
+import { ReleaseApproval } from "../release-approval";
 import { PaymentDialog, StatusHistoryList, TransitionDialog, useOrderAccess, useOrderMutation } from "../shared";
 import { OrderTypeBadge, OriginBadge, PaymentBadge, StatusBadge } from "./badges";
 
@@ -136,7 +139,14 @@ export function InternationalDetailsModal({ order, onClose }: { order: Internati
                 )}
               </div>
             )}
+            <div className="mt-4">
+              <ReleaseApproval orderType="international" orderId={order.id} reference={order.reference} due={order.payment.due} release={order.release} closed={closed} compact />
+            </div>
           </div>
+
+          <OrderDocumentLinks orderType="international" orderId={order.id} />
+
+          <OrderFlagsPanel orderId={order.id} reference={order.reference} flags={order.flags} closed={closed} />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">

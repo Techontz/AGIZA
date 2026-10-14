@@ -22,12 +22,12 @@ import { ConversationHeader } from "./conversation-header";
 import { LinkModal } from "./link-modal";
 import { MessageThread } from "./message-thread";
 import { EscalateModal, FollowUpModal, ReassignModal } from "./modals";
-import { CreateQuoteModal, SendQuoteModal } from "./quote-modals";
+import { CreateQuoteModal, QuickQuoteModal, SendQuoteModal } from "./quote-modals";
 import { useConversationMutation } from "./use-chat-mutation";
 
 const POLL_MS = 10_000;
 
-type ModalKind = "follow-up" | "escalate" | "reassign" | "link" | "link-records" | "create-quote" | "send-quote" | null;
+type ModalKind = "follow-up" | "escalate" | "reassign" | "link" | "link-records" | "create-quote" | "send-quote" | "quick-quote" | null;
 
 export function ConversationPane({
   id,
@@ -72,6 +72,7 @@ export function ConversationPane({
     onSuccess: (c) => {
       qc.setQueryData(chatKeys.one(id), c);
       qc.invalidateQueries({ queryKey: chatKeys.lists });
+      qc.invalidateQueries({ queryKey: chatKeys.unread });
     },
   });
   const lastCustomerId = useMemo(() => {
@@ -90,6 +91,7 @@ export function ConversationPane({
     qc.invalidateQueries({ queryKey: chatKeys.messages(id) });
     qc.invalidateQueries({ queryKey: chatKeys.lists });
     qc.invalidateQueries({ queryKey: chatKeys.stats });
+    qc.invalidateQueries({ queryKey: chatKeys.unread });
   };
 
   const send = useMutation({
@@ -111,6 +113,23 @@ export function ConversationPane({
       } else {
         setSendError(errorText(e));
       }
+    },
+  });
+
+  const sendFile = useMutation({
+    mutationFn: (vars: { file: File; durationMs?: number; caption: string }) =>
+      chatApi.sendFile(id, vars.file, vars.caption, vars.durationMs),
+    onSuccess: (msg, vars) => {
+      qc.setQueryData<ChatMessage[]>(chatKeys.messages(id), (old) => (old ? [...old, msg] : [msg]));
+      if (vars.caption) setDraft("");
+      setSendError(null);
+      setConflict(null);
+      refreshAll();
+      if (msg.delivery_status === "failed") toast.error(`Saved but delivery failed — ${msg.delivery_error || "try again later"}`);
+    },
+    onError: (e) => {
+      if (e instanceof ApiError && e.status === 409) setConflict(errorText(e));
+      else setSendError(errorText(e));
     },
   });
 
@@ -214,6 +233,7 @@ export function ConversationPane({
         canEdit={canEdit}
         pending={{ resend: resend.isPending, status: archive.isPending || reopen.isPending }}
         handlers={{
+          onQuickQuote: () => setModal("quick-quote"),
           onCreateQuote: () => setModal("create-quote"),
           onSendQuote: () => setModal("send-quote"),
           onResendQuote: () => conv.quote && resend.mutate(conv.quote.id),
@@ -244,7 +264,11 @@ export function ConversationPane({
         internal={internal}
         onInternalChange={setInternal}
         onSend={submit}
-        sending={send.isPending}
+        onSendFile={(file, durationMs) => {
+          setSendError(null);
+          sendFile.mutate({ file, durationMs, caption: durationMs === undefined ? draft.trim() : "" });
+        }}
+        sending={send.isPending || sendFile.isPending}
         disabled={!canEdit}
         disabledReason={canEdit ? undefined : "You have view-only access to chat."}
         quickReplies={quickReplies.data}
@@ -266,6 +290,7 @@ export function ConversationPane({
         <LinkModal open conversation={conv} initialTab={modal === "link-records" ? "order" : "client"} onClose={() => setModal(null)} />
       )}
       {modal === "create-quote" && <CreateQuoteModal open conversation={conv} onClose={() => setModal(null)} onLinkClient={() => setModal("link")} />}
+      {modal === "quick-quote" && <QuickQuoteModal open conversation={conv} onClose={() => setModal(null)} onLinkClient={() => setModal("link")} />}
       {modal === "send-quote" && <SendQuoteModal open conversation={conv} onClose={() => setModal(null)} onLinkClient={() => setModal("link")} />}
 
       <ChatModal open={accepting !== null} onClose={() => !acceptQuote.isPending && setAccepting(null)} title="Accept Quote">

@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
 
 import { FormAlert, fromLocalInput, mergedErrors } from "@/components/deliveries/form-helpers";
 import { OrderPickups } from "@/components/deliveries/pickups";
+import { OrderDocumentLinks } from "@/components/orders/documents";
+import { ReleaseApproval } from "@/components/orders/release-approval";
 import { PaymentDialog, StatusHistoryList, useOrderAccess } from "@/components/orders/shared";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -77,6 +79,10 @@ export function ShopOrderDetails({ order: o }: { order: ShopOrder }) {
 
   return (
     <div className="space-y-6">
+      <OrderDocumentLinks orderType="shop" orderId={o.id} />
+      {["shipped", "arrived", "processing"].includes(o.status) && (
+        <ReleaseApproval orderType="shop" orderId={o.id} reference={o.reference} due={o.payment.due} release={o.release} />
+      )}
       {o.details.checkout_reference && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
           <span>

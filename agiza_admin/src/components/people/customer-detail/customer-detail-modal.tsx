@@ -10,6 +10,7 @@ import { can, useMe } from "@/hooks/use-me";
 import { errorText } from "@/lib/api/errors";
 import { crmApi, crmKeys } from "@/lib/api/services/crm";
 
+import { AccountTab } from "./account-tab";
 import { ActivityTab } from "./activity-tab";
 import { OrdersTab, ReturnsTab } from "./history-tabs";
 import { InterestsTab } from "./interests-tab";
@@ -57,6 +58,7 @@ export function CustomerDetailModal({ customerId, onClose }: { customerId: numbe
 
   const tabs = [
     { value: "overview" as const, label: "Overview" },
+    { value: "account" as const, label: "Account" },
     { value: "orders" as const, label: `Orders (${profile?.orders.length ?? 0})` },
     { value: "returns" as const, label: `Returns (${profile?.returns.length ?? 0})` },
     { value: "quotations" as const, label: `Quotations${unanswered > 0 ? ` · ${unanswered} unanswered` : ""}` },
@@ -135,6 +137,8 @@ export function CustomerDetailModal({ customerId, onClose }: { customerId: numbe
             <ErrorState bare message={errorText(query.error)} onRetry={() => query.refetch()} />
           ) : tab === "overview" ? (
             <OverviewTab profile={query.data} onTab={setTab} />
+          ) : tab === "account" ? (
+            <AccountTab customerId={customerId} />
           ) : tab === "orders" ? (
             <OrdersTab profile={query.data} />
           ) : tab === "returns" ? (

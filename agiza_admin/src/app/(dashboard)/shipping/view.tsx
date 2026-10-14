@@ -1,11 +1,12 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Package2, PackageSearch, PackageX, Plus, Ship } from "lucide-react";
+import { AlertTriangle, CalendarClock, Package2, PackageSearch, PackageX, Plus, Ship } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { AddToShipmentModal } from "@/components/shipping/add-to-shipment-modal";
 import { CreateShipmentModal } from "@/components/shipping/create-shipment-modal";
+import { ExpectedDeliveryModal } from "@/components/shipping/expected-delivery-modal";
 import { MarkLostModal, ReceiveModal } from "@/components/shipping/receive-modal";
 import { STATUS_OPTIONS, useCarriers, useOriginCountries, useShippingAccess } from "@/components/shipping/shared";
 import { DocumentsModal } from "@/components/shipping/shipment-dialogs";
@@ -80,7 +81,20 @@ export function ShippingView() {
     setSelection({ key: selectionKey, ids: selected.size === parcelRows.length ? [] : parcelRows.map((p) => p.id) });
   const clearSelection = () => setSelection({ key: selectionKey, ids: [] });
 
-  const [bulk, setBulk] = useState<"create" | "add" | null>(null);
+  /* Shipments picked for a bulk expected-delivery update (same rule: cleared when the list changes). */
+  const shipmentKey = JSON.stringify(shipmentQuery);
+  const [shipSel, setShipSel] = useState<{ key: string; ids: number[] }>({ key: shipmentKey, ids: [] });
+  const shipmentRows = useMemo(() => (shipmentList ? shipments.data?.results ?? [] : []), [shipmentList, shipments.data]);
+  const selectedShipments = useMemo(() => {
+    const visible = new Set(shipmentRows.map((x) => x.id));
+    return new Set(shipSel.key === shipmentKey ? shipSel.ids.filter((id) => visible.has(id)) : []);
+  }, [shipSel, shipmentKey, shipmentRows]);
+  const toggleShipment = (id: number) =>
+    setShipSel({ key: shipmentKey, ids: selectedShipments.has(id) ? [...selectedShipments].filter((x) => x !== id) : [...selectedShipments, id] });
+  const toggleAllShipments = () =>
+    setShipSel({ key: shipmentKey, ids: selectedShipments.size === shipmentRows.length ? [] : shipmentRows.map((x) => x.id) });
+
+  const [bulk, setBulk] = useState<"create" | "add" | "eta" | "shipments-eta" | null>(null);
   const [receiving, setReceiving] = useState<Parcel | null>(null);
   const [losing, setLosing] = useState<Parcel | null>(null);
   const [docsFor, setDocsFor] = useState<number | null>(null);
@@ -171,7 +185,27 @@ export function ShippingView() {
             <Button variant="outline" className="text-blue-600 border-blue-600 hover:bg-blue-50" onClick={() => setBulk("add")}>
               Add to Existing Shipment
             </Button>
+            <Button variant="outline" onClick={() => setBulk("eta")}>
+              <CalendarClock className="size-4" />
+              Update Expected Delivery
+            </Button>
           </div>
+        </div>
+      )}
+
+      {shipmentList && canEdit && selectedShipments.size > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 flex flex-col sm:flex-row gap-3 sm:items-center justify-between" role="region" aria-label="Bulk actions">
+          <p className="text-blue-900 font-medium">
+            {selectedShipments.size} shipment(s) selected ·{" "}
+            {shipmentRows.filter((x) => selectedShipments.has(x.id)).reduce((n, x) => n + x.orders.length, 0)} order(s)
+            <button type="button" onClick={() => setShipSel({ key: shipmentKey, ids: [] })} className="ml-2 text-sm text-blue-700 underline hover:text-blue-900">
+              Clear
+            </button>
+          </p>
+          <Button onClick={() => setBulk("shipments-eta")}>
+            <CalendarClock className="size-4" />
+            Update Expected Delivery
+          </Button>
         </div>
       )}
 
@@ -194,6 +228,7 @@ export function ShippingView() {
           onDocuments={(sh) => setDocsFor(sh.id)}
           canEdit={canEdit}
           footer={pagination}
+          {...(canEdit ? { selected: selectedShipments, onToggle: toggleShipment, onToggleAll: toggleAllShipments } : {})}
         />
       )}
 
@@ -215,6 +250,28 @@ export function ShippingView() {
           onAdded={() => {
             setBulk(null);
             clearSelection();
+          }}
+        />
+      )}
+      {bulk === "eta" && selectedParcels.length > 0 && (
+        <ExpectedDeliveryModal
+          parcels={selectedParcels.map((p) => p.id)}
+          count={`${selectedParcels.length} order(s)`}
+          onClose={() => setBulk(null)}
+          onDone={() => {
+            setBulk(null);
+            clearSelection();
+          }}
+        />
+      )}
+      {bulk === "shipments-eta" && selectedShipments.size > 0 && (
+        <ExpectedDeliveryModal
+          shipments={[...selectedShipments]}
+          count={`${selectedShipments.size} shipment(s)`}
+          onClose={() => setBulk(null)}
+          onDone={() => {
+            setBulk(null);
+            setShipSel({ key: shipmentKey, ids: [] });
           }}
         />
       )}

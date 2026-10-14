@@ -8,6 +8,7 @@ import { cn } from "@/lib/cn";
 import { orderKeys, ordersApi, type EquipmentOrder } from "@/lib/api/services/orders";
 import { formatTSh } from "@/lib/format";
 
+import { OrderDocumentLinks } from "../documents";
 import { AssignDialog, PaymentDialog, StatusHistoryList, TransitionDialog, useOrderAccess, useOrderMutation } from "../shared";
 import { PAYMENT_TEXT, SERVICE_STYLE, shortDateTime, titleCaseClass } from "./shared";
 
@@ -118,6 +119,7 @@ export function EquipmentDetailModal({ order, onClose }: { order: EquipmentOrder
               <History className="size-4" /> {showHistory ? "Hide status history" : "Show status history"}
             </button>
             {showHistory && <StatusHistoryList entries={history.data} loading={history.isPending} />}
+            <OrderDocumentLinks orderType="equipment" orderId={order.id} className="mt-3" />
           </div>
         </div>
 

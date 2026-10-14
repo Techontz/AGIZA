@@ -1,6 +1,6 @@
 import { api, type QueryParams } from "../client";
 import type { Paginated } from "../types";
-import type { HistoryEntry, PersonRef } from "./orders";
+import type { HistoryEntry, OrderFlagRef, PersonRef } from "./orders";
 
 /* ------------------------------------------------------------------ types */
 
@@ -35,6 +35,7 @@ export interface ProcurementOrder {
     service_type: string;
     service_type_display: string;
     created_at: string;
+    flags: OrderFlagRef[];
   };
   origin: { iso2: string; name: string };
   status: ProcurementStatus;

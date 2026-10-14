@@ -6,7 +6,7 @@ import { formatDate, formatTSh, timeAgo, titleCase } from "@/lib/format";
 
 import { num, orderHref, Pill, SpendBars, statusColor } from "./shared";
 
-export type DetailTab = "overview" | "orders" | "returns" | "quotations" | "interests" | "activity";
+export type DetailTab = "overview" | "account" | "orders" | "returns" | "quotations" | "interests" | "activity";
 
 export function OverviewTab({ profile, onTab }: { profile: CustomerProfile; onTab: (tab: DetailTab) => void }) {
   const { customer, kpis, orders, quotations, category_spend } = profile;
