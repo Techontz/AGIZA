@@ -3,6 +3,11 @@ Bring the old AGIZA cargo system ("ujenzi", database agizasto_cargo8) into this 
 
     python manage.py import_legacy --legacy-url mysql://user:pass@localhost:3306/agizasto_cargo8 [--dry-run]
 
+or, with the old tables loaded into this platform's own database under an `old_` prefix
+(agiza-old-data.sql), simply:
+
+    python manage.py import_legacy [--dry-run]
+
 What moves where:
   auth_user (staff)            → accounts.User (same password; level from the old groups)
   ujenzi_client                → parties.Customer + storefront.CustomerAccount (same password: old app users
@@ -148,13 +153,19 @@ def keep_timestamps(*models):
             del field.pre_save
 
 
+# The old system's table names, renamed with a prefix when they sit in this platform's own database.
+OLD_TABLE = re.compile(r"\b(?:auth_user_groups|auth_user|auth_group|ujenzi_\w+|shop_\w+)\b")
+
+
 class Importer:
-    def __init__(self, legacy_url: str, *, media_dir: str = "", download_images: bool = True, log=print):
+    def __init__(self, legacy_url: str, *, media_dir: str = "", download_images: bool = True, log=print,
+                 table_prefix: str = ""):
         parts = urlparse(legacy_url)
         self.db = pymysql.connect(host=parts.hostname or "localhost", port=parts.port or 3306,
                                   user=unquote(parts.username or ""), password=unquote(parts.password or ""),
                                   database=parts.path.lstrip("/"), charset="utf8mb4",
                                   cursorclass=pymysql.cursors.DictCursor)
+        self.prefix = table_prefix
         self.media_dir = media_dir
         self.download_images = download_images
         self.log = log
@@ -166,12 +177,14 @@ class Importer:
 
     # ------------------------------------------------------------------ helpers
     def rows(self, sql: str, *args) -> list[dict]:
+        if self.prefix:
+            sql = OLD_TABLE.sub(lambda m: self.prefix + m.group(0), sql)
         with self.db.cursor() as cur:
             cur.execute(sql, args)
             return list(cur.fetchall())
 
     def has_table(self, name: str) -> bool:
-        return bool(self.rows("SHOW TABLES LIKE %s", name))
+        return bool(self.rows("SHOW TABLES LIKE %s", self.prefix + name))
 
     def remember(self, source: str, legacy_id: int, obj):
         LegacyRecord.objects.create(source=source, legacy_id=legacy_id, object_id=obj.pk)
