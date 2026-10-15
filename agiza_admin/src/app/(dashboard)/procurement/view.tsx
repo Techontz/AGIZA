@@ -1,8 +1,9 @@
 "use client";
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Building2, CheckCircle2, Clock, DollarSign, ShoppingCart, Truck, User } from "lucide-react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Building2, CheckCircle2, Clock, DollarSign, ShoppingCart, Trash2, Truck, User } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { FlagBadges, FlagButton } from "@/components/orders/flags";
 import { ExceptionBadge, ProcurementOriginBadge, ProcurementStatusBadge } from "@/components/procurement/badges";
@@ -10,7 +11,9 @@ import { ProcurementDetailsModal } from "@/components/procurement/details-modal"
 import { SuppliersModal } from "@/components/procurement/suppliers-modal";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { SearchInput, Select } from "@/components/ui/form";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Field, SearchInput, Select, Textarea } from "@/components/ui/form";
 import { PhotoThumb } from "@/components/ui/photo-viewer";
 import { PageContainer, PageHeader } from "@/components/ui/page";
 import { Pagination } from "@/components/ui/pagination";
@@ -18,6 +21,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { TBody, THead, Table, TableSkeletonRows, Td, Th, Tr } from "@/components/ui/table";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { can, useMe } from "@/hooks/use-me";
 import { useUrlFilters } from "@/hooks/use-url-filters";
 import { errorText } from "@/lib/api/errors";
 import { fileSrc } from "@/lib/api/files";
@@ -59,6 +63,45 @@ export function ProcurementView() {
   const openProc = useQuery({ queryKey: procurementKeys.one(openId ?? 0), queryFn: () => procurementApi.get(openId!), enabled: Boolean(openId) });
   const rows = list.data?.results ?? [];
   const s = stats.data;
+
+  // Bulk cancel (Procurement managers): the selected orders move to Cancelled Orders with the reason.
+  // The selection is kept per page and cleared when the list changes.
+  const { data: me } = useMe();
+  const canDelete = can(me, "procurement", "manage");
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [confirming, setConfirming] = useState(false);
+  const [reason, setReason] = useState("");
+  const listKey = JSON.stringify(query);
+  useEffect(() => setSelected(new Set()), [listKey]);
+  const allSelected = rows.length > 0 && rows.every((p) => selected.has(p.id));
+  const toggle = (id: number) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(rows.map((p) => p.id)));
+  const qc = useQueryClient();
+  const remove = useMutation({
+    mutationFn: () => procurementApi.bulkCancel([...selected], reason.trim()),
+    onSuccess: (res) => {
+      setConfirming(false);
+      setReason("");
+      setSelected(new Set());
+      qc.invalidateQueries({ queryKey: procurementKeys.all });
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      const n = res.cancelled.length;
+      if (n) toast.success(`${n} order${n === 1 ? "" : "s"} moved to Cancelled Orders`);
+      if (res.skipped.length) {
+        toast.error(`${res.skipped.length} not cancelled`, {
+          description: res.skipped.map((x) => `${x.reference}: ${x.reason}`).join("\n"),
+          duration: 12000,
+        });
+      }
+    },
+    onError: (e) => toast.error(errorText(e)),
+  });
 
   return (
     <PageContainer>
@@ -107,14 +150,37 @@ export function ProcurementView() {
         <EmptyState icon={ShoppingCart} title="No procurement orders found" description="Try adjusting your filters" />
       ) : (
         <Card className="overflow-hidden">
+          {canDelete && selected.size > 0 && (
+            <div className="flex items-center justify-between gap-3 px-6 py-3 bg-red-50 border-b border-red-100">
+              <span className="text-sm font-medium text-gray-900">{selected.size} selected</span>
+              <div className="flex gap-2">
+                <Button size="sm" variant="muted" onClick={() => setSelected(new Set())}>Clear</Button>
+                <Button size="sm" variant="danger" onClick={() => setConfirming(true)}>
+                  <Trash2 className="size-4" /> Delete selected
+                </Button>
+              </div>
+            </div>
+          )}
           <Table>
-            <THead>{COLUMNS.map((h) => <Th key={h}>{h}</Th>)}</THead>
+            <THead>
+              {canDelete && (
+                <Th className="w-10">
+                  <Checkbox checked={allSelected} indeterminate={selected.size > 0 && !allSelected} onChange={toggleAll} label="Select all on this page" />
+                </Th>
+              )}
+              {COLUMNS.map((h) => <Th key={h}>{h}</Th>)}
+            </THead>
             <TBody>
               {list.isPending ? (
-                <TableSkeletonRows columns={COLUMNS.length} />
+                <TableSkeletonRows columns={COLUMNS.length + (canDelete ? 1 : 0)} />
               ) : (
                 rows.map((p) => (
-                  <Tr key={p.id}>
+                  <Tr key={p.id} className={selected.has(p.id) ? "bg-blue-50/60" : undefined}>
+                    {canDelete && (
+                      <Td className="w-10">
+                        <Checkbox checked={selected.has(p.id)} onChange={() => toggle(p.id)} label={`Select ${p.order.reference}`} />
+                      </Td>
+                    )}
                     <Td>
                       <button
                         type="button"
@@ -177,6 +243,27 @@ export function ProcurementView() {
       )}
       {openProc.data && openId && <ProcurementDetailsModal proc={openProc.data} onClose={() => setF({ open: "", page: f.page })} />}
       <SuppliersModal open={suppliersOpen} onClose={() => setSuppliersOpen(false)} />
+      <ConfirmDialog
+        open={confirming}
+        title={`Delete ${selected.size} order${selected.size === 1 ? "" : "s"}?`}
+        tone="danger"
+        confirmLabel="Move to Cancelled Orders"
+        pending={remove.isPending}
+        onConfirm={() => (reason.trim() ? remove.mutate() : toast.error("Give the reason for cancelling."))}
+        onClose={() => setConfirming(false)}
+        message={
+          <p className="text-sm">
+            The selected orders are cancelled and moved to <strong>Cancelled Orders</strong>, with this reason.
+            Their procurement, cargo and delivery records are closed. You can resubmit an order from there.
+          </p>
+        }
+      >
+        <div className="mt-4">
+          <Field label="Reason (required)">
+            <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="e.g. Duplicate / test orders" />
+          </Field>
+        </div>
+      </ConfirmDialog>
     </PageContainer>
   );
 }

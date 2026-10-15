@@ -199,7 +199,11 @@ export const procurementApi = {
   cancelSupplier: (id: number, reason: string) =>
     api.post<ProcurementOrder>(`procurement/orders/${id}/cancel-supplier`, { reason }),
   history: (id: number) => api.get<HistoryEntry[]>(`procurement/orders/${id}/history`),
+  bulkCancel: (ids: number[], reason: string) =>
+    api.post<BulkCancelResult>("procurement/orders/bulk-cancel", { ids, reason }),
 };
+
+export type BulkCancelResult = { cancelled: string[]; skipped: { reference: string; reason: string }[] };
 
 export const suppliersApi = {
   list: (query: QueryParams, signal?: AbortSignal) => api.get<Paginated<Supplier>>("procurement/suppliers", query, signal),

@@ -235,3 +235,29 @@ def test_procurement_shows_the_customer_and_staff_photos(ops, client_for, make_i
     other = make_intl()
     assert procurement.get(f"{PROC}/{proc_of(other).id}/photos/{mine.id}/file/").status_code == 404
     assert client_for(StaffLevel.DRIVER).get(f"/api/{photos[0]['url']}/").status_code == 403
+
+
+
+def test_bulk_cancel_moves_orders_to_cancelled_orders(ops, client_for, make_intl):
+    from apps.orders.models import Order
+
+    unpaid, paid = make_intl(), make_intl(paid="2500000")
+    ids = [proc_of(unpaid).id, proc_of(paid).id]
+    assert client_for(StaffLevel.SALES).post(f"{PROC}/bulk-cancel/", {"ids": ids, "reason": "x"},
+                                             format="json").status_code == 403
+    assert ops.post(f"{PROC}/bulk-cancel/", {"ids": []}, format="json").status_code == 400
+    assert ops.post(f"{PROC}/bulk-cancel/", {"ids": ids, "reason": " "}, format="json").status_code == 400
+    res = ops.post(f"{PROC}/bulk-cancel/", {"ids": ids, "reason": "Duplicate test orders"}, format="json")
+    assert res.status_code == 200, res.json()
+    assert sorted(res.json()["cancelled"]) == sorted([unpaid.reference, paid.reference])
+    for order in (unpaid, paid):
+        order = Order.objects.get(pk=order.pk)
+        assert order.status == "cancelled" and order.cancellation_reason == "Duplicate test orders"
+        assert proc_of(order).status == "cancelled"
+    procurement = {p["order"]["reference"] for p in ops.get(f"{PROC}/").json()["results"]}
+    assert not {unpaid.reference, paid.reference} & procurement
+    listed = {o["reference"] for o in ops.get("/api/orders/cancelled/").json()["results"]}
+    assert {unpaid.reference, paid.reference} <= listed
+    # Already cancelled: reported, not changed.
+    again = ops.post(f"{PROC}/bulk-cancel/", {"ids": ids[:1], "reason": "again"}, format="json").json()
+    assert again["cancelled"] == [] and again["skipped"][0]["reason"] == "already cancelled"

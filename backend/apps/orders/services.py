@@ -620,3 +620,26 @@ def set_expected_date(order: Order, expected, user, request=None) -> Order:
     record_audit(action="update", request=request, actor=user, instance=order,
                  changes={"expected_date": [before.isoformat() if before else None, expected.isoformat()]})
     return order
+
+
+
+def cancel_orders(orders, *, reason: str, user, request=None) -> dict:
+    """
+    Remove orders from the working lists by cancelling them (whatever their stage): they move to
+    Cancelled Orders with the reason, and their procurement / cargo / delivery records are closed.
+    Delivered or completed orders are kept as they are.
+    """
+    if not reason.strip():
+        raise WorkflowError("Give the reason for cancelling.", field="reason")
+    from .workflows import TERMINAL
+
+    cancelled, skipped = [], []
+    for order in orders:
+        with transaction.atomic():
+            order = _lock(order)
+            if order.status in TERMINAL:
+                skipped.append({"reference": order.reference, "reason": f"already {order.status}"})
+                continue
+            _set_status(order, "cancelled", user, reason, request)
+        cancelled.append(order.reference)
+    return {"cancelled": cancelled, "skipped": skipped}

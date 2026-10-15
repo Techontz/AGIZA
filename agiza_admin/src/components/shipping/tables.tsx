@@ -2,9 +2,10 @@
 
 import { ChevronDown, ChevronUp, Package2, PackageCheck, PackageX, Paperclip } from "lucide-react";
 import Link from "next/link";
-import React, { useEffect, useRef } from "react";
+import React from "react";
 
 import { FlagBadges, FlagButton } from "@/components/orders/flags";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ReleaseButton } from "@/components/orders/release-approval";
 import { Card } from "@/components/ui/card";
 import { TableSkeletonRows } from "@/components/ui/table";
@@ -29,14 +30,6 @@ function OrderLink({ parcel }: { parcel: Parcel }) {
       {parcel.order.reference}
     </Link>
   );
-}
-
-function Checkbox({ checked, indeterminate, onChange, label }: { checked: boolean; indeterminate?: boolean; onChange: () => void; label: string }) {
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (ref.current) ref.current.indeterminate = Boolean(indeterminate);
-  }, [indeterminate]);
-  return <input ref={ref} type="checkbox" className="rounded size-4 cursor-pointer" checked={checked} onChange={onChange} aria-label={label} />;
 }
 
 /* -------------------------------------------------------- Ready for Shipment */

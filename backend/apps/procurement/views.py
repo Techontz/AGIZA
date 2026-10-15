@@ -4,6 +4,7 @@ from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from apps.accounts.constants import Module, StaffLevel
@@ -88,11 +89,16 @@ class ProcurementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixin
                      "order__customer__full_name"]
     ordering_fields = ["created_at", "updated_at", "item_cost", "expected_at_cargo"]
     http_method_names = ["get", "post", "patch", "head", "options"]
+    required_access = {"bulk_cancel": "manage"}
 
     def get_queryset(self):
         # Installment orders stay out of Procurement until an admin approves the installments
         # (they wait in International Orders → Installments).
-        return ProcurementOrder.objects.exclude(AWAITING_INSTALLMENT_APPROVAL).select_related(
+        qs = ProcurementOrder.objects.exclude(AWAITING_INSTALLMENT_APPROVAL)
+        # Cancelled orders live in Cancelled Orders; the list shows them only when asked for by status.
+        if self.action == "list" and "cancelled" not in self.request.query_params.get("status", ""):
+            qs = qs.exclude(status=ProcurementStatus.CANCELLED)
+        return qs.select_related(
             "order", "order__customer", "order__international", "order__international__source_country",
             "supplier", "operator",
         ).prefetch_related("order__attachments", Prefetch("order__flags", to_attr="open_flags",
@@ -178,6 +184,20 @@ class ProcurementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixin
         """One of the order's photos, for procurement staff (who may not see the Orders module)."""
         att = get_object_or_404(self.get_object().order.attachments, pk=photo_id)
         return file_response(att.file, att.content_type)
+
+    @action(detail=False, methods=["post"], url_path="bulk-cancel")
+    def bulk_cancel(self, request):
+        """Cancel the selected procurement records' orders: they move to Cancelled Orders with the reason."""
+        from apps.orders import services as orders
+
+        ids = request.data.get("ids")
+        if not isinstance(ids, list) or not ids or len(ids) > 200 or not all(isinstance(i, int) for i in ids):
+            raise ValidationError({"ids": ["Select between 1 and 200 orders."]})
+        reason = str(request.data.get("reason") or "")
+        procs = ProcurementOrder.objects.filter(pk__in=ids).select_related("order")
+        result = run(orders.cancel_orders, [p.order for p in procs], reason=reason, user=request.user,
+                     request=request)
+        return Response(result)
 
     @action(detail=False)
     def stats(self, request):
