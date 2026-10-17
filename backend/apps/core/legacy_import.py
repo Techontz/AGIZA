@@ -27,7 +27,9 @@ What moves where:
 
 Open orders also get what the workflow needs next: a procurement record, a cargo parcel, or a delivery.
 Nothing is sent to customers (no push, no inbox) and no audit noise is written. Every imported row is
-recorded in core.LegacyRecord, so the command can be run again safely: rows already imported are skipped.
+recorded in core.LegacyRecord, so the command can be run again safely: rows already imported are not
+duplicated. Orders imported earlier get the old system's newer status steps and payments on a re-run
+(unless staff have already handled them here since the import).
 """
 from __future__ import annotations
 
@@ -44,6 +46,7 @@ from urllib.parse import unquote, urlparse
 import pymysql
 from django.core.files.base import ContentFile
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 from apps.core.models import LegacyRecord
@@ -371,8 +374,12 @@ class Importer:
                                  "JOIN ujenzi_ordergroup g ON g.id = d.group_id"):
                 groups[row["product_id"]] = row
         used_refs = set()
+        imported_at = dict(LegacyRecord.objects.filter(source="ujenzi_laguage").values_list("legacy_id", "created_at"))
         for row in self.rows("SELECT * FROM ujenzi_laguage ORDER BY id"):
             if row["id"] in self.map["ujenzi_laguage"]:
+                with transaction.atomic():
+                    self.refresh(row, self.map["ujenzi_laguage"][row["id"]], imported_at.get(row["id"]),
+                                 logs[row["id"]], pays[row["id"]])
                 continue
             customer_id = self.map["ujenzi_client"].get(row["client_id"])
             if customer_id is None:
@@ -489,6 +496,120 @@ class Importer:
             self._photos(order, row)
         if status not in CLOSED:
             self._next_steps(order, row, status, created)
+
+    def refresh(self, row, order_id, imported_at, logs, pays):
+        """
+        An order imported earlier that the old system kept working on: add its newer status steps and
+        payments, and move it to its current status (procurement / cargo / delivery follow). Orders staff
+        have already handled in this platform since the import are left as they are and listed to check.
+        """
+        from apps.orders.models import Order, OrderStatusHistory, Payment
+        from apps.orders.services import _after_status_change
+        from apps.orders.workflows import INTERNATIONAL_DEPARTMENT, InternationalStatus
+
+        order = Order.objects.select_for_update().filter(pk=order_id).first()
+        if order is None:  # deleted here since the import
+            return
+        shop = order.order_type == "shop"
+        legacy_status = _text(row["status"]).lower()
+        status = SHOP_STATUS.get(legacy_status, order.status) if shop else INTL_STATUS.get(legacy_status, order.status)
+        history = OrderStatusHistory.objects.filter(order=order)
+        last_old = history.filter(created_at__lte=imported_at).order_by("-created_at").values_list(
+            "created_at", flat=True).first() if imported_at else None
+        new_logs = [log for log in logs if last_old is None or (_aware(log["created_at"]) or last_old) > last_old]
+        paid = _dec(row["paid"])
+        total = _dec(row["total"]) or order.total_amount or ZERO
+        target_paid = min(paid, total) if total > 0 else paid
+        have_paid = Payment.objects.filter(order=order, reference=f"OLD-{row['id']}").aggregate(
+            s=Sum("amount"))["s"] or ZERO
+        if not new_logs and status == order.status and (target_paid <= have_paid or paid < 0):
+            return
+        if imported_at and history.filter(created_at__gt=imported_at).exists():
+            self.warn(f"Order {order.reference}: changed in the old system ({row['status']}) and in this platform "
+                      f"({order.status}) since the import — kept as it is here; check it")
+            self.stats["orders changed in both systems (kept, check)"] += 1
+            return
+
+        before = previous = order.status
+        rows = []
+        for log in new_logs:
+            to = self._map_status(log["status"], shop, previous)
+            note = _text(log["status"]) + (f": {_text(log['descriptions'])}" if _text(log["descriptions"]) else "")
+            rows.append(OrderStatusHistory(order=order, from_status=previous, to_status=to,
+                                           changed_by_id=self.user(log["created_by_id"]), note=note[:1000],
+                                           created_at=_aware(log["created_at"]) or timezone.now()))
+            previous = to
+        if previous != status:
+            rows.append(OrderStatusHistory(order=order, from_status=previous, to_status=status,
+                                           note=f"Status in the old system: {row['status']}"))
+        OrderStatusHistory.objects.bulk_create(rows)  # bulk: no customer notifications
+        self.stats["status history rows (updates)"] += len(rows)
+
+        if target_paid > have_paid and paid >= 0:
+            when = max((_aware(p["created_at"]) for p in pays if _aware(p["created_at"])), default=timezone.now())
+            Payment.objects.bulk_create([Payment(
+                order=order, amount=target_paid - have_paid, currency="TZS", method=Payment.Method.OTHER,
+                kind=Payment.Kind.BALANCE if total and target_paid >= total else Payment.Kind.ADVANCE,
+                reference=f"OLD-{row['id']}", paid_at=when, notes="Paid in the old AGIZA system after the first import",
+                created_at=when, updated_at=when)])
+            self.stats["payments (updates)"] += 1
+
+        fields = {"total_amount": total if total > 0 else order.total_amount}
+        if status != order.status:
+            fields["status"] = status
+            if not shop:
+                fields["department"] = INTERNATIONAL_DEPARTMENT[InternationalStatus(status)]
+            if status == "cancelled":
+                last = logs[-1] if logs else None
+                fields.update(cancelled_at=(_aware(last["created_at"]) if last else None) or timezone.now(),
+                              cancelled_by_id=self.user(last["created_by_id"]) if last else None,
+                              cancellation_reason=(_text(last["descriptions"]) if last else "")
+                              or f"Cancelled in the old AGIZA system ({row['status']})")
+        Order.objects.filter(pk=order.pk).update(**fields)
+        if not shop:
+            order.international.__class__.objects.filter(order=order).update(
+                tracking_number=_text(row["tracking_number"], 80) or order.international.tracking_number,
+                estimated_delivery=row["expected_delivery_data"] or order.international.estimated_delivery)
+        if status != before:
+            order.refresh_from_db()
+            _after_status_change(order, before, status, None)
+            self._sync_steps(order, row, status)
+        # From now on, only changes made here after this sync count as "handled in this platform".
+        LegacyRecord.objects.filter(source="ujenzi_laguage", legacy_id=row["id"]).update(created_at=timezone.now())
+        self.stats["orders updated from the old system"] += 1
+
+    def _sync_steps(self, order, row, status):
+        """After a status jump from the old system: close procurement, move or create the cargo parcel and delivery."""
+        from apps.procurement.models import ProcurementOrder, ProcurementStatusHistory
+        from apps.shipping.models import CargoParcel
+
+        if order.order_type == "shop":
+            return
+        proc = ProcurementOrder.objects.filter(order=order).first()
+        if proc and status not in PROCUREMENT_STAGES and proc.status not in ("received_at_cargo", "cancelled"):
+            to = "cancelled" if status == "cancelled" else "received_at_cargo"
+            ProcurementStatusHistory.objects.create(procurement=proc, from_status=proc.status, to_status=to,
+                                                    note=f"Old AGIZA system: {row['status']}")
+            proc.status = to
+            proc.save(update_fields=["status", "updated_at"])
+        if status in PARCEL_STAGE:
+            parcel = CargoParcel.objects.filter(order=order).first()
+            if parcel is None:
+                self._next_steps(order, row, status, timezone.now())
+            else:
+                if parcel.stage != PARCEL_STAGE[status]:
+                    parcel.stage = PARCEL_STAGE[status]
+                    parcel.save(update_fields=["stage", "updated_at"])
+                if status == "ready_for_collection" and not order.deliveries.exists():
+                    from apps.deliveries.models import Delivery
+
+                    address = order.customer.addresses.first()
+                    Delivery.objects.create(
+                        order=order, delivery_address=address.line1 if address else "To be confirmed with the customer",
+                        destination_city=address.city if address else self.dar, recipient_name=order.customer.full_name,
+                        recipient_phone=order.customer.phone, notes="Imported from the old AGIZA system")
+        elif status in PROCUREMENT_STAGES and proc is None:
+            self._next_steps(order, row, status, timezone.now())
 
     @staticmethod
     def _item_name(row) -> str:
