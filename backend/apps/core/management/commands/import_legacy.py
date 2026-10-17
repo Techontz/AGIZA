@@ -21,6 +21,9 @@ class Command(BaseCommand):
         parser.add_argument("--legacy-media", default="", help="The old app's media folder (shop product photos)")
         parser.add_argument("--skip-photos", action="store_true", help="Don't download order photos from Cloudinary")
         parser.add_argument("--dry-run", action="store_true", help="Do everything, then undo it (a full rehearsal)")
+        parser.add_argument("--publish-shop", action="store_true",
+                            help="Only: add the old shop products' photos (--legacy-media) and put the ones the "
+                                 "old shop was selling on sale")
 
     def handle(self, *args, **opts):
         from apps.core.legacy_import import Importer
@@ -40,6 +43,14 @@ class Command(BaseCommand):
         importer = Importer(url, media_dir=opts["legacy_media"],
                             download_images=not opts["skip_photos"] and not opts["dry_run"],
                             log=self.stdout.write, table_prefix=prefix)
+        if opts["publish_shop"]:
+            result = importer.publish_shop()
+            self.stdout.write(self.style.SUCCESS("Old shop published"))
+            for name, n in sorted(result["counts"].items()):
+                self.stdout.write(f"  {name}: {n}")
+            for w in result["warnings"][:100]:
+                self.stdout.write(f"  - {w}")
+            return
         result = None
         try:
             with transaction.atomic():

@@ -942,3 +942,60 @@ class Importer:
                 self.stats["shop product photos"] += 1
             self.remember("shop_product", p["id"], product)
             self.stats["shop products (as Draft)"] += 1
+
+    # ------------------------------------------------------------------ publish the old shop
+    def publish_shop(self) -> dict:
+        """
+        Products imported from the old shop (as Draft): add their photos from the old media folder, and put the
+        ones the old shop was selling (active, published, not hidden) on sale: category on, stock from the old
+        shop in the AGIZA store location, status Active (or Out of stock).
+        """
+        from apps.catalog.models import Product, ProductImage
+        from apps.inventory import services as inventory
+        from apps.locations.models import City, Country, Warehouse
+
+        tz = Country.objects.filter(iso2="TZ").first()
+        dar = City.objects.filter(country=tz, name__iexact="dar es salaam").first() if tz else None
+        store = Warehouse.objects.filter(type__in=["shop", "fulfillment"], status="active").order_by("id").first()
+        if store is None and dar is not None:
+            store = Warehouse.objects.create(name="AGIZA Store — Dar es Salaam", type="shop", country=tz, city=dar)
+            self.stats["store location created"] += 1
+        images = defaultdict(list)
+        for r in self.rows("SELECT * FROM shop_productimage ORDER BY product_id, sort_order, id"):
+            images[r["product_id"]].append(r)
+        with transaction.atomic():
+            for p in self.rows("SELECT * FROM shop_product ORDER BY id"):
+                product = Product.objects.filter(pk=self.map["shop_product"].get(p["id"])).first()
+                if product is None:
+                    continue
+                if not product.images.exists():
+                    for i, img in enumerate(images[p["id"]]):
+                        path = os.path.join(self.media_dir, img["image"]) if self.media_dir else ""
+                        if not path or not os.path.isfile(path):
+                            self.warn(f"Shop product “{product.name}”: photo not found ({img['image']})")
+                            continue
+                        with open(path, "rb") as fh:
+                            content = ContentFile(fh.read(), name=os.path.basename(path))
+                        ctype = sniff(content)
+                        if ctype not in ("image/jpeg", "image/png", "image/webp"):
+                            continue
+                        ProductImage.objects.create(product=product, file=content, content_type=ctype,
+                                                    is_primary=not product.images.exists(), sort_order=i)
+                        self.stats["shop product photos"] += 1
+                live = bool(p["is_active"]) and bool(p["is_published"]) and not p["is_hidden"]
+                if not live or product.status != "draft":
+                    continue
+                if not product.category.is_active:
+                    product.category.is_active = True
+                    product.category.save(update_fields=["is_active"])
+                stock = max(int(p["stock"] or 0), 0) if p["is_available"] else 0
+                variant = product.variants.filter(is_default=True).first()
+                if stock and store is not None and variant is not None:
+                    product.location = store
+                    product.save(update_fields=["location"])
+                    inventory.receive(variant, store, stock, user=None, note="Stock from the old AGIZA shop")
+                product.status = "active" if stock and store is not None else "out_of_stock"
+                product.save(update_fields=["status", "updated_at"])
+                self.stats["shop products published" if product.status == "active"
+                           else "shop products published (out of stock)"] += 1
+        return {"counts": dict(self.stats), "warnings": self.warnings}
