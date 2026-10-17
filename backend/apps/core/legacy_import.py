@@ -106,6 +106,7 @@ PARCEL_STAGE = {"waiting_to_receive": "waiting", "sent_to_consolidation": "ready
                 "shipping_to_destination": "in_shipment", "clearance": "in_shipment",
                 "ready_for_collection": "arrived"}
 IMAGE_HOSTS = {"res.cloudinary.com"}
+OLD_PHOTO_CAPTION = "Photo from the old AGIZA system"
 CLOSED = {"completed", "cancelled", "delivered"}
 
 
@@ -510,6 +511,9 @@ class Importer:
         order = Order.objects.select_for_update().filter(pk=order_id).first()
         if order is None:  # deleted here since the import
             return
+        # Orders first imported without their photos (--skip-photos) get them now.
+        if self.download_images and not order.attachments.filter(caption=OLD_PHOTO_CAPTION).exists():
+            self._photos(order, row)
         shop = order.order_type == "shop"
         legacy_status = _text(row["status"]).lower()
         status = SHOP_STATUS.get(legacy_status, order.status) if shop else INTL_STATUS.get(legacy_status, order.status)
@@ -743,7 +747,7 @@ class Importer:
                 self.warn(f"Order {order.reference}: skipped a photo that isn't a JPEG/PNG/WebP/PDF: {url}")
                 continue
             OrderAttachment.objects.create(order=order, file=content, content_type=ctype,
-                                           caption="Photo from the old AGIZA system")
+                                           caption=OLD_PHOTO_CAPTION)
             self.stats["order photos"] += 1
 
     def _next_steps(self, order, row, status, created):
